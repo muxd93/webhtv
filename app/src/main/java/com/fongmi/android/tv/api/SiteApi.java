@@ -117,9 +117,12 @@ public class SiteApi {
         Site site = VodConfig.get().getSite(key);
         if (site.isEmpty() && PUSH.equals(key)) {
             Vod vod = new Vod();
-            vod.setId(id);
-            vod.setName(id);
-            vod.setPlayUrl(id);
+            int sep = id.indexOf("|||");
+            String playUrl = sep >= 0 ? id.substring(sep + 3) : id;
+            // 显示名取文件夹名（文件夹推送）或真实文件名（单文件推送），避免把复合 id / file:// 路径当名称
+            vod.setName(pushDisplayName(id));
+            vod.setId(playUrl);
+            vod.setPlayUrl(playUrl);
             vod.setPlayFrom(ResUtil.getString(R.string.push));
             vod.setPic(ResUtil.getString(R.string.push_image));
             Source.get().parse(vod.setFlags());
@@ -154,6 +157,17 @@ public class SiteApi {
         if (WebHomeInlineVodStore.KEY.equals(key)) return WebHomeInlineVodStore.player(flag, id);
         Site site = VodConfig.get().getSite(key);
         if (site.getType() == 3) {
+            // push_agent + file:///: spider 可能返回包含 file:/// 的复合 ID 作为 URL，
+            // ExoPlayer 无法通过 OkHttpDataSource 打开 file:/// 协议，需要提取真实文件路径并走直连
+            if (PUSH.equals(key) && id.contains("file:///")) {
+                Result result = new Result();
+                result.setUrl(extractFileUrl(id));
+                result.setParse(0);
+                result.setFlag(flag);
+                result.setUrl(Source.get().fetch(result, playerType));
+                SpiderDebug.log("player", result.toString());
+                return result;
+            }
             String playerContent = site.recent().spider().playerContent(flag, id, VodConfig.get().getFlags());
             SpiderDebug.log("player", playerContent);
             Result result = Result.fromJson(playerContent);
@@ -241,6 +255,28 @@ public class SiteApi {
             result.setList(Result.fromType(site.getType(), response.body().string()).getList());
             return result;
         }
+    }
+
+    private static String extractFileUrl(@NonNull String id) {
+        // id 格式: [folderName|||]fileName$file:///path/to/file.mp4
+        // 提取 $ 后面的 file:/// 部分
+        int dollarIdx = id.indexOf("$file:///");
+        if (dollarIdx >= 0) return id.substring(dollarIdx + 1);
+        // 兜底: 直接返回整个 id
+        return id;
+    }
+
+    // 从推送的复合 id 中提取一个干净的人类可读名称：
+    // 文件夹推送取“文件夹名”，单文件推送取文件名（去掉 file:// 前缀与 $ 后的路径）
+    private static String pushDisplayName(@NonNull String id) {
+        int sep = id.indexOf("|||");
+        if (sep >= 0) return id.substring(0, sep).trim();
+        String body = id;
+        int dollar = body.indexOf('$');
+        if (dollar > 0) body = body.substring(0, dollar);
+        if (body.startsWith("file://")) body = body.substring("file://".length());
+        body = body.replace('/', ' ').trim();
+        return body;
     }
 
     private static void setTypes(@NonNull Site site, @NonNull Result result) {

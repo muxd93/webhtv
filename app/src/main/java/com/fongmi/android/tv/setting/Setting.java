@@ -760,6 +760,92 @@ public class Setting {
         return ContextCompat.checkSelfPermission(App.get(), Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED && ContextCompat.checkSelfPermission(App.get(), Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED;
     }
 
+    public static boolean isElderMode() {
+        return Prefers.getBoolean("elder_mode");
+    }
+
+    public static void putElderMode(boolean elderMode) {
+        Prefers.put("elder_mode", elderMode);
+    }
+
+    public static int getElderGridColumns() {
+        return Prefers.getInt("elder_grid_columns", 5);
+    }
+
+    public static void putElderGridColumns(int columns) {
+        Prefers.put("elder_grid_columns", columns);
+    }
+
+    public static boolean isAutoNextEps() {
+        return Prefers.getBoolean("auto_next_eps");
+    }
+
+    public static void putAutoNextEps(boolean autoNext) {
+        Prefers.put("auto_next_eps", autoNext);
+    }
+
+    public static boolean isElderRecursive() {
+        return Prefers.getBoolean("elder_recursive");
+    }
+
+    public static void putElderRecursive(boolean recursive) {
+        Prefers.put("elder_recursive", recursive);
+    }
+
+    /** 上次成功拉取站源配置的时间戳，用于老人模式每日自动更新 */
+    public static long getLastConfigSyncAt() {
+        return Prefers.getLong("config_sync_at");
+    }
+
+    public static void putLastConfigSyncAt(long value) {
+        Prefers.put("config_sync_at", value);
+    }
+
+    /** 老人模式是否朗读焦点项（不识字时最关键），默认开启；设备没有中文语音引擎时自然不出声 */
+    public static boolean isElderTts() {
+        return Prefers.getBoolean("elder_tts", true);
+    }
+
+    public static void putElderTts(boolean value) {
+        Prefers.put("elder_tts", value);
+    }
+
+    /** 老人模式省电策略：开启后不自动拉起远程托管、观影记录同步与 mDNS，默认开启 */
+    public static boolean isElderPowerSave() {
+        return Prefers.getBoolean("elder_power_save", true);
+    }
+
+    public static void putElderPowerSave(boolean value) {
+        Prefers.put("elder_power_save", value);
+    }
+
+    /** 老人模式每天首次进入时自动拉取站源配置，默认开启 */
+    public static boolean isElderAutoUpdate() {
+        return Prefers.getBoolean("elder_auto_update", true);
+    }
+
+    public static void putElderAutoUpdate(boolean value) {
+        Prefers.put("elder_auto_update", value);
+    }
+
+    /** 老人模式时钟是否显示秒，默认关闭：显示秒会让主线程每秒刷新一次 */
+    public static boolean isElderClockSecond() {
+        return Prefers.getBoolean("elder_clock_second", false);
+    }
+
+    public static void putElderClockSecond(boolean value) {
+        Prefers.put("elder_clock_second", value);
+    }
+
+    /** DLNA 接收是否开启，默认关闭：需要投屏时手动打开 */
+    public static boolean isElderDlna() {
+        return Prefers.getBoolean("elder_dlna", false);
+    }
+
+    public static void putElderDlna(boolean value) {
+        Prefers.put("elder_dlna", value);
+    }
+
     public static boolean hasFileManager() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return false;
         return new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:" + App.get().getPackageName())).resolveActivity(App.get().getPackageManager()) != null || new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION).resolveActivity(App.get().getPackageManager()) != null;

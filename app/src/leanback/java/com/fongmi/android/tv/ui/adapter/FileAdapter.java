@@ -6,8 +6,10 @@ import android.view.ViewGroup;
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.bumptech.glide.Glide;
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.databinding.AdapterFileBinding;
+import com.fongmi.android.tv.utils.ImgUtil;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -58,7 +60,15 @@ public class FileAdapter extends RecyclerView.Adapter<FileAdapter.ViewHolder> {
         }
         File file = mItems.get(selectDir ? position - 1 : position);
         holder.binding.name.setText(file.getName());
-        holder.binding.image.setImageResource(file.isDirectory() ? R.drawable.ic_folder : R.drawable.ic_file);
+        if (file.isDirectory()) {
+            Glide.with(holder.binding.image).clear(holder.binding.image);
+            holder.binding.image.setImageResource(R.drawable.ic_folder);
+        } else if (ImgUtil.isImage(file)) {
+            ImgUtil.thumb(file, holder.binding.image);
+        } else {
+            Glide.with(holder.binding.image).clear(holder.binding.image);
+            holder.binding.image.setImageResource(R.drawable.ic_file);
+        }
         holder.binding.getRoot().setOnClickListener(v -> mListener.onItemClick(file));
     }
 

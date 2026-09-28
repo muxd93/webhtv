@@ -50,6 +50,15 @@ public class NsdDeviceDiscovery {
         getManager().registerService(service, NsdManager.PROTOCOL_DNS_SD, registration);
     }
 
+    public static synchronized void unregister() {
+        if (registration == null) return;
+        try {
+            getManager().unregisterService(registration);
+        } catch (Exception ignored) {
+        }
+        registration = null;
+    }
+
     public void start() {
         stop();
         acquireLock();

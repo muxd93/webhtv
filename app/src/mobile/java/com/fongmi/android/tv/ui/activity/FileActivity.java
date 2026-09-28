@@ -11,16 +11,19 @@ import androidx.appcompat.widget.Toolbar;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.viewbinding.ViewBinding;
 
+import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.databinding.ActivityFileBinding;
 import com.fongmi.android.tv.ui.adapter.FileAdapter;
 import com.fongmi.android.tv.ui.base.BaseActivity;
 import com.fongmi.android.tv.utils.PermissionUtil;
+import com.fongmi.android.tv.utils.Task;
 import com.github.catvod.utils.Path;
 
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.Future;
 
 public class FileActivity extends BaseActivity implements FileAdapter.OnClickListener {
 
@@ -28,6 +31,7 @@ public class FileActivity extends BaseActivity implements FileAdapter.OnClickLis
     private FileAdapter mAdapter;
     private File dir;
     private boolean selectDir;
+    private Future<?> pending;
 
     private boolean isRoot() {
         return Path.root().equals(dir);
@@ -47,7 +51,8 @@ public class FileActivity extends BaseActivity implements FileAdapter.OnClickLis
 
     @Override
     protected void initView(Bundle savedInstanceState) {
-        selectDir = getIntent().getBooleanExtra("select_dir", false);
+        selectDir = getIntent().getBooleanExtra("select_dir", false)
+                || getIntent().getBooleanExtra("can_select_dir", false);
         setSupportActionBar(mBinding.toolbar);
         setRecyclerView();
         checkPermission();
@@ -69,10 +74,23 @@ public class FileActivity extends BaseActivity implements FileAdapter.OnClickLis
     }
 
     private void update(File dir) {
+        // 大文件夹（如 camera）的 listFiles + stat 排序是重 IO，放到后台线程执行，避免主线程 ANR。
+        // 进入新目录时取消上一个未完成的扫描；过期的后台结果在回主线程时通过 isCancelled() 丢弃，避免错序刷新。
+        this.dir = dir;
+        if (pending != null) pending.cancel(true);
         mBinding.recycler.scrollToPosition(0);
-        mAdapter.addAll(this.dir = dir, list(dir), selectDir);
         mBinding.title.setText(dir.getAbsolutePath());
-        mBinding.progressLayout.showContent(true, mAdapter.getItemCount());
+        mBinding.progressLayout.showProgress();
+        final File target = dir;
+        final Future<?>[] self = new Future<?>[1];
+        self[0] = pending = Task.submit(() -> {
+            List<File> items = list(target);
+            App.post(() -> {
+                if (isFinishing() || self[0].isCancelled()) return;
+                mAdapter.addAll(target, items, selectDir);
+                mBinding.progressLayout.showContent(true, mAdapter.getItemCount());
+            });
+        });
     }
 
     private List<File> list(File dir) {

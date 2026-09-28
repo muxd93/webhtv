@@ -25,6 +25,7 @@ import androidx.media3.session.SessionResult;
 import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.BuildConfig;
 import com.fongmi.android.tv.R;
+import com.fongmi.android.tv.setting.Setting;
 import com.fongmi.android.tv.bean.Result;
 import com.fongmi.android.tv.browse.BrowseTree;
 import com.fongmi.android.tv.event.ActionEvent;
@@ -573,7 +574,9 @@ public class PlaybackService extends MediaLibraryService implements MediaLibrary
             if (state == Player.STATE_ENDED) {
                 boolean ownerHandlesNavigation = hasNavigationCallback() && isNavigationOwner();
                 if (SpiderDebug.isEnabled()) SpiderDebug.log("audio-auto-next", "service ended owner=%s navigation=%s key=%s navigationKey=%s action=%s", isNavigationOwner(), hasNavigationCallback(), player.getKey(), navigationKey, ownerHandlesNavigation ? "defer-to-owner" : "browse-next");
-                if (!ownerHandlesNavigation) navigateItem(1);
+                if (!Setting.isAutoNextEps()) return;
+                if (ownerHandlesNavigation) dispatchNext();
+                else navigateItem(1);
             }
         }
 

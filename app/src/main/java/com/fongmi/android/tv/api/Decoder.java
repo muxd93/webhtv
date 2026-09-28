@@ -40,6 +40,7 @@ public class Decoder {
     }
 
     private static String fix(String url, String data) {
+        data = data.replaceAll("(?m)^\\s*//.*$", "");
         Matcher matcher = JS_URI.matcher(data);
         while (matcher.find()) data = replace(url, data, matcher.group());
         if (data.contains("../")) data = data.replace("../", UrlUtil.resolve(url, "../"));

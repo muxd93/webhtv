@@ -24,6 +24,8 @@ public class Update {
     public OciArtifact oci;
     public int code;
     public long size;
+    public boolean needNotes;
+    public boolean notesLoading;
 
     public static Update empty(String channel) {
         Update update = new Update();

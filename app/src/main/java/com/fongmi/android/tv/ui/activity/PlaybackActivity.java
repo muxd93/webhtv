@@ -47,6 +47,7 @@ import com.fongmi.android.tv.setting.PlaybackPerformanceSetting;
 import com.fongmi.android.tv.player.exo.ass.ExoAssSession;
 import com.fongmi.android.tv.player.exo.subtitle.ExoSubtitleSession;
 import com.fongmi.android.tv.setting.PlayerSetting;
+import com.fongmi.android.tv.setting.Setting;
 import com.fongmi.android.tv.ui.base.BaseActivity;
 import com.fongmi.android.tv.ui.dialog.DiscMenuDialog;
 import com.fongmi.android.tv.ui.custom.CustomSeekView;
@@ -909,7 +910,9 @@ public abstract class PlaybackActivity extends BaseActivity implements MediaCont
         restoreExoOutputMode();
         if (SpiderDebug.isEnabled()) SpiderDebug.log("playback-lifecycle", "activity stop backgroundOff=%s %s", PlayerSetting.isBackgroundOff(), lifecycleState());
         super.onStop();
-        if (isOwner() && !isAudioOnly() && PlayerSetting.isBackgroundOff() && mController != null) mController.pause();
+        // 老人按主页键就是要停下来：老人模式下不跟随「后台播放」开关，离开播放页一律暂停
+        boolean stopOnLeave = PlayerSetting.isBackgroundOff() || Setting.isElderMode();
+        if (isOwner() && !isAudioOnly() && stopOnLeave && mController != null) mController.pause();
     }
 
     @Override

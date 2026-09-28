@@ -1,7 +1,9 @@
 package com.fongmi.android.tv.ui.activity;
 
 import android.annotation.SuppressLint;
+import android.app.ActivityManager;
 import android.app.SearchManager;
+import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
 import android.text.TextUtils;
@@ -57,8 +59,8 @@ import com.fongmi.android.tv.ui.base.BaseActivity;
 import com.fongmi.android.tv.ui.custom.CustomRowPresenter;
 import com.fongmi.android.tv.ui.custom.CustomSelector;
 import com.fongmi.android.tv.ui.custom.CustomTitleView;
-import com.fongmi.android.tv.ui.dialog.ExitConfirmDialog;
 import com.fongmi.android.tv.ui.dialog.SiteDialog;
+import com.fongmi.android.tv.ui.fragment.ElderModeFragment;
 import com.fongmi.android.tv.ui.presenter.FuncPresenter;
 import com.fongmi.android.tv.ui.presenter.HeaderPresenter;
 import com.fongmi.android.tv.ui.presenter.HistoryPresenter;
@@ -113,6 +115,13 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
     private String webDefaultChromeMode = TV_FULL;
     private boolean webToolbarVisible = true;
     private boolean loadingHomeCategory;
+    private boolean mElderMode;
+    private boolean mStandardLoaded;
+    private boolean mConfigLoading;
+    private ElderModeFragment mElderFragment;
+    private static final String TAG_ELDER = "elder";
+    private static final long EXIT_DOUBLE_BACK_INTERVAL = 2000;
+    private long mLastBackPressedTime = 0;
 
     private Site getHome() {
         return VodConfig.get().getHome();
@@ -130,7 +139,12 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
+        if (isHomeIntent(intent)) resetElderHome();
         checkAction(intent);
+    }
+
+    private boolean isHomeIntent(Intent intent) {
+        return intent != null && Intent.ACTION_MAIN.equals(intent.getAction()) && intent.hasCategory(Intent.CATEGORY_HOME);
     }
 
     @Override
@@ -150,14 +164,25 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
         setViewModel();
         setAdapter();
         runAfterFirstFrame(this::initAfterFirstFrame);
+        if (Setting.isElderMode()) {
+            initConfig();
+            showElderMode();
+        }
         SpiderDebug.log("startup", "home initView end cost=%sms", System.currentTimeMillis() - App.time());
     }
 
     private void initAfterFirstFrame() {
         SpiderDebug.log("startup", "home first frame cost=%sms", System.currentTimeMillis() - App.time());
         App.post(this::initConfig, 80);
-        App.post(() -> PermissionUtil.requestFile(this, allGranted -> PermissionUtil.requestNotify(this)), 1800);
-        App.post(() -> DLNARendererService.start(this), 2500);
+        // 老人模式不弹权限、不拉起 DLNA 接收服务：老人不投屏，弹窗与常驻广播都是干扰
+        App.post(() -> {
+            if (Setting.isElderMode()) return;
+            PermissionUtil.requestFile(this, allGranted -> PermissionUtil.requestNotify(this));
+        }, 1800);
+        // DLNA 改为菜单开关控制，默认关闭，需要投屏时再打开
+        App.post(() -> {
+            if (Setting.isElderDlna()) DLNARendererService.start(this);
+        }, 2500);
     }
 
     private void runAfterFirstFrame(Runnable runnable) {
@@ -192,10 +217,11 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
                 if (child != null && parent.hasFocus()) updateToolbarVisibility(true);
             }
         });
+        mBinding.elderModeEnter.setOnClickListener(v -> enterElderMode());
     }
 
     private void updateToolbarVisibility(boolean visible) {
-        mBinding.toolbar.setVisibility(visible && webToolbarVisible ? View.VISIBLE : View.GONE);
+        mBinding.toolbar.setVisibility(!mElderMode && visible && webToolbarVisible ? View.VISIBLE : View.GONE);
         syncNativeContentInset();
         syncWebOverlayLayout();
     }
@@ -321,6 +347,8 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
     }
 
     private void initConfig() {
+        if (mConfigLoading) return;
+        mConfigLoading = true;
         SpiderDebug.log("startup", "config load start cost=%sms", System.currentTimeMillis() - App.time());
         VodConfig.get().init().load(getCallback());
         LiveConfig.get().init().load();
@@ -353,8 +381,14 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
         setFunc();
         getHistory();
         getVideo();
-        setFocus();
-        App.post(this::prewarmWebView, 1500);
+        if (Setting.isElderMode()) {
+            SpiderDebug.log("elder-mode", "showContent: elder mode, skip standard load, mStandardLoaded=%s", mStandardLoaded);
+            showElderMode();
+        } else {
+            mStandardLoaded = true;
+            setFocus();
+            App.post(this::prewarmWebView, 1500);
+        }
         SpiderDebug.log("startup", "home showContent end cost=%sms", System.currentTimeMillis() - App.time());
     }
 
@@ -410,6 +444,7 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
     }
 
     private void showWebOverlay() {
+        if (mElderMode) return;
         mBinding.webOverlay.setVisibility(View.VISIBLE);
         syncWebOverlayLayout();
     }
@@ -688,6 +723,7 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
 
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
+        if (mElderMode) return super.dispatchKeyEvent(event);
         if (KeyUtil.isMenuKey(event)) {
             showDialog();
             return true;
@@ -707,7 +743,10 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
         }
         if (KeyUtil.isActionDown(event) & KeyUtil.isUpKey(event) && mBinding.typeRecycler.hasFocus()) return requestTitleFocus();
         if (KeyUtil.isActionDown(event) & KeyUtil.isDownKey(event) && mBinding.typeRecycler.hasFocus()) return requestContentFocus();
-        if (KeyUtil.isActionDown(event) & KeyUtil.isUpKey(event) && mBinding.recycler.hasFocus() && mBinding.typeRecycler.getVisibility() == View.VISIBLE) updateToolbarVisibility(true);
+        if (KeyUtil.isActionDown(event) & KeyUtil.isUpKey(event) && mBinding.recycler.hasFocus() && mBinding.typeRecycler.getVisibility() == View.VISIBLE) {
+            if (isToolbarVisible()) return requestTitleFocus();
+            updateToolbarVisibility(true);
+        }
         if (KeyUtil.isActionDown(event) & KeyUtil.isDownKey(event) && getCurrentFocus() == mBinding.title) return requestHomeFocus();
         return super.dispatchKeyEvent(event);
     }
@@ -741,6 +780,94 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
         if (mWeb != null) mWeb.onResume();
     }
 
+    private void enterElderMode() {
+        SpiderDebug.log("elder-mode", "enterElderMode: switch to elder, mStandardLoaded=%s", mStandardLoaded);
+        Setting.putElderMode(true);
+        showElderMode();
+    }
+
+    public void switchToStandard() {
+        Setting.putElderMode(false);
+        hideElderMode();
+    }
+
+    private void showElderMode() {
+        SpiderDebug.log("elder-mode", "showElderMode: mElderMode=%s fragment=%s", mElderMode, mElderFragment != null);
+        mElderMode = true;
+        mBinding.nativeContent.setVisibility(View.GONE);
+        mBinding.webOverlay.setVisibility(View.GONE);
+        mBinding.toolbar.setVisibility(View.GONE);
+        mBinding.elderContainer.setVisibility(View.VISIBLE);
+        if (mElderFragment == null) {
+            mElderFragment = (ElderModeFragment) getSupportFragmentManager().findFragmentByTag(TAG_ELDER);
+        }
+        if (mElderFragment == null) {
+            mElderFragment = ElderModeFragment.newInstance();
+            getSupportFragmentManager().beginTransaction().replace(R.id.elderContainer, mElderFragment, TAG_ELDER).commitNow();
+        }
+    }
+
+    /**
+     * 老人模式即桌面：主页键与返回键都回到初始状态，并清理后台应用，保证每次都是干净的开始。
+     */
+    private void resetElderHome() {
+        killBackgroundApps();
+        if (!mElderMode || mElderFragment == null) return;
+        mElderFragment.resetToStart();
+    }
+
+    /** 清理后台应用，避免看过的直播/B站残留在后台拖慢桌面。系统应用与前台应用不受影响。 */
+    private void killBackgroundApps() {
+        ActivityManager manager = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
+        if (manager == null) return;
+        List<ActivityManager.RunningAppProcessInfo> processes = manager.getRunningAppProcesses();
+        if (processes == null) return;
+        String self = getPackageName();
+        for (ActivityManager.RunningAppProcessInfo process : processes) {
+            if (process.importance < ActivityManager.RunningAppProcessInfo.IMPORTANCE_BACKGROUND) continue;
+            if (process.pkgList == null) continue;
+            for (String pkg : process.pkgList) {
+                if (pkg == null || pkg.equals(self)) continue;
+                manager.killBackgroundProcesses(pkg);
+            }
+        }
+    }
+
+    private void hideElderMode() {
+        mElderMode = false;
+        if (mElderFragment != null) {
+            getSupportFragmentManager().beginTransaction().remove(mElderFragment).commitNow();
+            mElderFragment = null;
+        }
+        mBinding.elderContainer.setVisibility(View.GONE);
+        mBinding.nativeContent.setVisibility(View.VISIBLE);
+        if (!mStandardLoaded) {
+            SpiderDebug.log("elder-mode", "hideElderMode: standard not loaded yet, loadStandardHome");
+            loadStandardHome();
+            return;
+        }
+        SpiderDebug.log("elder-mode", "hideElderMode: restore standard, webVisible=%s", mWeb != null && mWeb.isVisible());
+        if (mWeb != null && mWeb.isVisible()) showWebOverlay();
+        else hideWebOverlay();
+        updateToolbarVisibility(webToolbarVisible);
+        if (mWeb != null && mWeb.isVisible()) requestWebFocus();
+        else setFocus();
+    }
+
+    private void loadStandardHome() {
+        SpiderDebug.log("elder-mode", "loadStandardHome start");
+        mStandardLoaded = true;
+        mBinding.progressLayout.showContent();
+        setTitle();
+        setLogo();
+        setFunc();
+        getHistory();
+        getVideo();
+        setFocus();
+        App.post(this::prewarmWebView, 1500);
+        SpiderDebug.log("elder-mode", "loadStandardHome end");
+    }
+
     @Override
     protected void onPause() {
         if (mWeb != null) mWeb.onPause();
@@ -750,6 +877,15 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
 
     @Override
     protected void onBackInvoked() {
+        if (mElderMode) {
+            // 先退回第一张卡片；已经在开头时才走双击退出，避免老人翻远了按返回键直接被提示退出
+            if (mElderFragment != null && !mElderFragment.isAtStart()) {
+                mElderFragment.resetToStart();
+                return;
+            }
+            exitAppKeepingMode();
+            return;
+        }
         if (mWeb != null && mWeb.isVisible() && mWeb.handleBack()) {
             return;
         } else if (mWeb != null && mWeb.isVisible() && consumeTvFullscreenBack()) {
@@ -775,8 +911,29 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
         return true;
     }
 
+    private void exitAppKeepingMode() {
+        if (System.currentTimeMillis() - mLastBackPressedTime <= EXIT_DOUBLE_BACK_INTERVAL) {
+            mLastBackPressedTime = 0;
+            confirmExitKeepingMode();
+        } else {
+            mLastBackPressedTime = System.currentTimeMillis();
+            Notify.show("再按一次返回键退出");
+        }
+    }
+
+    private void confirmExitKeepingMode() {
+        if (PlaybackService.isRunning()) moveTaskToBack(true);
+        else super.onBackInvoked();
+    }
+
     private void exitHome() {
-        ExitConfirmDialog.create(this::confirmExitHome).show(this);
+        if (System.currentTimeMillis() - mLastBackPressedTime <= EXIT_DOUBLE_BACK_INTERVAL) {
+            mLastBackPressedTime = 0;
+            confirmExitHome();
+        } else {
+            mLastBackPressedTime = System.currentTimeMillis();
+            Notify.show("再按一次返回键退出");
+        }
     }
 
     private void confirmExitHome() {
@@ -789,7 +946,11 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
         if (mWeb != null) mWeb.destroy();
         DLNARendererService.stop(this);
         LiveConfig.get().clear();
-        VodConfig.get().clear();
+        if (isFinishing()) {
+            VodConfig.get().clear();
+        } else {
+            SpiderDebug.log("elder-mode", "HomeActivity.onDestroy: isFinishing=false, preserving VodConfig");
+        }
         AppDatabase.backup();
         OkHttp.get().clear();
         Source.get().exit();

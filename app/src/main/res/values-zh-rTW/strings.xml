@@ -1295,7 +1295,7 @@
     </string-array>
 
     <string-array name="select_scale">
-        <item>原始</item>
+    <item>原始</item>
         <item>16:9</item>
         <item>4:3</item>
         <item>填充</item>
@@ -1306,6 +1306,8 @@
         <item>刷新</item>
         <item>重播</item>
     </string-array>
+
+    <string name="error_config_not_found">設定未找到</string>
 
     <string-array name="select_caption">
         <item>預設</item>
@@ -1520,4 +1522,71 @@
 
     <string name="player_audio_badge_queue">佇列</string>
     <string name="player_audio_repeat">循環</string>
+
+    <!-- Elder Mode -->
+    <string name="elder_mode">老人模式</string>
+    <string name="elder_return_standard">返回標準模式</string>
+    <string name="elder_search">搜尋</string>
+    <string name="elder_recursive">包含子資料夾</string>
+    <string name="elder_empty_hint">選擇「+」新增您常看的節目</string>
+    <string name="elder_badge_keep">收藏</string>
+    <string name="elder_badge_history">最近</string>
+    <string name="elder_badge_local">檔案</string>
+    <string name="elder_badge_smb">共享</string>
+    <string name="elder_add_card">新增卡片</string>
+    <string name="elder_cancel">取消</string>
+    <string name="elder_loading_source">影視資源載入中，請稍候…</string>
+    <string name="elder_source_timeout">網路較慢，請稍後再試。</string>
+    <string name="elder_from_keep">從收藏新增</string>
+    <string name="elder_from_history">從最近播放新增</string>
+    <string name="elder_local_file">本地檔案</string>
+    <string name="elder_smb">SMB共享</string>
+    <string name="elder_move_up">上移</string>
+    <string name="elder_move_down">下移</string>
+    <string name="elder_remove">移除</string>
+    <string name="elder_set_pic">設定封面</string>
+    <string name="elder_change_pic">更換封面</string>
+    <string name="elder_choose_cover">選擇封面</string>
+    <string name="elder_cover_local">本地圖片</string>
+    <string name="elder_pic_from_url">封面從網址</string>
+    <string name="elder_clear_pic">清除封面</string>
+    <string name="elder_restore_pic">恢復預設封面</string>
+    <string name="elder_icon_url_hint">輸入圖片網址</string>
+    <string name="elder_select_items">請選擇項目</string>
+    <string name="elder_no_keep">還沒有收藏</string>
+    <string name="elder_no_history">還沒有播放記錄</string>
+    <string name="elder_no_video_in_folder">該資料夾中沒有影片檔案</string>
+    <string name="elder_grid_columns">網格列數</string>
+    <string name="elder_smb_add_server">新增SMB伺服器</string>
+    <string name="elder_smb_host">伺服器位址</string>
+    <string name="elder_smb_name">名稱</string>
+    <string name="elder_smb_share_name">共享名</string>
+    <string name="elder_smb_username">使用者名稱（可留空）</string>
+    <string name="elder_smb_password">密碼（可留空）</string>
+    <string name="elder_smb_port">連接埠（預設 445）</string>
+    <string name="elder_smb_connect">連線</string>
+    <string name="elder_smb_connect_fail">無法連線到伺服器</string>
+    <string name="elder_smb_select_dir">選擇此目錄</string>
+    <string name="elder_smb_new_server">新增新伺服器</string>
+    <string name="elder_smb_loading">載入中...</string>
+    <string name="elder_smb_no_files">沒有找到檔案</string>
+    <string name="elder_smb_scanning">正在尋找家裡的儲存裝置</string>
+    <string name="elder_smb_scanning_tip">請稍候，大約需要幾秒鐘</string>
+    <string name="elder_smb_select_device">請選擇一台裝置</string>
+    <string name="elder_smb_select_device_tip">按確認鍵開啟您想看的裝置</string>
+    <string name="elder_smb_select_share">請選擇一個資料夾</string>
+    <string name="elder_smb_select_share_tip">%1$s 上的共享資料夾</string>
+    <string name="elder_smb_not_found">沒有找到裝置</string>
+    <string name="elder_smb_not_found_tip">請確認裝置已開機，並和電視連在同一個網路</string>
+    <string name="elder_smb_not_found_hint">什麼也沒找到。\n可以重新掃描，或者手動新增。</string>
+    <string name="elder_smb_need_password">需要密碼</string>
+    <string name="elder_smb_login_title">登入 %1$s</string>
+    <string name="elder_smb_connecting">正在連線…</string>
+    <string name="elder_smb_no_share">這台裝置上沒有可以開啟的共享資料夾</string>
+    <string name="elder_smb_unreachable">找不到這台裝置，請檢查它是否開著</string>
+    <string name="elder_smb_auth_failed">使用者名稱或密碼不對</string>
+    <string name="elder_smb_host_empty">請填寫伺服器位址</string>
+    <string name="elder_smb_rescan">重新掃描</string>
+    <string name="elder_smb_manual">手動新增</string>
+    <string name="auto_next_eps">自動播放下一集</string>
 </resources>

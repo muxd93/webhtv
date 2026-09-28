@@ -22,6 +22,8 @@ import java.util.List;
 @Entity(indices = @Index(value = {"url", "type"}, unique = true))
 public class Config {
 
+    public static final String DEFAULT_VOD_URL = "http://z.qiqiv.cn/123.txt";
+
     @PrimaryKey(autoGenerate = true)
     @SerializedName("id")
     private int id;
@@ -89,7 +91,7 @@ public class Config {
 
     public static Config vod() {
         Config item = AppDatabase.get().getConfigDao().findOne(0);
-        return item == null ? create(0) : item;
+        return item == null ? create(0, DEFAULT_VOD_URL) : item;
     }
 
     public static Config live() {

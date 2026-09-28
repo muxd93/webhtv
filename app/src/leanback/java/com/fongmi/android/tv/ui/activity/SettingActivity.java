@@ -3,10 +3,17 @@ package com.fongmi.android.tv.ui.activity;
 import android.app.Activity;
 import android.content.Intent;
 import android.os.Bundle;
+import android.graphics.Color;
 import android.text.TextUtils;
+import android.view.Gravity;
 import android.view.View;
+import android.view.ViewGroup;
 
+import androidx.appcompat.app.AlertDialog;
+import androidx.appcompat.widget.LinearLayoutCompat;
 import androidx.viewbinding.ViewBinding;
+
+import com.google.android.material.textview.MaterialTextView;
 
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.Updater;
@@ -24,6 +31,7 @@ import com.fongmi.android.tv.impl.Callback;
 import com.fongmi.android.tv.impl.ConfigListener;
 import com.fongmi.android.tv.impl.LiveListener;
 import com.fongmi.android.tv.impl.SiteListener;
+import com.fongmi.android.tv.service.DLNARendererService;
 import com.fongmi.android.tv.setting.PlayerSetting;
 import com.fongmi.android.tv.setting.Setting;
 import com.fongmi.android.tv.ui.base.BaseActivity;
@@ -40,6 +48,7 @@ import com.fongmi.android.tv.utils.FileUtil;
 import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.PermissionUtil;
 import com.fongmi.android.tv.utils.ResUtil;
+import com.fongmi.android.tv.utils.ServiceGate;
 import com.github.catvod.bean.Doh;
 import com.github.catvod.net.OkHttp;
 
@@ -87,11 +96,15 @@ public class SettingActivity extends BaseActivity implements ConfigListener, Sit
         mBinding.versionText.setText(AppVersion.fullName());
         setCacheText();
         setOtherText();
+        buildElderEntry();
     }
 
     private void setOtherText() {
         mBinding.dohText.setText(getDohList()[getDohIndex()]);
         mBinding.incognitoText.setText(getSwitch(Setting.isIncognito()));
+        mBinding.elderGridColumnsText.setText(String.valueOf(Setting.getElderGridColumns()));
+        mBinding.elderAutoNextText.setText(getSwitch(Setting.isAutoNextEps()));
+        mBinding.elderRecursiveText.setText(getSwitch(Setting.isElderRecursive()));
         mBinding.languageText.setText((language = ResUtil.getStringArray(R.array.select_language))[Setting.getLanguageIndex()]);
         mBinding.sizeText.setText((size = ResUtil.getStringArray(R.array.select_size))[PlayerSetting.getSize()]);
     }
@@ -126,6 +139,9 @@ public class SettingActivity extends BaseActivity implements ConfigListener, Sit
         mBinding.liveHome.setOnClickListener(this::onLiveHome);
         mBinding.wall.setOnLongClickListener(this::onWallEdit);
         mBinding.incognito.setOnClickListener(this::setIncognito);
+        mBinding.elderGridColumns.setOnClickListener(this::setElderGridColumns);
+        mBinding.elderAutoNext.setOnClickListener(this::setElderAutoNext);
+        mBinding.elderRecursive.setOnClickListener(this::setElderRecursive);
         mBinding.vodHistory.setOnClickListener(this::onVodHistory);
         mBinding.liveHistory.setOnClickListener(this::onLiveHistory);
         mBinding.wallDefault.setOnClickListener(this::setWallDefault);
@@ -269,6 +285,96 @@ public class SettingActivity extends BaseActivity implements ConfigListener, Sit
     private void setIncognito(View view) {
         Setting.putIncognito(!Setting.isIncognito());
         mBinding.incognitoText.setText(getSwitch(Setting.isIncognito()));
+    }
+
+    private void setElderAutoNext(View view) {
+        Setting.putAutoNextEps(!Setting.isAutoNextEps());
+        mBinding.elderAutoNextText.setText(getSwitch(Setting.isAutoNextEps()));
+    }
+
+    private void setElderRecursive(View view) {
+        Setting.putElderRecursive(!Setting.isElderRecursive());
+        mBinding.elderRecursiveText.setText(getSwitch(Setting.isElderRecursive()));
+    }
+
+    private void setElderGridColumns(View view) {
+        int current = Setting.getElderGridColumns();
+        String[] items = {"3", "4", "5", "6"};
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.elder_grid_columns)
+                .setSingleChoiceItems(items, current - 3, (dialog, which) -> {
+                    int newColumns = which + 3;
+                    if (newColumns != current) {
+                        Setting.putElderGridColumns(newColumns);
+                        mBinding.elderGridColumnsText.setText(String.valueOf(newColumns));
+                    }
+                    dialog.dismiss();
+                })
+                .setNegativeButton(android.R.string.cancel, null)
+                .show();
+    }
+
+    /**
+     * 把随老人模式一起加进来、但散落在设置页各处的项收拢成一个「老人模式」分组，
+     * 既有的三项（自动连播/列数/递归）从原位置搬进分组，再补上新增的开关。
+     */
+    private void buildElderEntry() {
+        ViewGroup first = (ViewGroup) mBinding.elderAutoNext.getParent();
+        ViewGroup root = first == null ? null : (ViewGroup) first.getParent();
+        if (root == null || first == null) return;
+        int index = root.indexOfChild(first);
+
+        // 老人模式项已收进独立的下级页面，主设置页隐藏原平铺项，只留一个入口
+        first.setVisibility(View.GONE);
+        setOuterGone(mBinding.elderGridColumns);
+        setOuterGone(mBinding.elderRecursive);
+
+        LinearLayoutCompat item = new LinearLayoutCompat(this);
+        LinearLayoutCompat.LayoutParams params = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        params.topMargin = ResUtil.dp2px(16);
+        item.setLayoutParams(params);
+        item.setBackgroundResource(R.drawable.selector_item);
+        item.setFocusable(true);
+        item.setFocusableInTouchMode(true);
+        item.setOrientation(LinearLayoutCompat.HORIZONTAL);
+
+        MaterialTextView titleView = new MaterialTextView(this);
+        titleView.setLayoutParams(new LinearLayoutCompat.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        titleView.setText("老人模式设置");
+        titleView.setTextColor(Color.WHITE);
+        titleView.setTextSize(18);
+
+        MaterialTextView arrowView = new MaterialTextView(this);
+        arrowView.setLayoutParams(new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        arrowView.setText("进入");
+        arrowView.setTextColor(Color.WHITE);
+        arrowView.setTextSize(18);
+
+        item.addView(titleView);
+        item.addView(arrowView);
+        item.setOnClickListener(v -> SettingElderActivity.start(this));
+        root.addView(item, Math.min(index, root.getChildCount()));
+    }
+
+    /** 连带外层容器一起隐藏，避免只隐藏内层留下空白 */
+    private void setOuterGone(View item) {
+        View outer = (View) item.getParent();
+        if (outer != null) outer.setVisibility(View.GONE);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // 只有打开设置页才拉起远程托管与 mDNS，离开 30 秒后自动停止
+        ServiceGate.get().acquire(ServiceGate.Gate.REMOTE_AGENT);
+        ServiceGate.get().acquire(ServiceGate.Gate.NSD);
+    }
+
+    @Override
+    protected void onPause() {
+        ServiceGate.get().release(ServiceGate.Gate.REMOTE_AGENT);
+        ServiceGate.get().release(ServiceGate.Gate.NSD);
+        super.onPause();
     }
 
     private void setSize(View view) {

@@ -273,6 +273,7 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
     private int mStatusBarInset;
     private int mEpisodeBottomInset;
     private boolean detailRequested;
+    private boolean mWaitingConfig;
     private boolean detailHealthRecorded;
     private boolean playHealthRecorded;
     private Runnable mR1;
@@ -354,14 +355,51 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
     });
 
     public static void push(FragmentActivity activity, String text) {
-        if (FileChooser.isValid(activity, Uri.parse(text))) file(activity, FileChooser.getPathFromUri(Uri.parse(text)));
-        else start(activity, Sniffer.getUrl(text));
+        // 内部资源（局域网 SMB smb://）直接走直连播放，不经由 Sniffer.getUrl 嗅探真实地址
+        // （嗅探/解析仅用于网络爬虫视频源）。smb:// 由播放链路经 SmbDataSource 直连读取。
+        if (text != null && text.startsWith("smb://")) start(activity, SiteApi.PUSH, text, pushTitle(text));
+        else if (FileChooser.isValid(activity, Uri.parse(text))) file(activity, FileChooser.getPathFromUri(Uri.parse(text)));
+        else start(activity, SiteApi.PUSH, Sniffer.getUrl(text), pushTitle(text));
     }
 
     public static void file(FragmentActivity activity, String path) {
         if (TextUtils.isEmpty(path)) return;
         String name = new File(path).getName();
         start(activity, SiteApi.PUSH, "file://" + path, name);
+    }
+
+    // 本地文件夹推送的 id 形如 文件夹名|||文件名1$file:///路径1#文件名2$file:///路径2
+    // 初始显示名：文件夹推送取“文件夹名”，单文件推送取文件名，避免把复合 id / file:// 路径当标题
+    private static String pushTitle(String text) {
+        if (TextUtils.isEmpty(text)) return text;
+        int sep = text.indexOf("|||");
+        if (sep >= 0) return text.substring(0, sep).trim();
+        String body = text;
+        int dollar = body.indexOf('$');
+        if (dollar > 0) body = body.substring(0, dollar);
+        if (body.startsWith("file://")) body = body.substring("file://".length());
+        return body.replace('/', ' ').trim();
+    }
+
+    // 从推送的复合 id 提取干净的显示名（与 SiteApi.pushDisplayName 一致）：文件夹名 / 文件名
+    private static String cleanPushName(String id) {
+        if (TextUtils.isEmpty(id)) return id;
+        int sep = id.indexOf("|||");
+        if (sep >= 0) return id.substring(0, sep).trim();
+        String body = id;
+        int dollar = body.indexOf('$');
+        if (dollar > 0) body = body.substring(0, dollar);
+        if (body.startsWith("file://")) body = body.substring("file://".length());
+        return body.replace('/', ' ').trim();
+    }
+
+    // 推送场景下，若传入的 name 仍是复合 id（文件管理器直推等边界情况），用 id 重新解析出干净名称
+    private String displayName() {
+        String name = Objects.toString(getIntent().getStringExtra("name"), "");
+        if (SiteApi.PUSH.equals(getKey()) && (name.contains("|||") || name.contains("$") || name.startsWith("file://"))) {
+            return cleanPushName(getId());
+        }
+        return name;
     }
 
     public static void cast(Activity activity, History history) {
@@ -377,7 +415,7 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
     }
 
     public static void start(Activity activity, String url) {
-        start(activity, SiteApi.PUSH, url, url);
+        start(activity, SiteApi.PUSH, url, cleanPushName(url));
     }
 
     public static void start(Activity activity, String key, String id, String name) {
@@ -433,7 +471,7 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
     }
 
     private String getName() {
-        return Objects.toString(getIntent().getStringExtra("name"), "");
+        return displayName();
     }
 
     private String getPic() {
@@ -494,6 +532,8 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
         String name = getName();
         if (mEpisodeAdapter == null || mEpisodeAdapter.getItemCount() == 0) return name;
         String episode = Objects.toString(getEpisode().getName(), "");
+        // 本地文件夹推送：标题显示当前文件的真实文件名，而非文件夹名或复合 id
+        if (SiteApi.PUSH.equals(getKey()) && !TextUtils.isEmpty(episode)) return episode;
         if (TextUtils.isEmpty(episode) || TextUtils.equals(name, episode)) return name;
         return TextUtils.isEmpty(name) ? episode : name + " " + episode;
     }
@@ -1073,7 +1113,40 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
         detailRequested = true;
         if (getId().startsWith("push://")) getIntent().putExtra("key", SiteApi.PUSH).putExtra("id", getId().substring(7));
         if (getId().isEmpty() || getId().startsWith("msearch:")) setEmpty(false);
-        else getDetail();
+        else ensureConfigThenGetDetail();
+    }
+
+    /**
+     * 配置（站点列表）未就绪时，KEEP/HISTORY 等依赖站点的播放会失败。
+     * 这里等待配置加载完成再拉详情，超时则走空结果，避免从其他入口（投屏/快捷方式）
+     * 在配置未就绪时直接拉起播放而黑屏。
+     */
+    private void ensureConfigThenGetDetail() {
+        if (SiteApi.PUSH.equals(getKey()) || VodConfig.isReady()) {
+            getDetail();
+            return;
+        }
+        if (mWaitingConfig) return;
+        mWaitingConfig = true;
+        SpiderDebug.log("video-flow", "config not ready, wait for VOD ready key=%s", getKey());
+        mBinding.progressLayout.showProgress();
+        App.post(this::pollConfigReady, 300);
+    }
+
+    private void pollConfigReady() {
+        if (!mWaitingConfig) return;
+        if (VodConfig.isReady()) {
+            mWaitingConfig = false;
+            getDetail();
+            return;
+        }
+        if (System.currentTimeMillis() - detailStartTime > 15000) {
+            SpiderDebug.log("video-flow", "config wait timeout key=%s", getKey());
+            mWaitingConfig = false;
+            setEmpty(true);
+            return;
+        }
+        App.post(this::pollConfigReady, 300);
     }
 
     private void getDetail() {
@@ -1134,6 +1207,7 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
     private void setDetail(Vod item) {
         item.checkPic(getPic());
         item.checkName(getName());
+        if (SiteApi.PUSH.equals(getKey())) item.setName(cleanPushName(getId()));
         item.checkContent(getContent());
         mBinding.progressLayout.showContent();
         mBinding.name.setText(item.getName());
@@ -1179,7 +1253,8 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
     }
 
     private void getPlayer(Flag flag, Episode episode) {
-        mBinding.widget.title.setText(getString(R.string.detail_title, mBinding.name.getText(), episode.getName()));
+        // 推送场景：右上角标题显示当前文件名（已由 getOsdTitle 处理），避免显示复合 id / 文件夹名
+        mBinding.widget.title.setText(getOsdTitle());
         playerStartTime = System.currentTimeMillis();
         beginPlayHealth();
         String playFlag = getEpisodePlayFlag(flag, episode);
@@ -4240,6 +4315,8 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
         String queuedTitle = mAudioQueueTitles.get(audioQueueEpisodeKey(episode));
         if (!TextUtils.isEmpty(queuedTitle)) return queuedTitle;
         if (isAudioQueueEpisode(episode) && !TextUtils.isEmpty(episode.getDisplayName())) return episode.getDisplayName();
+        // 本地文件夹推送：正在播放标题显示当前文件的真实文件名，而非文件夹名或复合 id
+        if (SiteApi.PUSH.equals(getKey()) && episode != null && !TextUtils.isEmpty(episode.getName())) return episode.getName();
         if (mHistory != null && !TextUtils.isEmpty(mHistory.getVodName())) return mHistory.getVodName();
         if (!TextUtils.isEmpty(getName())) return getName();
         CharSequence text = mBinding.name.getText();
@@ -4250,6 +4327,11 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
         Episode item = getEpisode();
         String queuedArtist = mAudioQueueArtists.get(audioQueueEpisodeKey(item));
         if (!TextUtils.isEmpty(queuedArtist)) return queuedArtist;
+        // 本地文件夹推送：artist 用文件夹名，避免与标题(文件名)相同导致系统回退显示“播放”
+        if (SiteApi.PUSH.equals(getKey()) && mHistory != null && !TextUtils.isEmpty(mHistory.getVodName())) {
+            String folder = mHistory.getVodName();
+            if (!TextUtils.equals(folder, title)) return folder;
+        }
         String episode = item == null ? "" : item.getName();
         String artist = getArtistFromEpisode(title, cleanAudioEpisodeForArtist(episode));
         return TextUtils.equals(artist, title) ? "" : artist;
@@ -5611,6 +5693,7 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
     }
 
     private void checkEnded(boolean notify) {
+        if (!Setting.isAutoNextEps()) return;
         if (showKaraokeResultIfNeeded(() -> checkNext(notify))) return;
         checkNext(notify);
     }
@@ -6372,6 +6455,7 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
             mDiscMenuPlayer.removeDiscMenuStateListener(mDiscMenuStateListener);
             mDiscMenuPlayer = null;
         }
+        mWaitingConfig = false;
         mLyricsSearchSeq++;
         mLyricsRefreshSeq++;
         dismissLyricsResultDialog();

@@ -27,4 +27,10 @@
     <color name="white_80">#CCFFFFFF</color>
     <color name="white_90">#E6FFFFFF</color>
 
+    <color name="elder_accent">#FFB74D</color>
+    <color name="elder_badge_keep">#EC407A</color>
+    <color name="elder_badge_history">#42A5F5</color>
+    <color name="elder_badge_local">#66BB6A</color>
+    <color name="elder_badge_smb">#26A69A</color>
+
 </resources>

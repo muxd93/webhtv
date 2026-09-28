@@ -11,7 +11,6 @@ import androidx.media3.common.MimeTypes;
 import androidx.media3.common.PriorityTaskManager;
 import androidx.media3.database.StandaloneDatabaseProvider;
 import androidx.media3.datasource.DataSource;
-import androidx.media3.datasource.DefaultDataSource;
 import androidx.media3.datasource.HttpDataSource;
 import androidx.media3.datasource.cache.Cache;
 import androidx.media3.datasource.cache.CacheDataSource;
@@ -84,7 +83,7 @@ public class MediaSourceFactory implements MediaSource.Factory {
     static DataSource.Factory createUpstreamDataSourceFactory(Map<String, String> headers) {
         OkHttpDataSource.Factory factory = new OkHttpDataSource.Factory(OkHttp.player());
         applyHeaders(factory, headers);
-        DataSource.Factory upstream = new DefaultDataSource.Factory(App.get(), factory);
+        DataSource.Factory upstream = new SmbDataSource.Factory(App.get(), factory);
         DataSource.Factory recovered = new HttpEofRecoveryDataSource.Factory(upstream);
         return new PriorityTaskDataSource.Factory(recovered, PLAYBACK_PRIORITY_MANAGER, C.PRIORITY_PLAYBACK_PRELOAD, true);
     }
@@ -269,7 +268,7 @@ public class MediaSourceFactory implements MediaSource.Factory {
 
     private DataSource.Factory getDataSourceFactory() {
         if (dataSourceFactory == null) {
-            DataSource.Factory cacheDataSource = getCacheDataSource(new DefaultDataSource.Factory(App.get(), getHttpDataSourceFactory()));
+            DataSource.Factory cacheDataSource = getCacheDataSource(new SmbDataSource.Factory(App.get(), getHttpDataSourceFactory()));
             DataSource.Factory trackedDataSource = new PlaybackBytePositionDataSource.Factory(cacheDataSource);
             dataSourceFactory = new PriorityTaskDataSource.Factory(trackedDataSource, PLAYBACK_PRIORITY_MANAGER, C.PRIORITY_PLAYBACK, false);
         }

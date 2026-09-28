@@ -56,6 +56,14 @@ public class VodConfig extends BaseConfig {
         return get().getConfig().getUrl();
     }
 
+    /**
+     * 配置（站点列表）是否已就绪。老人模式点击收藏/历史卡片依赖此状态，
+     * 未就绪时若直接拉起播放会因找不到站点而失败。
+     */
+    public static boolean isReady() {
+        return get().isLoaded();
+    }
+
     public static String getDesc() {
         return get().getConfig().getDesc();
     }
