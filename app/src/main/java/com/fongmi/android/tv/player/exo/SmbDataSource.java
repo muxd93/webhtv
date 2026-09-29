@@ -12,28 +12,20 @@ import androidx.media3.datasource.DataSpec;
 import androidx.media3.datasource.DefaultDataSource;
 import androidx.media3.datasource.TransferListener;
 
-import com.hierynomus.msdtyp.AccessMask;
-import com.hierynomus.msfscc.FileAttributes;
-import com.hierynomus.mssmb2.SMB2CreateDisposition;
-import com.hierynomus.mssmb2.SMB2ShareAccess;
-import com.hierynomus.smbj.SMBClient;
-import com.hierynomus.smbj.auth.AuthenticationContext;
-import com.hierynomus.smbj.connection.Connection;
-import com.hierynomus.smbj.session.Session;
-import com.hierynomus.smbj.share.DiskShare;
-import com.hierynomus.smbj.share.File;
+import com.fongmi.android.tv.utils.PushId;
+import com.fongmi.android.tv.utils.SmbHelper;
 
 import java.io.IOException;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
-import java.util.EnumSet;
 
 /**
- * 让播放器透明直连 SMB 共享（smb://user:pass@host/share/path）。
+ * 让播放器透明直连 SMB 共享（smb://[user:pass@]host/share/path）。
  *
  * 设计原则：SMB / 本地文件等内部资源走直连，不经由 Sniffer 嗅探，也不触发 Parse 解析
  * （嗅探/解析仅用于网络爬虫视频源）。本 DataSource 包装 {@link DefaultDataSource}，对
- * smb scheme 用 smbj 流式读取，其余 scheme 委托给原始实现（http/https/file/content 等）。
+ * smb scheme 用 SmbHelper 的 SMB 会话流式读取（鉴权候选/超时与浏览侧一致），
+ * 其余 scheme 委托给原始实现（http/https/file/content 等）。
  *
  * 接入 {@link MediaSourceFactory} 后即被 CacheDataSource / 预加载链路自动包裹，
  * 因此大视频会边播边写入本地缓存，不会重复从网络拉取。
@@ -46,13 +38,8 @@ public class SmbDataSource implements DataSource {
     private Uri uri;
     private boolean smbMode;
     private long position;
-    private long fileSize;
 
-    private SMBClient client;
-    private Connection connection;
-    private Session session;
-    private DiskShare share;
-    private File file;
+    private SmbHelper.ReadHandle handle;
 
     public SmbDataSource(@NonNull DataSource delegate) {
         this.delegate = delegate;
@@ -93,44 +80,29 @@ public class SmbDataSource implements DataSource {
         }
 
         try {
-            client = new SMBClient();
-            connection = client.connect(host, port);
-            if (username == null || username.isEmpty()) {
-                session = connection.authenticate(new AuthenticationContext("", new char[0], ""));
-            } else {
-                session = connection.authenticate(new AuthenticationContext(username, password.toCharArray(), ""));
-            }
-            share = (DiskShare) session.connectShare(shareName);
-            file = share.openFile(filePath,
-                    EnumSet.of(AccessMask.FILE_READ_DATA),
-                    EnumSet.of(FileAttributes.FILE_ATTRIBUTE_NORMAL),
-                    EnumSet.of(SMB2ShareAccess.FILE_SHARE_READ),
-                    SMB2CreateDisposition.FILE_OPEN,
-                    null);
-            fileSize = file.getFileInformation().getStandardInformation().getEndOfFile();
-        } catch (Exception e) {
+            handle = SmbHelper.openForRead(host, port, shareName, filePath, username, password);
+        } catch (IOException e) {
             closeSmb();
-            throw new IOException("SMB open failed: " + e.getMessage(), e);
+            throw e;
         }
 
         position = dataSpec.position;
-        long available = Math.max(0, fileSize - position);
+        long available = Math.max(0, handle.getSize() - position);
         return dataSpec.length != C.LENGTH_UNSET ? dataSpec.length : available;
     }
 
     @Override
     public int read(@NonNull byte[] buffer, int offset, int readLength) throws IOException {
         if (!smbMode) return delegate.read(buffer, offset, readLength);
-        if (position >= fileSize) return C.RESULT_END_OF_INPUT;
+        if (position >= handle.getSize()) return C.RESULT_END_OF_INPUT;
 
-        int toRead = (int) Math.min((long) readLength, fileSize - position);
+        int toRead = (int) Math.min((long) readLength, handle.getSize() - position);
         if (toRead <= 0) return C.RESULT_END_OF_INPUT;
 
         // smbj 的 File.read(byte[], offset) 写入整个 buffer（从下标 0），故用定长临时数组再拷贝。
         byte[] tmp = new byte[toRead];
-        int n = file.read(tmp, position);
-        if (n < 0) return C.RESULT_END_OF_INPUT;
-        if (n == 0) return C.RESULT_END_OF_INPUT; // 网络未就绪视为结束，交由上层重试或结束
+        int n = handle.read(tmp, position);
+        if (n <= 0) return C.RESULT_END_OF_INPUT; // 网络未就绪视为结束，交由上层重试或结束
         System.arraycopy(tmp, 0, buffer, offset, n);
         position += n;
         return n;
@@ -152,25 +124,12 @@ public class SmbDataSource implements DataSource {
     }
 
     private void closeSmb() {
-        if (file != null) {
-            try { file.close(); } catch (Exception ignored) {}
-            file = null;
-        }
-        if (share != null) {
-            try { share.close(); } catch (Exception ignored) {}
-            share = null;
-        }
-        if (session != null) {
-            try { session.close(); } catch (Exception ignored) {}
-            session = null;
-        }
-        if (connection != null) {
-            try { connection.close(); } catch (Exception ignored) {}
-            connection = null;
-        }
-        if (client != null) {
-            try { client.close(); } catch (Exception ignored) {}
-            client = null;
+        if (handle != null) {
+            try {
+                handle.close();
+            } catch (Exception ignored) {
+            }
+            handle = null;
         }
     }
 

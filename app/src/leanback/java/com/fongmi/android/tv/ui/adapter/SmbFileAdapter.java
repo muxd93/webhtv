@@ -20,6 +20,7 @@ public class SmbFileAdapter extends RecyclerView.Adapter<SmbFileAdapter.ViewHold
 
     public interface OnClickListener {
         void onItemClick(SmbHelper.SmbFileItem item);
+        boolean onItemLongClick(SmbHelper.SmbFileItem item);
     }
 
     public SmbFileAdapter(OnClickListener listener) {
@@ -48,8 +49,9 @@ public class SmbFileAdapter extends RecyclerView.Adapter<SmbFileAdapter.ViewHold
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
         SmbHelper.SmbFileItem item = items.get(position);
         holder.binding.name.setText(item.getName());
-        holder.binding.image.setImageResource(item.isDirectory() ? R.drawable.ic_elder_folder : R.drawable.ic_elder_video);
+        holder.binding.image.setImageResource(item.isDirectory() ? R.drawable.ic_smb_folder : R.drawable.ic_smb_video);
         holder.binding.getRoot().setOnClickListener(v -> listener.onItemClick(item));
+        holder.binding.getRoot().setOnLongClickListener(v -> listener.onItemLongClick(item));
     }
 
     public static class ViewHolder extends RecyclerView.ViewHolder {

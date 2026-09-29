@@ -24,8 +24,6 @@ public class Epg {
     @SerializedName("epg_data")
     private List<EpgData> list;
 
-    private int width;
-
     public static Epg objectFrom(String str, String key, ZoneId zoneId) {
         if (!Json.isObj(str)) return EpgParser.getEpg(str, key, zoneId);
         try {
@@ -68,14 +66,6 @@ public class Epg {
 
     public void setList(List<EpgData> list) {
         this.list = list;
-    }
-
-    public int getWidth() {
-        return width;
-    }
-
-    public void setWidth(int width) {
-        this.width = width;
     }
 
     public boolean equal(String date) {

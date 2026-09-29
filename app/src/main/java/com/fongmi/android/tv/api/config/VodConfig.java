@@ -4,7 +4,6 @@ import android.text.TextUtils;
 
 import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.api.CspWarmup;
-import com.fongmi.android.tv.api.Decoder;
 import com.fongmi.android.tv.api.loader.BaseLoader;
 import com.fongmi.android.tv.bean.Config;
 import com.fongmi.android.tv.bean.Depot;
@@ -15,7 +14,6 @@ import com.fongmi.android.tv.event.ConfigEvent;
 import com.fongmi.android.tv.event.RefreshEvent;
 import com.fongmi.android.tv.impl.Callback;
 import com.fongmi.android.tv.setting.CustomCspSetting;
-import com.fongmi.android.tv.utils.UrlUtil;
 import com.fongmi.android.tv.web.ext.WebHomeExtensionRegistry;
 import com.github.catvod.bean.Doh;
 import com.github.catvod.bean.Header;
@@ -90,6 +88,7 @@ public class VodConfig extends BaseConfig {
     }
 
     public VodConfig clear() {
+        invalidateJson();
         ads = null;
         doh = null;
         home = null;
@@ -122,8 +121,7 @@ public class VodConfig extends BaseConfig {
     }
 
     @Override
-    protected void load(Config config) throws Throwable {
-        String json = Decoder.getJson(UrlUtil.convert(config.getUrl()), TAG);
+    protected void parse(Config config, String json) throws Throwable {
         checkJson(config, Json.parse(json).getAsJsonObject());
     }
 

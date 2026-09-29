@@ -89,10 +89,6 @@ public class Flag implements Parcelable, Diffable<Flag> {
     }
 
     public void setEpisodes(String url) {
-        // 防御：去掉可能残留的“文件夹名|||”前缀与 file:// 前缀，避免把复合 id 当集名
-        if (url.startsWith("file://")) url = url.substring("file://".length());
-        int folderSep = url.indexOf("|||");
-        if (folderSep >= 0) url = url.substring(folderSep + 3);
         String[] urls = splitEpisodes(url);
         for (int i = 0; i < urls.length; i++) {
             String[] split = urls[i].split("\\$", 2);

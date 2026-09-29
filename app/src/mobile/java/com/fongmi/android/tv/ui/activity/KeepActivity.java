@@ -73,22 +73,31 @@ public class KeepActivity extends BaseActivity implements KeepAdapter.OnClickLis
 
     private void onDelete() {
         if (mAdapter.isDelete()) {
-            new MaterialAlertDialogBuilder(this).setTitle(R.string.dialog_delete_record).setMessage(R.string.dialog_delete_keep).setNegativeButton(R.string.dialog_negative, null).setPositiveButton(R.string.dialog_positive, (dialog, which) -> mAdapter.clear()).show();
+            new MaterialAlertDialogBuilder(this).setTitle(R.string.dialog_delete_record).setMessage(R.string.dialog_delete_keep).setNegativeButton(R.string.dialog_negative, null).setPositiveButton(R.string.dialog_positive, (dialog, which) -> {
+                // 只清视频收藏，保留直播收藏，与 TV 端一致
+                Keep.getVod().forEach(Keep::delete);
+                mAdapter.clear();
+                RefreshEvent.keep();
+            }).show();
         } else if (mAdapter.getItemCount() > 0) {
             mAdapter.setDelete(true);
         }
     }
 
     private void loadConfig(Config config, Keep item) {
+        Notify.show(getString(R.string.keep_switching, config.getName()));
+        mBinding.progressLayout.showProgress();
         VodConfig.load(config, new Callback() {
             @Override
             public void success() {
+                mBinding.progressLayout.showContent();
                 VideoActivity.start(getActivity(), item.getSiteKey(), item.getVodId(), item.getVodName(), item.getVodPic());
             }
 
             @Override
             public void error(String msg) {
                 Notify.show(msg);
+                mBinding.progressLayout.showContent();
             }
         });
     }
@@ -101,8 +110,10 @@ public class KeepActivity extends BaseActivity implements KeepAdapter.OnClickLis
     @Override
     public void onItemClick(Keep item) {
         Config config = Config.find(item.getCid());
-        if (config == null) SearchActivity.start(this, item.getVodName());
-        else if (item.getCid() != VodConfig.getCid()) loadConfig(config, item);
+        if (config == null) {
+            Notify.show(R.string.keep_site_missing);
+            SearchActivity.start(this, item.getVodName());
+        } else if (item.getCid() != VodConfig.getCid()) loadConfig(config, item);
         else VideoActivity.start(this, item.getSiteKey(), item.getVodId(), item.getVodName(), item.getVodPic());
     }
 
@@ -111,6 +122,7 @@ public class KeepActivity extends BaseActivity implements KeepAdapter.OnClickLis
         mAdapter.remove(item.delete(), () -> {
             if (mAdapter.getItemCount() == 0) mAdapter.setDelete(false);
         });
+        RefreshEvent.keep();
     }
 
     @Override

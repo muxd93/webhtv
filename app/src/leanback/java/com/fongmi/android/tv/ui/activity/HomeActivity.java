@@ -1,10 +1,12 @@
 package com.fongmi.android.tv.ui.activity;
 
 import android.annotation.SuppressLint;
+import android.app.Activity;
 import android.app.ActivityManager;
 import android.app.SearchManager;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.ResolveInfo;
 import android.os.Bundle;
 import android.text.TextUtils;
 import android.view.KeyEvent;
@@ -13,6 +15,8 @@ import android.view.ViewTreeObserver;
 import android.webkit.WebView;
 import android.widget.FrameLayout;
 
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.leanback.widget.ArrayObjectAdapter;
@@ -21,6 +25,8 @@ import androidx.leanback.widget.HorizontalGridView;
 import androidx.leanback.widget.ItemBridgeAdapter;
 import androidx.leanback.widget.ListRow;
 import androidx.leanback.widget.OnChildViewHolderSelectedListener;
+import androidx.leanback.widget.Presenter;
+import androidx.leanback.widget.PresenterSelector;
 import androidx.lifecycle.ViewModelProvider;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.viewbinding.ViewBinding;
@@ -36,12 +42,14 @@ import com.fongmi.android.tv.bean.Class;
 import com.fongmi.android.tv.bean.Config;
 import com.fongmi.android.tv.bean.Func;
 import com.fongmi.android.tv.bean.History;
+import com.fongmi.android.tv.bean.Keep;
 import com.fongmi.android.tv.bean.Result;
 import com.fongmi.android.tv.bean.Site;
 import com.fongmi.android.tv.bean.Style;
 import com.fongmi.android.tv.bean.Vod;
 import com.fongmi.android.tv.databinding.ActivityHomeBinding;
 import com.fongmi.android.tv.db.AppDatabase;
+import com.fongmi.android.tv.bean.SmbServer;
 import com.fongmi.android.tv.event.CastEvent;
 import com.fongmi.android.tv.event.ConfigEvent;
 import com.fongmi.android.tv.event.RefreshEvent;
@@ -59,18 +67,23 @@ import com.fongmi.android.tv.ui.base.BaseActivity;
 import com.fongmi.android.tv.ui.custom.CustomRowPresenter;
 import com.fongmi.android.tv.ui.custom.CustomSelector;
 import com.fongmi.android.tv.ui.custom.CustomTitleView;
+import com.fongmi.android.tv.ui.dialog.AppListDialog;
+import com.fongmi.android.tv.ui.dialog.SmbServerDialog;
 import com.fongmi.android.tv.ui.dialog.SiteDialog;
-import com.fongmi.android.tv.ui.fragment.ElderModeFragment;
 import com.fongmi.android.tv.ui.presenter.FuncPresenter;
 import com.fongmi.android.tv.ui.presenter.HeaderPresenter;
 import com.fongmi.android.tv.ui.presenter.HistoryPresenter;
+import com.fongmi.android.tv.ui.presenter.KeepMorePresenter;
+import com.fongmi.android.tv.ui.presenter.KeepPresenter;
 import com.fongmi.android.tv.ui.presenter.ProgressPresenter;
 import com.fongmi.android.tv.ui.presenter.VodPresenter;
+import com.fongmi.android.tv.utils.AppListUtil;
 import com.fongmi.android.tv.utils.Clock;
 import com.fongmi.android.tv.utils.FileChooser;
 import com.fongmi.android.tv.utils.ImgUtil;
 import com.fongmi.android.tv.utils.KeyUtil;
 import com.fongmi.android.tv.utils.Notify;
+import com.fongmi.android.tv.utils.TtsSpeaker;
 import com.fongmi.android.tv.utils.PermissionUtil;
 import com.fongmi.android.tv.utils.ResUtil;
 import com.fongmi.android.tv.utils.UrlUtil;
@@ -92,15 +105,17 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 
-public class HomeActivity extends BaseActivity implements CustomTitleView.Listener, VodPresenter.OnClickListener, FuncPresenter.OnClickListener, HistoryPresenter.OnClickListener, TypeAdapter.OnClickListener, HomeWebController.Listener {
+public class HomeActivity extends BaseActivity implements CustomTitleView.Listener, VodPresenter.OnClickListener, FuncPresenter.OnClickListener, HistoryPresenter.OnClickListener, KeepPresenter.OnClickListener, KeepMorePresenter.OnClickListener, TypeAdapter.OnClickListener, HomeWebController.Listener, SmbServerDialog.Callback {
 
     private static final String TV_NORMAL = "tv-normal";
     private static final String TV_TOOLBAR_HIDDEN = "tv-toolbar-hidden";
     private static final String TV_OVERLAY = "tv-overlay";
     private static final String TV_FULL = "tv-full";
+    private static final int KEEP_ROW_LIMIT = 10;
 
     private ActivityHomeBinding mBinding;
     private ArrayObjectAdapter mHistoryAdapter;
+    private ArrayObjectAdapter mKeepAdapter;
     private ArrayObjectAdapter mFuncAdapter;
     private ArrayObjectAdapter mAdapter;
     private HistoryPresenter mPresenter;
@@ -115,11 +130,9 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
     private String webDefaultChromeMode = TV_FULL;
     private boolean webToolbarVisible = true;
     private boolean loadingHomeCategory;
-    private boolean mElderMode;
-    private boolean mStandardLoaded;
     private boolean mConfigLoading;
-    private ElderModeFragment mElderFragment;
-    private static final String TAG_ELDER = "elder";
+    private ActivityResultLauncher<Intent> smbDiscoverLauncher;
+    private TtsSpeaker mTts;
     private static final long EXIT_DOUBLE_BACK_INTERVAL = 2000;
     private long mLastBackPressedTime = 0;
 
@@ -139,7 +152,8 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
-        if (isHomeIntent(intent)) resetElderHome();
+        // 主页键回到桌面：可选清理后台应用，避免残留应用拖慢桌面
+        if (isHomeIntent(intent) && Setting.isHomeCleanBackground()) killBackgroundApps();
         checkAction(intent);
     }
 
@@ -156,6 +170,7 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
     @Override
     protected void initView(Bundle savedInstanceState) {
         SpiderDebug.log("startup", "home initView start cost=%sms", System.currentTimeMillis() - App.time());
+        registerLaunchers();
         mResult = Result.empty();
         mHomeResult = Result.empty();
         mClock = Clock.create(mBinding.clock);
@@ -164,25 +179,52 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
         setViewModel();
         setAdapter();
         runAfterFirstFrame(this::initAfterFirstFrame);
-        if (Setting.isElderMode()) {
-            initConfig();
-            showElderMode();
-        }
+        if (Setting.isTtsFocus()) mTts = TtsSpeaker.create(this);
         SpiderDebug.log("startup", "home initView end cost=%sms", System.currentTimeMillis() - App.time());
     }
 
     private void initAfterFirstFrame() {
         SpiderDebug.log("startup", "home first frame cost=%sms", System.currentTimeMillis() - App.time());
         App.post(this::initConfig, 80);
-        // 老人模式不弹权限、不拉起 DLNA 接收服务：老人不投屏，弹窗与常驻广播都是干扰
+        App.post(() -> PermissionUtil.requestFile(this, allGranted -> PermissionUtil.requestNotify(this)), 1800);
+        // DLNA 接收默认关闭，需要投屏时在设置里打开
         App.post(() -> {
-            if (Setting.isElderMode()) return;
-            PermissionUtil.requestFile(this, allGranted -> PermissionUtil.requestNotify(this));
-        }, 1800);
-        // DLNA 改为菜单开关控制，默认关闭，需要投屏时再打开
-        App.post(() -> {
-            if (Setting.isElderDlna()) DLNARendererService.start(this);
+            if (Setting.isDlnaEnabled()) DLNARendererService.start(this);
         }, 2500);
+    }
+
+    private void registerLaunchers() {
+        // 发现向导添加成功后直接打开该服务器的文件浏览，用户无需再点一次
+        smbDiscoverLauncher = registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> {
+            if (result.getResultCode() != Activity.RESULT_OK || result.getData() == null) return;
+            String serverId = result.getData().getStringExtra(SmbDiscoverActivity.EXTRA_SERVER_ID);
+            if (serverId == null) return;
+            SmbServer server = AppDatabase.get().getSmbServerDao().find(serverId);
+            if (server != null) startSmbBrowser(server);
+        });
+    }
+
+    /** 局域网入口：没有已保存服务器时直接进自动发现向导；有则弹出封面卡片选择（长按可换封面/删除服务器） */
+    private void onSmbEntry() {
+        if (AppDatabase.get().getSmbServerDao().findAll().isEmpty()) {
+            smbDiscoverLauncher.launch(new Intent(this, SmbDiscoverActivity.class));
+            return;
+        }
+        SmbServerDialog.create().callback(this).show(this);
+    }
+
+    @Override
+    public void onServerClick(SmbServer server) {
+        startSmbBrowser(server);
+    }
+
+    @Override
+    public void onAddServer() {
+        smbDiscoverLauncher.launch(new Intent(this, SmbDiscoverActivity.class));
+    }
+
+    private void startSmbBrowser(SmbServer server) {
+        startActivity(new Intent(this, SmbBrowserActivity.class).putExtra(SmbBrowserActivity.EXTRA_SERVER_ID, server.getId()).putExtra(SmbBrowserActivity.EXTRA_PLAY_MODE, true));
     }
 
     private void runAfterFirstFrame(Runnable runnable) {
@@ -217,11 +259,10 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
                 if (child != null && parent.hasFocus()) updateToolbarVisibility(true);
             }
         });
-        mBinding.elderModeEnter.setOnClickListener(v -> enterElderMode());
     }
 
     private void updateToolbarVisibility(boolean visible) {
-        mBinding.toolbar.setVisibility(!mElderMode && visible && webToolbarVisible ? View.VISIBLE : View.GONE);
+        mBinding.toolbar.setVisibility(visible && webToolbarVisible ? View.VISIBLE : View.GONE);
         syncNativeContentInset();
         syncWebOverlayLayout();
     }
@@ -287,6 +328,7 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
         selector.addPresenter(ListRow.class, new CustomRowPresenter(16), VodPresenter.class);
         selector.addPresenter(ListRow.class, new CustomRowPresenter(16), FuncPresenter.class);
         selector.addPresenter(ListRow.class, new CustomRowPresenter(16, FocusHighlight.ZOOM_FACTOR_SMALL, HorizontalGridView.FOCUS_SCROLL_ALIGNED), HistoryPresenter.class);
+        selector.addPresenter(ListRow.class, new CustomRowPresenter(16), KeepPresenter.class);
         mBinding.recycler.setAdapter(new ItemBridgeAdapter(mAdapter = new ArrayObjectAdapter(selector)));
         mBinding.recycler.setVerticalSpacing(ResUtil.dp2px(16));
         mBinding.typeRecycler.setHorizontalSpacing(ResUtil.dp2px(16));
@@ -335,9 +377,31 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
 
     private void setAdapter() {
         mHistoryAdapter = new ArrayObjectAdapter(mPresenter = new HistoryPresenter(this));
+        initKeepAdapter();
         mAdapter.add(new ListRow(mFuncAdapter = new ArrayObjectAdapter(new FuncPresenter(this))));
         mAdapter.add(R.string.home_history);
+        mAdapter.add(R.string.home_keep_row);
         mAdapter.add(R.string.home_recommend);
+    }
+
+    private void initKeepAdapter() {
+        KeepPresenter keep = new KeepPresenter(this);
+        KeepMorePresenter more = new KeepMorePresenter(this);
+        // 主页选择器靠行内 adapter.getPresenter(ListRow) 的返回类型路由行样式，
+        // 因此这里不能按 item 类名精确匹配，未知类型需默认返回卡片 Presenter
+        mKeepAdapter = new ArrayObjectAdapter(new PresenterSelector() {
+            @NonNull
+            @Override
+            public Presenter getPresenter(@NonNull Object item) {
+                return item instanceof KeepMorePresenter.Marker ? more : keep;
+            }
+
+            @NonNull
+            @Override
+            public Presenter[] getPresenters() {
+                return new Presenter[]{keep, more};
+            }
+        });
     }
 
     private void setTitle() {
@@ -380,15 +444,10 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
         setLogo();
         setFunc();
         getHistory();
+        getKeepRow();
         getVideo();
-        if (Setting.isElderMode()) {
-            SpiderDebug.log("elder-mode", "showContent: elder mode, skip standard load, mStandardLoaded=%s", mStandardLoaded);
-            showElderMode();
-        } else {
-            mStandardLoaded = true;
-            setFocus();
-            App.post(this::prewarmWebView, 1500);
-        }
+        setFocus();
+        App.post(this::prewarmWebView, 1500);
         SpiderDebug.log("startup", "home showContent end cost=%sms", System.currentTimeMillis() - App.time());
     }
 
@@ -444,7 +503,6 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
     }
 
     private void showWebOverlay() {
-        if (mElderMode) return;
         mBinding.webOverlay.setVisibility(View.VISIBLE);
         syncWebOverlayLayout();
     }
@@ -502,6 +560,9 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
         items.add(Func.create(R.string.home_keep));
         items.add(Func.create(R.string.home_push));
         items.add(Func.create(R.string.home_setting));
+        items.add(Func.create(R.string.home_smb));
+        items.add(Func.create(R.string.home_app));
+        items.add(Func.create(R.string.home_file));
         mFuncAdapter.setItems(items, new BaseDiffCallback<Func>());
     }
 
@@ -511,13 +572,32 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
 
     private void getHistory(boolean renew) {
         List<History> items = History.get();
-        int historyIndex = getHistoryIndex();
-        int recommendIndex = getRecommendIndex();
-        boolean exist = recommendIndex - historyIndex == 2;
+        boolean exist = hasRow(R.string.home_history);
         if (renew) mHistoryAdapter = new ArrayObjectAdapter(mPresenter = new HistoryPresenter(this));
-        if ((items.isEmpty() && exist) || (renew && exist)) mAdapter.removeItems(historyIndex, 1);
-        if ((!items.isEmpty() && !exist) || (renew && exist)) mAdapter.add(historyIndex, new ListRow(mHistoryAdapter));
+        if ((items.isEmpty() && exist) || (renew && exist)) mAdapter.removeItems(getHistoryIndex(), 1);
+        if ((!items.isEmpty() && !exist) || (renew && exist)) mAdapter.add(getHistoryIndex(), new ListRow(mHistoryAdapter));
         mHistoryAdapter.setItems(items, new BaseDiffCallback<History>());
+    }
+
+    private void getKeepRow() {
+        getKeepRow(false);
+    }
+
+    private void getKeepRow(boolean renew) {
+        List<Keep> items = Keep.getVod();
+        if (renew) initKeepAdapter();
+        boolean exist = hasRow(R.string.home_keep_row);
+        if (exist && (renew || items.isEmpty())) mAdapter.removeItems(getKeepRowIndex(), 1);
+        if (!items.isEmpty() && (!exist || renew)) mAdapter.add(getKeepRowIndex(), new ListRow(mKeepAdapter));
+        if (items.isEmpty()) return;
+        mKeepAdapter.clear();
+        mKeepAdapter.addAll(0, items.subList(0, Math.min(items.size(), KEEP_ROW_LIMIT)));
+        mKeepAdapter.add(KeepMorePresenter.Marker.INSTANCE);
+    }
+
+    private boolean hasRow(int header) {
+        int index = mAdapter.indexOf(header);
+        return index != -1 && index + 1 < mAdapter.size() && mAdapter.get(index + 1) instanceof ListRow;
     }
 
     private void setHistoryDelete(boolean delete) {
@@ -534,6 +614,10 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
 
     private int getHistoryIndex() {
         return mAdapter.indexOf(R.string.home_history) + 1;
+    }
+
+    private int getKeepRowIndex() {
+        return mAdapter.indexOf(R.string.home_keep_row) + 1;
     }
 
     private int getRecommendIndex() {
@@ -577,9 +661,13 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
             case HISTORY:
                 getHistory();
                 break;
+            case KEEP:
+                getKeepRow();
+                break;
             case SIZE:
                 getVideo();
                 getHistory(true);
+                getKeepRow(true);
                 break;
         }
     }
@@ -599,7 +687,7 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
     @Subscribe(threadMode = ThreadMode.MAIN)
     public void onCastEvent(CastEvent event) {
         if (VodConfig.get().getConfig().equals(event.config())) {
-            VideoActivity.cast(this, event.history().save(VodConfig.getCid()));
+            VideoActivity.cast(this, event.history().cid(VodConfig.getCid()).save());
         } else {
             VodConfig.load(event.config(), getCallback(event));
         }
@@ -619,6 +707,20 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
         };
     }
 
+    private void speakMine(CharSequence text) {
+        if (mTts != null) mTts.speak(text);
+    }
+
+    @Override
+    public void onItemFocus(History item) {
+        speakMine(item.getVodName());
+    }
+
+    @Override
+    public void onItemFocus(Func item) {
+        speakMine(item.getText());
+    }
+
     @Override
     public void onItemClick(Func item) {
         if (item.getResId() == R.string.home_live) LiveActivity.start(this);
@@ -626,6 +728,9 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
         else if (item.getResId() == R.string.home_push) PushActivity.start(this);
         else if (item.getResId() == R.string.home_search) SearchActivity.start(this);
         else if (item.getResId() == R.string.home_setting) SettingActivity.start(this);
+        else if (item.getResId() == R.string.home_smb) onSmbEntry();
+        else if (item.getResId() == R.string.home_app) AppListDialog.show(this);
+        else if (item.getResId() == R.string.home_file) startActivity(new Intent(this, FileActivity.class).putExtra("play_mode", true));
     }
 
     @Override
@@ -671,6 +776,38 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
         if (mHistoryAdapter.size() > 0) return;
         mAdapter.removeItems(getHistoryIndex(), 1);
         mPresenter.setDelete(false);
+    }
+
+    @Override
+    public void onItemClick(Keep item) {
+        Config config = Config.find(item.getCid());
+        if (config == null) CollectActivity.start(this, item.getVodName());
+        else if (item.getCid() != VodConfig.getCid()) loadKeepConfig(config, item);
+        else VideoActivity.start(this, item.getSiteKey(), item.getVodId(), item.getVodName(), item.getVodPic());
+    }
+
+    @Override
+    public void onKeepLongClick() {
+        KeepActivity.start(this);
+    }
+
+    @Override
+    public void onMoreClick() {
+        KeepActivity.start(this);
+    }
+
+    private void loadKeepConfig(Config config, Keep item) {
+        VodConfig.load(config, new Callback() {
+            @Override
+            public void success() {
+                VideoActivity.start(getActivity(), item.getSiteKey(), item.getVodId(), item.getVodName(), item.getVodPic());
+            }
+
+            @Override
+            public void error(String msg) {
+                Notify.show(msg);
+            }
+        });
     }
 
     @Override
@@ -723,7 +860,6 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
 
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
-        if (mElderMode) return super.dispatchKeyEvent(event);
         if (KeyUtil.isMenuKey(event)) {
             showDialog();
             return true;
@@ -780,92 +916,19 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
         if (mWeb != null) mWeb.onResume();
     }
 
-    private void enterElderMode() {
-        SpiderDebug.log("elder-mode", "enterElderMode: switch to elder, mStandardLoaded=%s", mStandardLoaded);
-        Setting.putElderMode(true);
-        showElderMode();
-    }
-
-    public void switchToStandard() {
-        Setting.putElderMode(false);
-        hideElderMode();
-    }
-
-    private void showElderMode() {
-        SpiderDebug.log("elder-mode", "showElderMode: mElderMode=%s fragment=%s", mElderMode, mElderFragment != null);
-        mElderMode = true;
-        mBinding.nativeContent.setVisibility(View.GONE);
-        mBinding.webOverlay.setVisibility(View.GONE);
-        mBinding.toolbar.setVisibility(View.GONE);
-        mBinding.elderContainer.setVisibility(View.VISIBLE);
-        if (mElderFragment == null) {
-            mElderFragment = (ElderModeFragment) getSupportFragmentManager().findFragmentByTag(TAG_ELDER);
-        }
-        if (mElderFragment == null) {
-            mElderFragment = ElderModeFragment.newInstance();
-            getSupportFragmentManager().beginTransaction().replace(R.id.elderContainer, mElderFragment, TAG_ELDER).commitNow();
-        }
-    }
-
     /**
-     * 老人模式即桌面：主页键与返回键都回到初始状态，并清理后台应用，保证每次都是干净的开始。
+     * 清理后台应用，避免看过的直播/B站残留在后台拖慢桌面。
+     * 对可启动的第三方应用逐个请求系统回收其后台进程；系统应用与前台应用不受影响。
+     * 不能按进程枚举（getRunningAppProcesses 自 Android 5.1 起对第三方应用只返回自己）。
      */
-    private void resetElderHome() {
-        killBackgroundApps();
-        if (!mElderMode || mElderFragment == null) return;
-        mElderFragment.resetToStart();
-    }
-
-    /** 清理后台应用，避免看过的直播/B站残留在后台拖慢桌面。系统应用与前台应用不受影响。 */
     private void killBackgroundApps() {
         ActivityManager manager = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
         if (manager == null) return;
-        List<ActivityManager.RunningAppProcessInfo> processes = manager.getRunningAppProcesses();
-        if (processes == null) return;
         String self = getPackageName();
-        for (ActivityManager.RunningAppProcessInfo process : processes) {
-            if (process.importance < ActivityManager.RunningAppProcessInfo.IMPORTANCE_BACKGROUND) continue;
-            if (process.pkgList == null) continue;
-            for (String pkg : process.pkgList) {
-                if (pkg == null || pkg.equals(self)) continue;
-                manager.killBackgroundProcesses(pkg);
-            }
+        for (ResolveInfo info : AppListUtil.query(this)) {
+            if (info.activityInfo == null || self.equals(info.activityInfo.packageName)) continue;
+            manager.killBackgroundProcesses(info.activityInfo.packageName);
         }
-    }
-
-    private void hideElderMode() {
-        mElderMode = false;
-        if (mElderFragment != null) {
-            getSupportFragmentManager().beginTransaction().remove(mElderFragment).commitNow();
-            mElderFragment = null;
-        }
-        mBinding.elderContainer.setVisibility(View.GONE);
-        mBinding.nativeContent.setVisibility(View.VISIBLE);
-        if (!mStandardLoaded) {
-            SpiderDebug.log("elder-mode", "hideElderMode: standard not loaded yet, loadStandardHome");
-            loadStandardHome();
-            return;
-        }
-        SpiderDebug.log("elder-mode", "hideElderMode: restore standard, webVisible=%s", mWeb != null && mWeb.isVisible());
-        if (mWeb != null && mWeb.isVisible()) showWebOverlay();
-        else hideWebOverlay();
-        updateToolbarVisibility(webToolbarVisible);
-        if (mWeb != null && mWeb.isVisible()) requestWebFocus();
-        else setFocus();
-    }
-
-    private void loadStandardHome() {
-        SpiderDebug.log("elder-mode", "loadStandardHome start");
-        mStandardLoaded = true;
-        mBinding.progressLayout.showContent();
-        setTitle();
-        setLogo();
-        setFunc();
-        getHistory();
-        getVideo();
-        setFocus();
-        App.post(this::prewarmWebView, 1500);
-        SpiderDebug.log("elder-mode", "loadStandardHome end");
     }
 
     @Override
@@ -873,19 +936,11 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
         if (mWeb != null) mWeb.onPause();
         super.onPause();
         mClock.stop();
+        if (mTts != null) mTts.stop();
     }
 
     @Override
     protected void onBackInvoked() {
-        if (mElderMode) {
-            // 先退回第一张卡片；已经在开头时才走双击退出，避免老人翻远了按返回键直接被提示退出
-            if (mElderFragment != null && !mElderFragment.isAtStart()) {
-                mElderFragment.resetToStart();
-                return;
-            }
-            exitAppKeepingMode();
-            return;
-        }
         if (mWeb != null && mWeb.isVisible() && mWeb.handleBack()) {
             return;
         } else if (mWeb != null && mWeb.isVisible() && consumeTvFullscreenBack()) {
@@ -911,21 +966,6 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
         return true;
     }
 
-    private void exitAppKeepingMode() {
-        if (System.currentTimeMillis() - mLastBackPressedTime <= EXIT_DOUBLE_BACK_INTERVAL) {
-            mLastBackPressedTime = 0;
-            confirmExitKeepingMode();
-        } else {
-            mLastBackPressedTime = System.currentTimeMillis();
-            Notify.show("再按一次返回键退出");
-        }
-    }
-
-    private void confirmExitKeepingMode() {
-        if (PlaybackService.isRunning()) moveTaskToBack(true);
-        else super.onBackInvoked();
-    }
-
     private void exitHome() {
         if (System.currentTimeMillis() - mLastBackPressedTime <= EXIT_DOUBLE_BACK_INTERVAL) {
             mLastBackPressedTime = 0;
@@ -944,13 +984,10 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
     @Override
     protected void onDestroy() {
         if (mWeb != null) mWeb.destroy();
+        if (mTts != null) mTts.release();
         DLNARendererService.stop(this);
         LiveConfig.get().clear();
-        if (isFinishing()) {
-            VodConfig.get().clear();
-        } else {
-            SpiderDebug.log("elder-mode", "HomeActivity.onDestroy: isFinishing=false, preserving VodConfig");
-        }
+        if (isFinishing()) VodConfig.get().clear();
         AppDatabase.backup();
         OkHttp.get().clear();
         Source.get().exit();

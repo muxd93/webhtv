@@ -2,6 +2,8 @@
 
     <!-- App -->
     <string name="app_keep">Keep</string>
+    <string name="keep_switching">Switching to %1$s…</string>
+    <string name="keep_site_missing">Site offline, searching same-name videos</string>
     <string name="app_history">History</string>
 
     <!-- Nav -->

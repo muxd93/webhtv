@@ -7,6 +7,18 @@
     <string name="home_keep">收藏</string>
     <string name="home_push">推送</string>
     <string name="home_setting">設定</string>
+    <string name="home_smb">區域網路</string>
+    <string name="home_app">應用</string>
+    <string name="home_file">檔案</string>
+    <string name="home_smb_new_server">新增伺服器</string>
+    <string name="home_app_none">沒有找到可啟動的應用</string>
+    <string name="smb_loading">正在載入…</string>
+    <string name="folder_no_video">資料夾裡沒有影片</string>
+    <string name="setting_pause_on_leave">離開播放頁自動暫停</string>
+    <string name="setting_power_save">省電啟動（不常駐遠端服務）</string>
+    <string name="setting_tts_focus">焦點朗讀（選擇時播報）</string>
+    <string name="setting_dlna">DLNA 接收（投屏）</string>
+    <string name="setting_home_clean">主鍵清理後台</string>
     <string name="control_speed">倍速</string>
     <string name="control_scale">縮放</string>
     <string name="control_episode_column">長標題列數</string>
@@ -16,6 +28,18 @@
     <string name="control_track">軌道</string>
     <string name="home_history">最近觀看</string>
     <string name="home_recommend">更新推薦</string>
+    <string name="home_keep_row">我的收藏</string>
+    <string name="keep_view_all">查看全部</string>
+    <string name="keep_clear">清空</string>
+    <string name="keep_count">%d 部</string>
+    <string name="keep_switching">正在切換到 %1$s…</string>
+    <string name="keep_site_missing">原站點已下線，為你搜尋同名影片</string>
+    <string name="keep_empty_hint">還沒有收藏影片\n播放時透過選單收藏後會顯示在這裡</string>
+    <string name="keep_go_search">去搜尋</string>
+    <string name="smb_menu_cover">變更封面</string>
+    <string name="smb_menu_delete">刪除伺服器</string>
+    <string name="smb_delete_confirm">確定刪除「%1$s」嗎？</string>
+    <string name="smb_url_hint">圖片網址</string>
 
     <!-- Collect -->
     <string name="collect_result">「<xliff:g name="name">%s</xliff:g>」的搜尋結果</string>

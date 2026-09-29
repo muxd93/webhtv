@@ -119,6 +119,13 @@ public class ElderCard implements Diffable<ElderCard> {
     public String getCoverValue() { return coverValue; }
     public void setCoverValue(String coverValue) { this.coverValue = coverValue; }
 
+    /** 统一落封面：URL/LOCAL 时 pic 与 coverValue 同值（loadElderCover 从 pic 取图），BUILTIN 只写 key */
+    public void applyCover(CoverType type, String value) {
+        this.coverType = type.value;
+        this.coverValue = value;
+        if (type == CoverType.URL || type == CoverType.LOCAL) this.pic = value;
+    }
+
     /** 是否为用户自定义封面（区别于系统自动生成/默认） */
     public boolean hasCustomCover() {
         CoverType t = CoverType.from(coverType);

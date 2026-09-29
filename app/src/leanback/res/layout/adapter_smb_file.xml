@@ -20,7 +20,7 @@
             android:layout_width="48dp"
             android:layout_height="48dp"
             android:layout_marginTop="8dp"
-            tools:src="@drawable/ic_elder_folder" />
+            tools:src="@drawable/ic_smb_folder" />
 
         <com.google.android.material.textview.MaterialTextView
             android:id="@+id/name"

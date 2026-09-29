@@ -47,7 +47,7 @@
         android:layout_height="wrap_content"
         android:layout_gravity="center_horizontal"
         android:layout_marginBottom="16dp"
-        android:text="@string/elder_smb_select_dir"
+        android:text="@string/smb_select_dir"
         android:textSize="16sp"
         android:visibility="gone" />
 

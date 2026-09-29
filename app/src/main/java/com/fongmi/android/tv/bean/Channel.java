@@ -66,7 +66,6 @@ public class Channel {
     @SerializedName("drm")
     private Drm drm;
 
-    private boolean selected;
     private Group group;
     private String show;
     private int index;
@@ -248,24 +247,27 @@ public class Channel {
         return getData(ZoneId.systemDefault());
     }
 
-    public void setData(Epg data) {
-        if (dataList == null) dataList = new ArrayList<>();
-        dataList.removeIf(e -> e.equal(data.getDate()));
-        dataList.add(data);
-    }
-
-    public Epg getData(ZoneId zoneId) {
+    // EPG data is written by background parse/EPG tasks and read on the main
+    // thread, so structural access stays inside this monitor. getDataList
+    // hands out a snapshot; callers treat it as read-only.
+    public synchronized Epg getData(ZoneId zoneId) {
         String today = LocalDate.now(zoneId).format(Formatters.DATE);
         if (dataList == null) return new Epg();
         return dataList.stream().filter(e -> e.equal(today)).findFirst().orElse(new Epg());
     }
 
-    public List<Epg> getDataList() {
-        return dataList == null ? Collections.emptyList() : dataList;
+    public synchronized List<Epg> getDataList() {
+        return dataList == null ? Collections.emptyList() : new ArrayList<>(dataList);
     }
 
-    public void setDataList(List<Epg> list) {
+    public synchronized void setDataList(List<Epg> list) {
         this.dataList = list == null ? new ArrayList<>() : new ArrayList<>(list);
+    }
+
+    public synchronized void setData(Epg data) {
+        if (dataList == null) dataList = new ArrayList<>();
+        dataList.removeIf(e -> e.equal(data.getDate()));
+        dataList.add(data);
     }
 
     public int getIndex() {
@@ -284,18 +286,6 @@ public class Channel {
                 break;
             }
         }
-    }
-
-    public boolean isSelected() {
-        return selected;
-    }
-
-    public void setSelected(boolean selected) {
-        this.selected = selected;
-    }
-
-    public void setSelected(Channel item) {
-        this.selected = item.equals(this);
     }
 
     public int getLineVisible() {
@@ -414,6 +404,9 @@ public class Channel {
         return this;
     }
 
+    // Name/number equality is the parse-time merge key (Group.find/add dedup
+    // and channel-number lookup). UI code must compare Channel references
+    // instead of relying on equals().
     @Override
     public boolean equals(@Nullable Object obj) {
         if (this == obj) return true;

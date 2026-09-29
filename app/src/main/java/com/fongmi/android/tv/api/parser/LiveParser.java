@@ -182,9 +182,12 @@ public class LiveParser {
             drmHeader = new HashMap<>();
         }
 
-        private boolean find(String line) {
-            return line.startsWith("ua") || line.startsWith("parse") || line.startsWith("click") || line.startsWith("header") || line.startsWith("format") || line.startsWith("origin") || line.startsWith("referer") || line.startsWith("forceKey") || line.startsWith("#EXTHTTP:") || line.startsWith("#EXTVLCOPT:") || line.startsWith("#KODIPROP:");
-        }
+    // Directive lines only; a bare prefix match used to swallow channels whose
+    // name happens to start with e.g. "ua" or "format".
+    private boolean find(String line) {
+        if (line.startsWith("#EXTHTTP:") || line.startsWith("#EXTVLCOPT:") || line.startsWith("#KODIPROP:")) return true;
+        return line.startsWith("ua=") || line.startsWith("parse=") || line.startsWith("click=") || line.startsWith("format=") || line.startsWith("origin=") || line.startsWith("referer=") || line.startsWith("forceKey=") || line.startsWith("header=");
+    }
 
         private void check(String line) {
             if (line.startsWith("ua")) ua(line);

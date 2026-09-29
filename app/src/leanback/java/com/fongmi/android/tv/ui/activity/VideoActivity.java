@@ -144,6 +144,7 @@ import com.fongmi.android.tv.utils.FileChooser;
 import com.fongmi.android.tv.utils.ImgUtil;
 import com.fongmi.android.tv.utils.KeyUtil;
 import com.fongmi.android.tv.utils.Notify;
+import com.fongmi.android.tv.utils.PushId;
 import com.fongmi.android.tv.utils.ResUtil;
 import com.fongmi.android.tv.utils.Sniffer;
 import com.fongmi.android.tv.utils.Task;
@@ -274,6 +275,7 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
     private int mEpisodeBottomInset;
     private boolean detailRequested;
     private boolean mWaitingConfig;
+    private long configWaitStart;
     private boolean detailHealthRecorded;
     private boolean playHealthRecorded;
     private Runnable mR1;
@@ -355,51 +357,26 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
     });
 
     public static void push(FragmentActivity activity, String text) {
-        // 内部资源（局域网 SMB smb://）直接走直连播放，不经由 Sniffer.getUrl 嗅探真实地址
-        // （嗅探/解析仅用于网络爬虫视频源）。smb:// 由播放链路经 SmbDataSource 直连读取。
-        if (text != null && text.startsWith("smb://")) start(activity, SiteApi.PUSH, text, pushTitle(text));
-        else if (FileChooser.isValid(activity, Uri.parse(text))) file(activity, FileChooser.getPathFromUri(Uri.parse(text)));
-        else start(activity, SiteApi.PUSH, Sniffer.getUrl(text), pushTitle(text));
+        // 推送统一规范化为 名称$URL；smb:// 等内部资源不经嗅探，由 SmbDataSource 直连读取。
+        // 已含 '$' 的文本视为规范 id 原样透传（与 Sniffer 的透传规则一致）。
+        if (TextUtils.isEmpty(text)) return;
+        if (FileChooser.isValid(activity, Uri.parse(text))) {
+            file(activity, FileChooser.getPathFromUri(Uri.parse(text)));
+            return;
+        }
+        String url = Sniffer.getUrl(text);
+        if (url.indexOf('$') >= 0) {
+            start(activity, SiteApi.PUSH, url, PushId.displayName(url));
+        } else {
+            String name = PushId.lastName(url);
+            start(activity, SiteApi.PUSH, PushId.segment(name, url), name);
+        }
     }
 
     public static void file(FragmentActivity activity, String path) {
         if (TextUtils.isEmpty(path)) return;
         String name = new File(path).getName();
-        start(activity, SiteApi.PUSH, "file://" + path, name);
-    }
-
-    // 本地文件夹推送的 id 形如 文件夹名|||文件名1$file:///路径1#文件名2$file:///路径2
-    // 初始显示名：文件夹推送取“文件夹名”，单文件推送取文件名，避免把复合 id / file:// 路径当标题
-    private static String pushTitle(String text) {
-        if (TextUtils.isEmpty(text)) return text;
-        int sep = text.indexOf("|||");
-        if (sep >= 0) return text.substring(0, sep).trim();
-        String body = text;
-        int dollar = body.indexOf('$');
-        if (dollar > 0) body = body.substring(0, dollar);
-        if (body.startsWith("file://")) body = body.substring("file://".length());
-        return body.replace('/', ' ').trim();
-    }
-
-    // 从推送的复合 id 提取干净的显示名（与 SiteApi.pushDisplayName 一致）：文件夹名 / 文件名
-    private static String cleanPushName(String id) {
-        if (TextUtils.isEmpty(id)) return id;
-        int sep = id.indexOf("|||");
-        if (sep >= 0) return id.substring(0, sep).trim();
-        String body = id;
-        int dollar = body.indexOf('$');
-        if (dollar > 0) body = body.substring(0, dollar);
-        if (body.startsWith("file://")) body = body.substring("file://".length());
-        return body.replace('/', ' ').trim();
-    }
-
-    // 推送场景下，若传入的 name 仍是复合 id（文件管理器直推等边界情况），用 id 重新解析出干净名称
-    private String displayName() {
-        String name = Objects.toString(getIntent().getStringExtra("name"), "");
-        if (SiteApi.PUSH.equals(getKey()) && (name.contains("|||") || name.contains("$") || name.startsWith("file://"))) {
-            return cleanPushName(getId());
-        }
-        return name;
+        start(activity, SiteApi.PUSH, PushId.segment(name, "file://" + path), name);
     }
 
     public static void cast(Activity activity, History history) {
@@ -415,7 +392,7 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
     }
 
     public static void start(Activity activity, String url) {
-        start(activity, SiteApi.PUSH, url, cleanPushName(url));
+        start(activity, SiteApi.PUSH, url, PushId.displayName(url));
     }
 
     public static void start(Activity activity, String key, String id, String name) {
@@ -471,7 +448,7 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
     }
 
     private String getName() {
-        return displayName();
+        return Objects.toString(getIntent().getStringExtra("name"), "");
     }
 
     private String getPic() {
@@ -1128,6 +1105,7 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
         }
         if (mWaitingConfig) return;
         mWaitingConfig = true;
+        configWaitStart = System.currentTimeMillis();
         SpiderDebug.log("video-flow", "config not ready, wait for VOD ready key=%s", getKey());
         mBinding.progressLayout.showProgress();
         App.post(this::pollConfigReady, 300);
@@ -1140,7 +1118,7 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
             getDetail();
             return;
         }
-        if (System.currentTimeMillis() - detailStartTime > 15000) {
+        if (System.currentTimeMillis() - configWaitStart > 15000) {
             SpiderDebug.log("video-flow", "config wait timeout key=%s", getKey());
             mWaitingConfig = false;
             setEmpty(true);
@@ -1207,7 +1185,7 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
     private void setDetail(Vod item) {
         item.checkPic(getPic());
         item.checkName(getName());
-        if (SiteApi.PUSH.equals(getKey())) item.setName(cleanPushName(getId()));
+        if (SiteApi.PUSH.equals(getKey())) item.setName(PushId.displayName(getId()));
         item.checkContent(getContent());
         mBinding.progressLayout.showContent();
         mBinding.name.setText(item.getName());
@@ -1348,6 +1326,11 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
     }
 
     private void setEpisodeAdapter(List<Episode> items, boolean scrollToCurrent) {
+        // 待查问题：文件夹连播时首集显示名偶变为“播放”。此日志用于区分拼串/解析/渲染三层责任。
+        if (SiteApi.PUSH.equals(getKey()) && !items.isEmpty()) {
+            Episode first = items.get(0);
+            SpiderDebug.log("push-folder", "episodes size=%s first name=%s desc=%s display=%s url=%s", items.size(), first.getName(), first.getDesc(), first.getDisplayName(), first.getUrl());
+        }
         mBinding.control.action.episodes.setVisibility(items.size() < 2 ? View.GONE : View.VISIBLE);
         applyActionButtonVisibility();
         mBinding.episode.setVisibility(items.isEmpty() ? View.GONE : View.VISIBLE);
@@ -3802,8 +3785,8 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
         if (!canSavePlaybackHistory(mHistory)) return;
         History history = mHistory.copy();
         Task.execute(() -> {
-            if (history.getDuration() > 0) history.merge().save();
-            else history.save();
+            // 不做按名合并：同一数据源内各站点的观看记录并存，首页历史行才能看到其他站点的最近播放
+            history.save();
             if (exit) RefreshEvent.history();
         });
     }

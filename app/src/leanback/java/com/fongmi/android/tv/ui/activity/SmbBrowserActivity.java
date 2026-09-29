@@ -11,11 +11,15 @@ import androidx.viewbinding.ViewBinding;
 import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.Product;
 import com.fongmi.android.tv.R;
+import com.fongmi.android.tv.api.SiteApi;
 import com.fongmi.android.tv.bean.SmbServer;
 import com.fongmi.android.tv.databinding.ActivitySmbBrowserBinding;
 import com.fongmi.android.tv.db.AppDatabase;
+import com.fongmi.android.tv.setting.Setting;
 import com.fongmi.android.tv.ui.adapter.SmbFileAdapter;
 import com.fongmi.android.tv.ui.base.BaseActivity;
+import com.fongmi.android.tv.utils.Notify;
+import com.fongmi.android.tv.utils.PushId;
 import com.fongmi.android.tv.utils.SmbHelper;
 import com.fongmi.android.tv.utils.Task;
 
@@ -28,12 +32,14 @@ public class SmbBrowserActivity extends BaseActivity implements SmbFileAdapter.O
     public static final String EXTRA_SMB_NAME = "smb_name";
     public static final String EXTRA_SMB_SERVER_ID = "smb_server_id";
     public static final String EXTRA_SMB_IS_DIR = "smb_is_dir";
+    public static final String EXTRA_PLAY_MODE = "play_mode";
 
     private ActivitySmbBrowserBinding binding;
     private SmbFileAdapter adapter;
     private SmbServer server;
     private String currentPath = "";
     private int loadVersion;
+    private boolean playMode;
 
     @Override
     protected ViewBinding getBinding() {
@@ -52,6 +58,7 @@ public class SmbBrowserActivity extends BaseActivity implements SmbFileAdapter.O
             finish();
             return;
         }
+        playMode = getIntent().getBooleanExtra(EXTRA_PLAY_MODE, false);
         setRecyclerView();
         String displayName = server.getName() != null && !server.getName().isEmpty() ? server.getName() : server.getHost();
         binding.title.setText(displayName + " /" + server.getShareName());
@@ -67,7 +74,7 @@ public class SmbBrowserActivity extends BaseActivity implements SmbFileAdapter.O
 
     private void loadDirectory(String path) {
         currentPath = path != null ? path : "";
-        binding.selectDir.setVisibility(currentPath.isEmpty() ? View.GONE : View.VISIBLE);
+        binding.selectDir.setVisibility(currentPath.isEmpty() || playMode ? View.GONE : View.VISIBLE);
         binding.progressLayout.showProgress();
         int version = ++loadVersion;
         String loadPath = currentPath;
@@ -98,10 +105,35 @@ public class SmbBrowserActivity extends BaseActivity implements SmbFileAdapter.O
         if (item.isDirectory()) {
             String newPath = currentPath.isEmpty() ? item.getName() : currentPath + "\\" + item.getName();
             loadDirectory(newPath);
-        } else {
-            String smbUrl = SmbHelper.getSmbUrl(server, currentPath.isEmpty() ? item.getPath() : currentPath + "\\" + item.getName());
-            returnResult(smbUrl, item.getName(), false);
+            return;
         }
+        String smbUrl = SmbHelper.getSmbUrl(server, currentPath.isEmpty() ? item.getPath() : currentPath + "\\" + item.getName());
+        if (playMode) VideoActivity.push(this, smbUrl);
+        else returnResult(smbUrl, item.getName(), false);
+    }
+
+    /** 播放模式下长按文件夹：递归收集该目录视频，一键连播 */
+    @Override
+    public boolean onItemLongClick(SmbHelper.SmbFileItem item) {
+        if (!playMode || !item.isDirectory()) return false;
+        String dirPath = currentPath.isEmpty() ? item.getName() : currentPath + "\\" + item.getName();
+        playSmbFolder(dirPath, item.getName());
+        return true;
+    }
+
+    private void playSmbFolder(String dirPath, String dirName) {
+        Notify.show(R.string.smb_loading);
+        Task.execute(() -> {
+            String urls = SmbHelper.buildFolderPlayUrls(server, dirPath, Setting.isFolderRecursive());
+            App.post(() -> {
+                if (isFinishing()) return;
+                if (urls.isEmpty()) {
+                    Toast.makeText(this, R.string.folder_no_video, Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                VideoActivity.start(this, SiteApi.PUSH, PushId.folder(dirName, urls), dirName, null);
+            });
+        });
     }
 
     @Override

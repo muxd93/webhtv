@@ -23,6 +23,8 @@ public class FuncPresenter extends Presenter {
     public interface OnClickListener {
         void onItemClick(Func item);
 
+        void onItemFocus(Func item);
+
         boolean onLongClick(Func item);
     }
 
@@ -40,6 +42,9 @@ public class FuncPresenter extends Presenter {
         holder.binding.icon.setImageResource(item.getDrawable());
         setOnClickListener(holder, view -> listener.onItemClick(item));
         holder.view.setOnLongClickListener(view -> listener.onLongClick(item));
+        holder.view.setOnFocusChangeListener((view, hasFocus) -> {
+            if (hasFocus) listener.onItemFocus(item);
+        });
         holder.view.setOnKeyListener((view, keyCode, event) -> onKeyDown(view, event));
     }
 

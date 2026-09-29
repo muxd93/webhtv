@@ -2,6 +2,8 @@
 
     <!-- App -->
     <string name="app_keep">我的收藏</string>
+    <string name="keep_switching">正在切換到 %1$s…</string>
+    <string name="keep_site_missing">原站點已下線，為你搜尋同名影片</string>
     <string name="app_history">最近觀看</string>
 
     <!-- Nav -->

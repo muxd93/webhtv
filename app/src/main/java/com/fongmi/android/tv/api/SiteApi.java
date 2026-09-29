@@ -14,6 +14,7 @@ import com.fongmi.android.tv.bean.Site;
 import com.fongmi.android.tv.bean.Vod;
 import com.fongmi.android.tv.player.Source;
 import com.fongmi.android.tv.setting.PlayerSetting;
+import com.fongmi.android.tv.utils.PushId;
 import com.fongmi.android.tv.utils.ResUtil;
 import com.fongmi.android.tv.utils.Sniffer;
 import com.fongmi.android.tv.web.WebHomeInlineVodStore;
@@ -117,12 +118,12 @@ public class SiteApi {
         Site site = VodConfig.get().getSite(key);
         if (site.isEmpty() && PUSH.equals(key)) {
             Vod vod = new Vod();
-            int sep = id.indexOf("|||");
-            String playUrl = sep >= 0 ? id.substring(sep + 3) : id;
-            // 显示名取文件夹名（文件夹推送）或真实文件名（单文件推送），避免把复合 id / file:// 路径当名称
-            vod.setName(pushDisplayName(id));
+            String playUrl = PushId.playList(id);
+            // 展示名由 PushId 统一解析：文件夹名 / 单文件名 / URL 末段
+            vod.setName(PushId.displayName(id));
             vod.setId(playUrl);
             vod.setPlayUrl(playUrl);
+            SpiderDebug.log("push-folder", "detail id=%s playUrl=%s name=%s", id, playUrl, vod.getName());
             vod.setPlayFrom(ResUtil.getString(R.string.push));
             vod.setPic(ResUtil.getString(R.string.push_image));
             Source.get().parse(vod.setFlags());
@@ -264,19 +265,6 @@ public class SiteApi {
         if (dollarIdx >= 0) return id.substring(dollarIdx + 1);
         // 兜底: 直接返回整个 id
         return id;
-    }
-
-    // 从推送的复合 id 中提取一个干净的人类可读名称：
-    // 文件夹推送取“文件夹名”，单文件推送取文件名（去掉 file:// 前缀与 $ 后的路径）
-    private static String pushDisplayName(@NonNull String id) {
-        int sep = id.indexOf("|||");
-        if (sep >= 0) return id.substring(0, sep).trim();
-        String body = id;
-        int dollar = body.indexOf('$');
-        if (dollar > 0) body = body.substring(0, dollar);
-        if (body.startsWith("file://")) body = body.substring("file://".length());
-        body = body.replace('/', ' ').trim();
-        return body;
     }
 
     private static void setTypes(@NonNull Site site, @NonNull Result result) {

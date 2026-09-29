@@ -123,9 +123,6 @@ public class Live {
     @Ignore
     private boolean selected;
 
-    @Ignore
-    private int width;
-
     public Live() {
     }
 
@@ -296,14 +293,6 @@ public class Live {
 
     public void setSelected(Live item) {
         this.selected = item.equals(this);
-    }
-
-    public int getWidth() {
-        return width;
-    }
-
-    public void setWidth(int width) {
-        this.width = width;
     }
 
     public String getEpgApi() {

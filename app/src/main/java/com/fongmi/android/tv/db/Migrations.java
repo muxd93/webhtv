@@ -62,16 +62,15 @@ public class Migrations {
         public void migrate(@NonNull SupportSQLiteDatabase database) {
             database.execSQL("CREATE TABLE IF NOT EXISTS PlaybackDeleteTombstone (`id` TEXT NOT NULL, `configKey` TEXT NOT NULL, `scope` TEXT NOT NULL, `historyKey` TEXT NOT NULL, `siteKey` TEXT NOT NULL, `vodId` TEXT NOT NULL, `deletedAt` INTEGER NOT NULL, PRIMARY KEY(`id`))");
             database.execSQL("CREATE INDEX IF NOT EXISTS `index_PlaybackDeleteTombstone_deletedAt` ON `PlaybackDeleteTombstone` (`deletedAt`)");
-            database.execSQL("CREATE TABLE ElderCard (`id` TEXT NOT NULL, `type` TEXT, `name` TEXT, `pic` TEXT, `sortOrder` INTEGER NOT NULL, `refKey` TEXT, `cid` INTEGER NOT NULL, `siteKey` TEXT, `createTime` INTEGER NOT NULL, `is_dir` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`id`))");
-            database.execSQL("CREATE TABLE SmbServer (`id` TEXT NOT NULL, `name` TEXT, `host` TEXT, `port` INTEGER NOT NULL, `shareName` TEXT, `username` TEXT, `password` TEXT, `createTime` INTEGER NOT NULL, PRIMARY KEY(`id`))");
         }
     };
 
     public static final Migration MIGRATION_37_38 = new Migration(37, 38) {
         @Override
         public void migrate(@NonNull SupportSQLiteDatabase database) {
-            database.execSQL("ALTER TABLE ElderCard ADD COLUMN coverType INTEGER NOT NULL DEFAULT 0");
-            database.execSQL("ALTER TABLE ElderCard ADD COLUMN coverValue TEXT DEFAULT NULL");
+            // ElderCard/SmbServer 的唯一建表点；SQL 与 Room 实体推导 schema 逐字一致（无 DEFAULT 子句），否则启动校验会失败
+            database.execSQL("CREATE TABLE IF NOT EXISTS ElderCard (`id` TEXT NOT NULL, `type` TEXT, `name` TEXT, `pic` TEXT, `coverType` INTEGER NOT NULL, `coverValue` TEXT, `sortOrder` INTEGER NOT NULL, `refKey` TEXT, `cid` INTEGER NOT NULL, `siteKey` TEXT, `createTime` INTEGER NOT NULL, `is_dir` INTEGER NOT NULL, PRIMARY KEY(`id`))");
+            database.execSQL("CREATE TABLE IF NOT EXISTS SmbServer (`id` TEXT NOT NULL, `name` TEXT, `host` TEXT, `port` INTEGER NOT NULL, `shareName` TEXT, `username` TEXT, `password` TEXT, `createTime` INTEGER NOT NULL, PRIMARY KEY(`id`))");
         }
     };
 }

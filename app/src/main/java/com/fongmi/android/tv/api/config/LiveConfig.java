@@ -2,7 +2,6 @@ package com.fongmi.android.tv.api.config;
 
 import android.text.TextUtils;
 
-import com.fongmi.android.tv.api.Decoder;
 import com.fongmi.android.tv.api.LiveApi;
 import com.fongmi.android.tv.api.loader.BaseLoader;
 import com.fongmi.android.tv.api.parser.LiveParser;
@@ -93,6 +92,7 @@ public class LiveConfig extends BaseConfig {
     }
 
     public LiveConfig clear() {
+        invalidateJson();
         ads = null;
         home = null;
         lives = null;
@@ -123,7 +123,11 @@ public class LiveConfig extends BaseConfig {
             initLive(config, new JsonObject());
             return;
         }
-        String json = Decoder.getJson(UrlUtil.convert(config.getUrl()), TAG);
+        super.load(config);
+    }
+
+    @Override
+    protected void parse(Config config, String json) throws Throwable {
         if (Json.isObj(json)) checkJson(config, Json.parse(json).getAsJsonObject());
         else parseText(config, json);
     }

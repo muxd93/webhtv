@@ -107,8 +107,7 @@ public class App extends Application implements Application.ActivityLifecycleCal
         }
         Notify.createChannel();
         ProxySetting.apply();
-        // 老人模式下不启动弹幕焦点修复的常驻脉冲：它每 400ms 遍历一次窗口 View 树，桌面常驻时永不停止
-        if (!Setting.isElderMode()) DanmakuSearchListFocusFixer.start();
+        DanmakuSearchListFocusFixer.start();
         registerActivityLifecycleCallbacks(this);
         post(this::startBackgroundServices, 1200);
     }
@@ -129,9 +128,9 @@ public class App extends Application implements Application.ActivityLifecycleCal
         SpiderDebug.log("startup", "background services start cost=%sms", System.currentTimeMillis() - time);
         // 局域网 HTTP 服务阻塞在 accept，无连接时不唤醒 CPU，成本可忽略，老人模式也保留
         Server.get().start();
-        // 老人模式默认省电：远程托管(4s 轮询)、观影记录同步、mDNS 注册都不自动启动
-        if (Setting.isElderMode() && Setting.isElderPowerSave()) {
-            SpiderDebug.log("startup", "elder mode: skip remote agent, playback sync and nsd");
+        // 省电启动：远程托管(4s 轮询)、观影记录同步、mDNS 注册都不自动启动
+        if (Setting.isPowerSaveStartup()) {
+            SpiderDebug.log("startup", "power save: skip remote agent, playback sync and nsd");
             return;
         }
         PlaybackRemoteSyncer.start();

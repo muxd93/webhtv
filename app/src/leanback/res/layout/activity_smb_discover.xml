@@ -84,7 +84,7 @@
             android:id="@+id/rescan"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="@string/elder_smb_rescan"
+            android:text="@string/smb_rescan"
             android:textSize="20sp" />
 
         <com.google.android.material.button.MaterialButton
@@ -92,7 +92,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="20dp"
-            android:text="@string/elder_smb_manual"
+            android:text="@string/smb_manual"
             android:textSize="20sp"
             app:backgroundTint="@android:color/transparent" />
 

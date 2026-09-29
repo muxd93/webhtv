@@ -910,8 +910,8 @@ public abstract class PlaybackActivity extends BaseActivity implements MediaCont
         restoreExoOutputMode();
         if (SpiderDebug.isEnabled()) SpiderDebug.log("playback-lifecycle", "activity stop backgroundOff=%s %s", PlayerSetting.isBackgroundOff(), lifecycleState());
         super.onStop();
-        // 老人按主页键就是要停下来：老人模式下不跟随「后台播放」开关，离开播放页一律暂停
-        boolean stopOnLeave = PlayerSetting.isBackgroundOff() || Setting.isElderMode();
+        // 「离开播放页暂停」开关控制；开启后按主页键离开即暂停
+        boolean stopOnLeave = PlayerSetting.isBackgroundOff() || Setting.isPauseOnLeave();
         if (isOwner() && !isAudioOnly() && stopOnLeave && mController != null) mController.pause();
     }
 

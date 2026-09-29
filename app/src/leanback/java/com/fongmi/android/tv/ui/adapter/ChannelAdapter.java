@@ -17,10 +17,12 @@ public class ChannelAdapter extends RecyclerView.Adapter<ChannelAdapter.ViewHold
 
     private final OnClickListener mListener;
     private final List<Channel> mItems;
+    private int selectedPosition;
 
     public ChannelAdapter(OnClickListener listener) {
         mListener = listener;
         mItems = new ArrayList<>();
+        selectedPosition = -1;
     }
 
     public void addAll(List<Channel> items) {
@@ -33,11 +35,14 @@ public class ChannelAdapter extends RecyclerView.Adapter<ChannelAdapter.ViewHold
         int index = mItems.indexOf(item);
         if (index < 0) return;
         mItems.remove(index);
+        if (selectedPosition == index) selectedPosition = -1;
+        else if (selectedPosition > index) selectedPosition--;
         notifyItemRemoved(index);
     }
 
     public void clear() {
         mItems.clear();
+        selectedPosition = -1;
         notifyDataSetChanged();
     }
 
@@ -45,8 +50,8 @@ public class ChannelAdapter extends RecyclerView.Adapter<ChannelAdapter.ViewHold
         return mItems.get(position);
     }
 
-    public void setSelected(Channel selected) {
-        for (Channel item : mItems) item.setSelected(selected);
+    public void setSelected(int position) {
+        selectedPosition = position >= 0 && position < mItems.size() ? position : -1;
         notifyDataSetChanged();
     }
 
@@ -67,7 +72,7 @@ public class ChannelAdapter extends RecyclerView.Adapter<ChannelAdapter.ViewHold
         item.loadLogo(holder.binding.logo);
         holder.binding.name.setText(item.getShow());
         holder.binding.number.setText(item.getNumber());
-        holder.binding.getRoot().setSelected(item.isSelected());
+        holder.binding.getRoot().setSelected(position == selectedPosition);
         holder.binding.getRoot().setRightListener(() -> mListener.showEpg(item));
         holder.binding.getRoot().setOnClickListener(v -> mListener.onItemClick(item));
         holder.binding.getRoot().setOnLongClickListener(v -> mListener.onLongClick(item));

@@ -3,11 +3,13 @@ package com.fongmi.android.tv.ui.activity;
 import android.app.Activity;
 import android.content.Intent;
 import android.os.Bundle;
+import android.view.View;
 
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.viewbinding.ViewBinding;
 
 import com.fongmi.android.tv.Product;
+import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.bean.Config;
 import com.fongmi.android.tv.bean.Keep;
@@ -39,6 +41,7 @@ public class KeepActivity extends BaseActivity implements KeepAdapter.OnClickLis
     @Override
     protected void initView(Bundle savedInstanceState) {
         setRecyclerView();
+        setEvent();
         getKeep();
     }
 
@@ -50,20 +53,44 @@ public class KeepActivity extends BaseActivity implements KeepAdapter.OnClickLis
         mBinding.recycler.addItemDecoration(new SpaceItemDecoration(Product.getColumn(), 16));
     }
 
+    private void setEvent() {
+        mBinding.clear.setOnClickListener(v -> clearKeep());
+        mBinding.search.setOnClickListener(v -> SearchActivity.start(this));
+    }
+
     private void getKeep() {
-        mAdapter.setItems(Keep.getVod(), () -> mBinding.progressLayout.showContent(true, mAdapter.getItemCount()));
+        mAdapter.setItems(Keep.getVod(), this::showResult);
+    }
+
+    private void showResult() {
+        int count = mAdapter.getItemCount();
+        mBinding.count.setText(getString(R.string.keep_count, count));
+        mBinding.empty.setVisibility(count == 0 ? View.VISIBLE : View.GONE);
+        mBinding.progressLayout.showContent();
+    }
+
+    private void clearKeep() {
+        if (mAdapter.getItemCount() == 0) return;
+        // 只清视频收藏，不影响直播收藏
+        Keep.getVod().forEach(Keep::delete);
+        getKeep();
+        RefreshEvent.keep();
     }
 
     private void loadConfig(Config config, Keep item) {
+        Notify.show(getString(R.string.keep_switching, config.getName()));
+        mBinding.progressLayout.showProgress();
         VodConfig.load(config, new Callback() {
             @Override
             public void success() {
+                mBinding.progressLayout.showContent();
                 VideoActivity.start(getActivity(), item.getSiteKey(), item.getVodId(), item.getVodName(), item.getVodPic());
             }
 
             @Override
             public void error(String msg) {
                 Notify.show(msg);
+                mBinding.progressLayout.showContent();
             }
         });
     }
@@ -76,8 +103,10 @@ public class KeepActivity extends BaseActivity implements KeepAdapter.OnClickLis
     @Override
     public void onItemClick(Keep item) {
         Config config = Config.find(item.getCid());
-        if (config == null) CollectActivity.start(this, item.getVodName());
-        else if (item.getCid() != VodConfig.getCid()) loadConfig(config, item);
+        if (config == null) {
+            Notify.show(R.string.keep_site_missing);
+            CollectActivity.start(this, item.getVodName());
+        } else if (item.getCid() != VodConfig.getCid()) loadConfig(config, item);
         else VideoActivity.start(this, item.getSiteKey(), item.getVodId(), item.getVodName(), item.getVodPic());
     }
 
@@ -86,6 +115,8 @@ public class KeepActivity extends BaseActivity implements KeepAdapter.OnClickLis
         mAdapter.remove(item.delete(), () -> {
             if (mAdapter.getItemCount() == 0) mAdapter.setDelete(false);
         });
+        // 首页收藏行需要同步收起/更新
+        RefreshEvent.keep();
     }
 
     @Override

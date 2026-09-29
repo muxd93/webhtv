@@ -14,6 +14,7 @@ import com.hierynomus.smbj.auth.AuthenticationContext;
 import com.hierynomus.smbj.connection.Connection;
 import com.hierynomus.smbj.session.Session;
 import com.hierynomus.smbj.share.DiskShare;
+import com.hierynomus.smbj.share.File;
 import com.hierynomus.smbj.share.NamedPipe;
 import com.hierynomus.smbj.share.PipeShare;
 import com.hierynomus.smbj.share.Share;
@@ -260,6 +261,16 @@ public class SmbHelper {
         return videos;
     }
 
+    /** 把目录下视频拼成 PUSH 站点可播的 "文件名$smb://...#..." 复合串；目录无视频时返回空串 */
+    public static String buildFolderPlayUrls(SmbServer server, String dirPath, boolean recursive) {
+        StringBuilder sb = new StringBuilder();
+        for (SmbFileItem item : listVideoFiles(server, dirPath, recursive)) {
+            if (sb.length() > 0) sb.append('#');
+            sb.append(PushId.segment(item.getName(), getSmbUrl(server, item.getPath())));
+        }
+        return sb.toString();
+    }
+
     private static void collectVideoFiles(SmbServer server, String dirPath, boolean recursive, List<SmbFileItem> out) {
         List<SmbFileItem> items = listFiles(server, dirPath);
         for (SmbFileItem item : items) {
@@ -304,8 +315,105 @@ public class SmbHelper {
         return sb.toString();
     }
 
-    private static AuthenticationContext createAuthContext(String username, String password) {
-        return buildAuthCandidates(username, password).get(0);
+    /**
+     * 播放直连专用：按与浏览侧完全相同的候选鉴权列表建立连接并打开只读文件句柄。
+     * SMB 连接/鉴权/超时策略只在 SmbHelper 维护一份，SmbDataSource 只负责流读取。
+     */
+    public static ReadHandle openForRead(String host, int port, String shareName, String filePath, String username, String password) throws java.io.IOException {
+        SMBClient client = null;
+        Connection connection = null;
+        Session session = null;
+        DiskShare share = null;
+        File file = null;
+        try {
+            client = createClient();
+            connection = client.connect(host, port);
+            if (connection == null) throw new java.io.IOException("SMB connect failed: " + host + ":" + port);
+            Exception lastFailure = null;
+            for (AuthenticationContext ac : buildAuthCandidates(username, password)) {
+                try {
+                    session = connection.authenticate(ac);
+                    if (session == null) continue;
+                    share = (DiskShare) session.connectShare(shareName);
+                    file = share.openFile(filePath,
+                            EnumSet.of(AccessMask.FILE_READ_DATA),
+                            EnumSet.of(FileAttributes.FILE_ATTRIBUTE_NORMAL),
+                            EnumSet.of(SMB2ShareAccess.FILE_SHARE_READ),
+                            SMB2CreateDisposition.FILE_OPEN,
+                            null);
+                    return new ReadHandle(client, connection, session, share, file);
+                } catch (Exception e) {
+                    lastFailure = e;
+                    closeQuietly(file);
+                    file = null;
+                    closeQuietly(share);
+                    share = null;
+                    closeQuietly(session);
+                    session = null;
+                }
+            }
+            throw new java.io.IOException("SMB open failed: " + (lastFailure == null ? "auth rejected" : lastFailure.getMessage()));
+        } catch (java.io.IOException e) {
+            closeQuietly(file);
+            closeQuietly(share);
+            closeQuietly(session);
+            closeQuietly(connection);
+            closeQuietly(client);
+            throw e;
+        } catch (Exception e) {
+            closeQuietly(file);
+            closeQuietly(share);
+            closeQuietly(session);
+            closeQuietly(connection);
+            closeQuietly(client);
+            throw new java.io.IOException("SMB open failed: " + e.getMessage(), e);
+        }
+    }
+
+    /** SMB 只读句柄：连接/会话/共享/文件生命周期一体，close 逆序释放。 */
+    public static class ReadHandle implements AutoCloseable {
+
+        private final SMBClient client;
+        private final Connection connection;
+        private final Session session;
+        private final DiskShare share;
+        private final File file;
+        private final long size;
+
+        private ReadHandle(SMBClient client, Connection connection, Session session, DiskShare share, File file) throws java.io.IOException {
+            this.client = client;
+            this.connection = connection;
+            this.session = session;
+            this.share = share;
+            this.file = file;
+            try {
+                this.size = file.getFileInformation().getStandardInformation().getEndOfFile();
+            } catch (Exception e) {
+                throw new java.io.IOException("SMB stat failed: " + e.getMessage(), e);
+            }
+        }
+
+        public long getSize() {
+            return size;
+        }
+
+        /** 从 offset 读取至多 buffer.length 字节，返回实际读取数；流结束返回 -1 */
+        public int read(byte[] buffer, long offset) throws java.io.IOException {
+            try {
+                return file.read(buffer, offset);
+            } catch (Exception e) {
+                throw new java.io.IOException("SMB read failed: " + e.getMessage(), e);
+            }
+        }
+
+        @Override
+        public void close() {
+            closeQuietly(file);
+            closeQuietly(share);
+            closeQuietly(session);
+            closeQuietly(connection);
+            closeQuietly(client);
+        }
     }
 
     /**

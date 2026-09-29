@@ -8,7 +8,7 @@
     <com.google.android.material.textfield.TextInputLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="@string/elder_smb_host">
+        android:hint="@string/smb_host">
 
         <com.google.android.material.textfield.TextInputEditText
             android:id="@+id/host"
@@ -23,7 +23,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
-        android:hint="@string/elder_smb_name">
+        android:hint="@string/smb_name">
 
         <com.google.android.material.textfield.TextInputEditText
             android:id="@+id/name"
@@ -37,7 +37,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
-        android:hint="@string/elder_smb_share_name">
+        android:hint="@string/smb_share_name">
 
         <com.google.android.material.textfield.TextInputEditText
             android:id="@+id/shareName"
@@ -51,7 +51,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
-        android:hint="@string/elder_smb_username">
+        android:hint="@string/smb_username">
 
         <com.google.android.material.textfield.TextInputEditText
             android:id="@+id/username"
@@ -65,7 +65,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
-        android:hint="@string/elder_smb_password">
+        android:hint="@string/smb_password">
 
         <com.google.android.material.textfield.TextInputEditText
             android:id="@+id/password"
@@ -80,7 +80,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
-        android:hint="@string/elder_smb_port">
+        android:hint="@string/smb_port">
 
         <com.google.android.material.textfield.TextInputEditText
             android:id="@+id/port"

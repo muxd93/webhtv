@@ -760,22 +760,6 @@ public class Setting {
         return ContextCompat.checkSelfPermission(App.get(), Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED && ContextCompat.checkSelfPermission(App.get(), Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED;
     }
 
-    public static boolean isElderMode() {
-        return Prefers.getBoolean("elder_mode");
-    }
-
-    public static void putElderMode(boolean elderMode) {
-        Prefers.put("elder_mode", elderMode);
-    }
-
-    public static int getElderGridColumns() {
-        return Prefers.getInt("elder_grid_columns", 5);
-    }
-
-    public static void putElderGridColumns(int columns) {
-        Prefers.put("elder_grid_columns", columns);
-    }
-
     public static boolean isAutoNextEps() {
         return Prefers.getBoolean("auto_next_eps");
     }
@@ -784,66 +768,58 @@ public class Setting {
         Prefers.put("auto_next_eps", autoNext);
     }
 
-    public static boolean isElderRecursive() {
+    /** 文件夹连播是否包含子文件夹（本地/SMB 长按连播），默认关闭 */
+    public static boolean isFolderRecursive() {
         return Prefers.getBoolean("elder_recursive");
     }
 
-    public static void putElderRecursive(boolean recursive) {
-        Prefers.put("elder_recursive", recursive);
+    public static void putFolderRecursive(boolean value) {
+        Prefers.put("elder_recursive", value);
     }
 
-    /** 上次成功拉取站源配置的时间戳，用于老人模式每日自动更新 */
-    public static long getLastConfigSyncAt() {
-        return Prefers.getLong("config_sync_at");
+    /** DLNA 接收（投屏），默认关闭：需要投屏时手动打开 */
+    public static boolean isDlnaEnabled() {
+        return Prefers.getBoolean("dlna_enabled", false);
     }
 
-    public static void putLastConfigSyncAt(long value) {
-        Prefers.put("config_sync_at", value);
+    public static void putDlnaEnabled(boolean value) {
+        Prefers.put("dlna_enabled", value);
     }
 
-    /** 老人模式是否朗读焦点项（不识字时最关键），默认开启；设备没有中文语音引擎时自然不出声 */
-    public static boolean isElderTts() {
-        return Prefers.getBoolean("elder_tts", true);
+    /** 按主页键回到桌面时清理后台应用，默认关闭 */
+    public static boolean isHomeCleanBackground() {
+        return Prefers.getBoolean("home_clean_background", false);
     }
 
-    public static void putElderTts(boolean value) {
-        Prefers.put("elder_tts", value);
+    public static void putHomeCleanBackground(boolean value) {
+        Prefers.put("home_clean_background", value);
     }
 
-    /** 老人模式省电策略：开启后不自动拉起远程托管、观影记录同步与 mDNS，默认开启 */
-    public static boolean isElderPowerSave() {
-        return Prefers.getBoolean("elder_power_save", true);
+    /** 省电启动：开启后启动不自动拉起远程托管、观影记录同步与 mDNS，默认关闭 */
+    public static boolean isPowerSaveStartup() {
+        return Prefers.getBoolean("power_save_startup", false);
     }
 
-    public static void putElderPowerSave(boolean value) {
-        Prefers.put("elder_power_save", value);
+    public static void putPowerSaveStartup(boolean value) {
+        Prefers.put("power_save_startup", value);
     }
 
-    /** 老人模式每天首次进入时自动拉取站源配置，默认开启 */
-    public static boolean isElderAutoUpdate() {
-        return Prefers.getBoolean("elder_auto_update", true);
+    /** 焦点移动时朗读名称（供不识字的老人），默认关闭 */
+    public static boolean isTtsFocus() {
+        return Prefers.getBoolean("tts_focus", false);
     }
 
-    public static void putElderAutoUpdate(boolean value) {
-        Prefers.put("elder_auto_update", value);
+    public static void putTtsFocus(boolean value) {
+        Prefers.put("tts_focus", value);
     }
 
-    /** 老人模式时钟是否显示秒，默认关闭：显示秒会让主线程每秒刷新一次 */
-    public static boolean isElderClockSecond() {
-        return Prefers.getBoolean("elder_clock_second", false);
+    /** 离开播放页时自动暂停（覆盖「后台播放」开关），默认关闭 */
+    public static boolean isPauseOnLeave() {
+        return Prefers.getBoolean("pause_on_leave", false);
     }
 
-    public static void putElderClockSecond(boolean value) {
-        Prefers.put("elder_clock_second", value);
-    }
-
-    /** DLNA 接收是否开启，默认关闭：需要投屏时手动打开 */
-    public static boolean isElderDlna() {
-        return Prefers.getBoolean("elder_dlna", false);
-    }
-
-    public static void putElderDlna(boolean value) {
-        Prefers.put("elder_dlna", value);
+    public static void putPauseOnLeave(boolean value) {
+        Prefers.put("pause_on_leave", value);
     }
 
     public static boolean hasFileManager() {

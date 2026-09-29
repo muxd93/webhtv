@@ -16,7 +16,6 @@ public class Clock {
     private Callback callback;
     private TextView view;
     private Timer timer;
-    private long period;
 
     public static Clock create() {
         return new Clock();
@@ -26,10 +25,6 @@ public class Clock {
         return new Clock().view(view).format("HH:mm:ss");
     }
 
-    public Clock() {
-        this.period = 1000L;
-    }
-
     public Clock view(TextView view) {
         this.view = view;
         return this;
@@ -37,12 +32,6 @@ public class Clock {
 
     public Clock format(String format) {
         this.format = DateTimeFormatter.ofPattern(format, Locale.getDefault());
-        return this;
-    }
-
-    /** 刷新间隔，默认 1 秒；只显示到分钟的场景可放大到 30 秒，减少主线程唤醒 */
-    public Clock period(long periodMs) {
-        this.period = periodMs > 0 ? periodMs : 1000L;
         return this;
     }
 
@@ -57,7 +46,7 @@ public class Clock {
             public void run() {
                 App.post(() -> doJob());
             }
-        }, 0, period);
+        }, 0, 1000);
     }
 
     private void doJob() {

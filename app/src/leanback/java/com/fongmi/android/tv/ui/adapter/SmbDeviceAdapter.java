@@ -71,10 +71,10 @@ public class SmbDeviceAdapter extends RecyclerView.Adapter<SmbDeviceAdapter.View
         SmbDevice item = items.get(position);
         holder.binding.name.setText(item.getName());
         holder.binding.desc.setText(item.getSubtitle());
-        holder.binding.image.setImageResource(R.drawable.ic_elder_smb);
+        holder.binding.image.setImageResource(R.drawable.ic_smb);
         boolean needAuth = item.isNeedAuth();
         holder.binding.tag.setVisibility(needAuth ? View.VISIBLE : View.GONE);
-        if (needAuth) holder.binding.tag.setText(R.string.elder_smb_need_password);
+        if (needAuth) holder.binding.tag.setText(R.string.smb_need_password);
         holder.binding.getRoot().setOnClickListener(v -> listener.onDeviceClick(item));
     }
 

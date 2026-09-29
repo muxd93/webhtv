@@ -2,7 +2,6 @@ package com.fongmi.android.tv.bean;
 
 import android.text.TextUtils;
 
-import androidx.annotation.Nullable;
 import androidx.annotation.StringRes;
 
 import com.fongmi.android.tv.App;
@@ -26,9 +25,7 @@ public class Group {
     @SerializedName("pass")
     private String pass;
 
-    private boolean selected;
     private int position;
-    private int width;
 
     public Group(String name) {
         this(name, false);
@@ -90,28 +87,12 @@ public class Group {
         this.pass = pass;
     }
 
-    public boolean isSelected() {
-        return selected;
-    }
-
-    public void setSelected(boolean selected) {
-        this.selected = selected;
-    }
-
     public int getPosition() {
         return position;
     }
 
     public void setPosition(int position) {
         this.position = position;
-    }
-
-    public int getWidth() {
-        return width;
-    }
-
-    public void setWidth(int width) {
-        this.width = width;
     }
 
     public boolean isHidden() {
@@ -159,13 +140,5 @@ public class Group {
         if (Trans.pass()) return this;
         this.name = Trans.s2t(name);
         return this;
-    }
-
-    @Override
-    public boolean equals(@Nullable Object obj) {
-        if (obj == null) return false;
-        if (this == obj) return true;
-        if (!(obj instanceof Group it)) return false;
-        return getName().equals(it.getName()) && getChannel().size() == it.getChannel().size();
     }
 }

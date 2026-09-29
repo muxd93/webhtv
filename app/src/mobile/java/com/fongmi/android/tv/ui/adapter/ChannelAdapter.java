@@ -61,7 +61,6 @@ public class ChannelAdapter extends RecyclerView.Adapter<ChannelAdapter.ViewHold
         mItems.clear();
         mItems.addAll(items);
         selectedPosition = position >= 0 && position < mItems.size() ? position : -1;
-        for (int i = 0; i < mItems.size(); i++) mItems.get(i).setSelected(i == selectedPosition);
         setWindowAround(selectedPosition == -1 ? 0 : selectedPosition);
         notifyDataSetChanged();
     }
@@ -80,8 +79,6 @@ public class ChannelAdapter extends RecyclerView.Adapter<ChannelAdapter.ViewHold
         if (position < 0 || position >= mItems.size()) return;
         int old = selectedPosition;
         selectedPosition = position;
-        if (old >= 0 && old < mItems.size()) mItems.get(old).setSelected(false);
-        mItems.get(position).setSelected(true);
         boolean outsideWindow = position < visibleStart || position >= visibleEnd;
         ensurePosition(position);
         if (outsideWindow) return;
@@ -218,7 +215,7 @@ public class ChannelAdapter extends RecyclerView.Adapter<ChannelAdapter.ViewHold
         holder.binding.name.setText(item.getShow());
         holder.binding.number.setText(item.getNumber());
         setListStyle(holder);
-        holder.binding.getRoot().setSelected(item.isSelected());
+        holder.binding.getRoot().setSelected(visibleStart + position == selectedPosition);
         holder.binding.getRoot().setOnClickListener(view -> listener.onItemClick(item));
         holder.binding.getRoot().setOnLongClickListener(view -> listener.onLongClick(item));
     }
@@ -228,7 +225,7 @@ public class ChannelAdapter extends RecyclerView.Adapter<ChannelAdapter.ViewHold
         if (payloads.isEmpty()) {
             super.onBindViewHolder(holder, position, payloads);
         } else {
-            holder.binding.getRoot().setSelected(mItems.get(visibleStart + position).isSelected());
+            holder.binding.getRoot().setSelected(visibleStart + position == selectedPosition);
         }
     }
 

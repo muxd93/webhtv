@@ -32,6 +32,7 @@ public class LiveViewModel extends ViewModel {
     private final MutableLiveData<Result> url;
     private final MutableLiveData<Live> live;
     private final MutableLiveData<Epg> epg;
+    private final MutableLiveData<String> message;
 
     private final Map<TaskType, ListenableFuture<?>> futures;
     private final Map<TaskType, AtomicInteger> taskIds;
@@ -42,6 +43,7 @@ public class LiveViewModel extends ViewModel {
         this.xml = new MutableLiveData<>();
         this.url = new MutableLiveData<>();
         this.live = new MutableLiveData<>();
+        this.message = new MutableLiveData<>();
         this.zoneId = ZoneId.systemDefault();
         this.futures = new EnumMap<>(TaskType.class);
         this.taskIds = new EnumMap<>(TaskType.class);
@@ -64,6 +66,10 @@ public class LiveViewModel extends ViewModel {
         return live;
     }
 
+    public LiveData<String> message() {
+        return message;
+    }
+
     public ZoneId getZoneId() {
         return zoneId;
     }
@@ -74,8 +80,12 @@ public class LiveViewModel extends ViewModel {
             setTimeZone(item);
             return item;
         }, live::postValue, error -> {
-            if (error instanceof ExtractException) url.postValue(Result.error(error.getMessage()));
-            else live.postValue(new Live());
+            if (error instanceof ExtractException) {
+                url.postValue(Result.error(error.getMessage()));
+            } else {
+                live.postValue(new Live());
+                message.postValue(error.getMessage() == null ? "" : error.getMessage());
+            }
         });
     }
 

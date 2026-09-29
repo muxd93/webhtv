@@ -154,6 +154,7 @@ import com.fongmi.android.tv.utils.EpisodeTitleCompact;
 import com.fongmi.android.tv.utils.FileChooser;
 import com.fongmi.android.tv.utils.ImgUtil;
 import com.fongmi.android.tv.utils.Notify;
+import com.fongmi.android.tv.utils.PushId;
 import com.fongmi.android.tv.utils.PiP;
 import com.fongmi.android.tv.utils.ResUtil;
 import com.fongmi.android.tv.utils.Sniffer;
@@ -379,48 +380,26 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     });
 
     public static void push(FragmentActivity activity, String text) {
-        if (FileChooser.isValid(activity, Uri.parse(text))) file(activity, FileChooser.getPathFromUri(Uri.parse(text)));
-        else start(activity, SiteApi.PUSH, Sniffer.getUrl(text), pushTitle(text));
+        // 推送统一规范化为 名称$URL；smb:// 等内部资源由 SmbDataSource 直连读取。
+        // 已含 '$' 的文本视为规范 id 原样透传（与 Sniffer 的透传规则一致）。
+        if (TextUtils.isEmpty(text)) return;
+        if (FileChooser.isValid(activity, Uri.parse(text))) {
+            file(activity, FileChooser.getPathFromUri(Uri.parse(text)));
+            return;
+        }
+        String url = Sniffer.getUrl(text);
+        if (url.indexOf('$') >= 0) {
+            start(activity, SiteApi.PUSH, url, PushId.displayName(url));
+        } else {
+            String name = PushId.lastName(url);
+            start(activity, SiteApi.PUSH, PushId.segment(name, url), name);
+        }
     }
 
     public static void file(FragmentActivity activity, String path) {
         if (TextUtils.isEmpty(path)) return;
         String name = new File(path).getName();
-        start(activity, SiteApi.PUSH, "file://" + path, name);
-    }
-
-    // 本地文件夹推送的 id 形如 文件夹名|||文件名1$file:///路径1#文件名2$file:///路径2
-    // 初始显示名：文件夹推送取“文件夹名”，单文件推送取文件名，避免把复合 id / file:// 路径当标题
-    private static String pushTitle(String text) {
-        if (TextUtils.isEmpty(text)) return text;
-        int sep = text.indexOf("|||");
-        if (sep >= 0) return text.substring(0, sep).trim();
-        String body = text;
-        int dollar = body.indexOf('$');
-        if (dollar > 0) body = body.substring(0, dollar);
-        if (body.startsWith("file://")) body = body.substring("file://".length());
-        return body.replace('/', ' ').trim();
-    }
-
-    // 从推送的复合 id 提取干净的显示名（与 SiteApi.pushDisplayName 一致）：文件夹名 / 文件名
-    private static String cleanPushName(String id) {
-        if (TextUtils.isEmpty(id)) return id;
-        int sep = id.indexOf("|||");
-        if (sep >= 0) return id.substring(0, sep).trim();
-        String body = id;
-        int dollar = body.indexOf('$');
-        if (dollar > 0) body = body.substring(0, dollar);
-        if (body.startsWith("file://")) body = body.substring("file://".length());
-        return body.replace('/', ' ').trim();
-    }
-
-    // 推送场景下，若传入的 name 仍是复合 id（文件管理器直推等边界情况），用 id 重新解析出干净名称
-    private String displayName() {
-        String name = Objects.toString(getIntent().getStringExtra("name"), "");
-        if (SiteApi.PUSH.equals(getKey()) && (name.contains("|||") || name.contains("$") || name.startsWith("file://"))) {
-            return cleanPushName(getId());
-        }
-        return name;
+        start(activity, SiteApi.PUSH, PushId.segment(name, "file://" + path), name);
     }
 
     public static void cast(Activity activity, History history) {
@@ -436,7 +415,7 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     }
 
     public static void start(Activity activity, String url) {
-        start(activity, SiteApi.PUSH, url, cleanPushName(url));
+        start(activity, SiteApi.PUSH, url, PushId.displayName(url));
     }
 
     public static void start(Activity activity, String key, String id, String name) {
@@ -483,7 +462,7 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     }
 
     private String getName() {
-        return displayName();
+        return Objects.toString(getIntent().getStringExtra("name"), "");
     }
 
     private String getPic() {
@@ -1332,7 +1311,7 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
         }
         item.checkPic(getPic());
         item.checkName(getName());
-        if (SiteApi.PUSH.equals(getKey())) item.setName(cleanPushName(getId()));
+        if (SiteApi.PUSH.equals(getKey())) item.setName(PushId.displayName(getId()));
         item.checkContent(getContent());
         mBinding.name.setText(item.getName());
         mFlagAdapter.addAll(item.getFlags());
@@ -4502,8 +4481,8 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
         if (!canSavePlaybackHistory(mHistory)) return;
         History history = mHistory.copy();
         Task.execute(() -> {
-            if (history.getDuration() > 0) history.merge().save();
-            else history.save();
+            // 不做按名合并：同一数据源内各站点的观看记录并存，与 TV 端行为一致
+            history.save();
             if (exit) RefreshEvent.history();
         });
     }

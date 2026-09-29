@@ -92,8 +92,8 @@ public class SmbDiscoverActivity extends BaseActivity implements SmbDeviceAdapte
         selected = null;
         devices.clear();
         adapter.clear();
-        binding.title.setText(R.string.elder_smb_scanning);
-        binding.subtitle.setText(R.string.elder_smb_scanning_tip);
+        binding.title.setText(R.string.smb_scanning);
+        binding.subtitle.setText(R.string.smb_scanning_tip);
         binding.empty.setVisibility(View.GONE);
         binding.progress.setVisibility(View.VISIBLE);
         binding.rescan.setVisibility(View.GONE);
@@ -115,8 +115,8 @@ public class SmbDiscoverActivity extends BaseActivity implements SmbDeviceAdapte
         adapter.addItem(device);
         binding.progress.setVisibility(View.GONE);
         binding.empty.setVisibility(View.GONE);
-        binding.title.setText(R.string.elder_smb_select_device);
-        binding.subtitle.setText(R.string.elder_smb_select_device_tip);
+        binding.title.setText(R.string.smb_select_device);
+        binding.subtitle.setText(R.string.smb_select_device_tip);
     }
 
     @Override
@@ -132,12 +132,12 @@ public class SmbDiscoverActivity extends BaseActivity implements SmbDeviceAdapte
         binding.progress.setVisibility(View.GONE);
         binding.rescan.setVisibility(View.VISIBLE);
         if (adapter.getItemCount() > 0) {
-            binding.title.setText(R.string.elder_smb_select_device);
-            binding.subtitle.setText(R.string.elder_smb_select_device_tip);
+            binding.title.setText(R.string.smb_select_device);
+            binding.subtitle.setText(R.string.smb_select_device_tip);
         } else {
-            binding.title.setText(R.string.elder_smb_not_found);
-            binding.subtitle.setText(R.string.elder_smb_not_found_tip);
-            binding.emptyText.setText(R.string.elder_smb_not_found_hint);
+            binding.title.setText(R.string.smb_not_found);
+            binding.subtitle.setText(R.string.smb_not_found_tip);
+            binding.emptyText.setText(R.string.smb_not_found_hint);
             binding.empty.setVisibility(View.VISIBLE);
         }
     }
@@ -166,7 +166,7 @@ public class SmbDiscoverActivity extends BaseActivity implements SmbDeviceAdapte
     private void showLoginDialog(SmbDevice device) {
         DialogSmbLoginBinding dialogBinding = DialogSmbLoginBinding.inflate(LayoutInflater.from(this));
         new MaterialAlertDialogBuilder(this)
-                .setTitle(getString(R.string.elder_smb_login_title, device.getName()))
+                .setTitle(getString(R.string.smb_login_title, device.getName()))
                 .setView(dialogBinding.getRoot())
                 .setPositiveButton(R.string.dialog_positive, (dialog, which) -> {
                     String user = dialogBinding.username.getText() == null ? "" : dialogBinding.username.getText().toString().trim();
@@ -180,15 +180,15 @@ public class SmbDiscoverActivity extends BaseActivity implements SmbDeviceAdapte
     /** 拉取共享列表；这一步把用户从"必须知道共享名"中解放出来。 */
     private void loadShares(SmbDevice device, String user, String pass) {
         binding.progress.setVisibility(View.VISIBLE);
-        binding.subtitle.setText(R.string.elder_smb_connecting);
+        binding.subtitle.setText(R.string.smb_connecting);
         Task.execute(() -> {
             List<String> shares = SmbHelper.listShares(device.getHost(), device.getPort(), user, pass);
             App.post(() -> {
                 binding.progress.setVisibility(View.GONE);
                 if (isFinishing() || isDestroyed()) return;
                 if (shares.isEmpty()) {
-                    Toast.makeText(this, R.string.elder_smb_no_share, Toast.LENGTH_LONG).show();
-                    binding.subtitle.setText(R.string.elder_smb_select_device_tip);
+                    Toast.makeText(this, R.string.smb_no_share, Toast.LENGTH_LONG).show();
+                    binding.subtitle.setText(R.string.smb_select_device_tip);
                     return;
                 }
                 username = user;
@@ -211,8 +211,8 @@ public class SmbDiscoverActivity extends BaseActivity implements SmbDeviceAdapte
             items.add(item);
         }
         adapter.setItems(items);
-        binding.title.setText(R.string.elder_smb_select_share);
-        binding.subtitle.setText(getString(R.string.elder_smb_select_share_tip, selected.getName()));
+        binding.title.setText(R.string.smb_select_share);
+        binding.subtitle.setText(getString(R.string.smb_select_share_tip, selected.getName()));
         binding.empty.setVisibility(View.GONE);
         binding.progress.setVisibility(View.GONE);
         binding.rescan.setVisibility(View.GONE);
@@ -248,12 +248,12 @@ public class SmbDiscoverActivity extends BaseActivity implements SmbDeviceAdapte
         hideField(dialogBinding.shareName);
         hideField(dialogBinding.name);
         new MaterialAlertDialogBuilder(this)
-                .setTitle(R.string.elder_smb_manual)
+                .setTitle(R.string.smb_manual)
                 .setView(dialogBinding.getRoot())
                 .setPositiveButton(R.string.dialog_positive, (dialog, which) -> {
                     String host = dialogBinding.host.getText() == null ? "" : dialogBinding.host.getText().toString().trim();
                     if (host.isEmpty()) {
-                        Toast.makeText(this, R.string.elder_smb_host_empty, Toast.LENGTH_SHORT).show();
+                        Toast.makeText(this, R.string.smb_host_empty, Toast.LENGTH_SHORT).show();
                         return;
                     }
                     int port = 445;
@@ -283,18 +283,18 @@ public class SmbDiscoverActivity extends BaseActivity implements SmbDeviceAdapte
     private void connectManual(String host, int port, String user, String pass) {
         stopScan();
         binding.progress.setVisibility(View.VISIBLE);
-        binding.subtitle.setText(R.string.elder_smb_connecting);
+        binding.subtitle.setText(R.string.smb_connecting);
         Task.execute(() -> {
             SmbHelper.ProbeResult result = SmbHelper.probe(host, port, user, pass);
             App.post(() -> {
                 if (isFinishing() || isDestroyed()) return;
                 binding.progress.setVisibility(View.GONE);
                 if (result.getStatus() == SmbHelper.ProbeStatus.UNREACHABLE) {
-                    Toast.makeText(this, R.string.elder_smb_unreachable, Toast.LENGTH_LONG).show();
+                    Toast.makeText(this, R.string.smb_unreachable, Toast.LENGTH_LONG).show();
                     return;
                 }
                 if (result.needAuth()) {
-                    Toast.makeText(this, R.string.elder_smb_auth_failed, Toast.LENGTH_LONG).show();
+                    Toast.makeText(this, R.string.smb_auth_failed, Toast.LENGTH_LONG).show();
                     return;
                 }
                 SmbDevice device = new SmbDevice(host, port);
@@ -303,7 +303,7 @@ public class SmbDiscoverActivity extends BaseActivity implements SmbDeviceAdapte
                 username = user;
                 password = pass;
                 if (result.getShares().isEmpty()) {
-                    Toast.makeText(this, R.string.elder_smb_no_share, Toast.LENGTH_LONG).show();
+                    Toast.makeText(this, R.string.smb_no_share, Toast.LENGTH_LONG).show();
                     return;
                 }
                 showShares(result.getShares());
@@ -316,8 +316,8 @@ public class SmbDiscoverActivity extends BaseActivity implements SmbDeviceAdapte
         if (step == STEP_SHARE) {
             step = STEP_DEVICE;
             adapter.setItems(devices);
-            binding.title.setText(R.string.elder_smb_select_device);
-            binding.subtitle.setText(R.string.elder_smb_select_device_tip);
+            binding.title.setText(R.string.smb_select_device);
+            binding.subtitle.setText(R.string.smb_select_device_tip);
             binding.rescan.setVisibility(View.VISIBLE);
             binding.manual.setVisibility(View.VISIBLE);
             if (devices.isEmpty()) startScan();

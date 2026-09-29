@@ -33,6 +33,8 @@ public class HistoryPresenter extends Presenter {
 
         void onItemDelete(History item);
 
+        void onItemFocus(History item);
+
         boolean onLongClick();
     }
 
@@ -56,6 +58,9 @@ public class HistoryPresenter extends Presenter {
         root.setOnClickListener(view -> {
             if (isDelete()) listener.onItemDelete(item);
             else listener.onItemClick(item);
+        });
+        root.setOnFocusChangeListener((view, hasFocus) -> {
+            if (hasFocus) listener.onItemFocus(item);
         });
     }
 
@@ -83,6 +88,9 @@ public class HistoryPresenter extends Presenter {
         String watchedTime = HistoryProgressFormatter.format(item.getPosition(), item.getDuration());
         holder.binding.historyProgress.setText(watchedTime.isEmpty() ? "" : holder.view.getContext().getString(R.string.history_watched_time, watchedTime));
         holder.binding.historyProgress.setVisibility(delete || watchedTime.isEmpty() ? View.GONE : View.VISIBLE);
+        boolean showBar = !delete && item.getDuration() > 0 && item.getPosition() > 0;
+        holder.binding.watchProgress.setVisibility(showBar ? View.VISIBLE : View.GONE);
+        if (showBar) holder.binding.watchProgress.setProgress((int) Math.min(100, item.getPosition() * 100 / item.getDuration()));
         ImgUtil.load(item.getVodName(), item.getVodPic(), holder.binding.image);
     }
 

@@ -9,11 +9,17 @@ import androidx.viewbinding.ViewBinding;
 
 import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.Product;
+import com.fongmi.android.tv.R;
+import com.fongmi.android.tv.api.SiteApi;
 import com.fongmi.android.tv.databinding.ActivityFileBinding;
 import com.fongmi.android.tv.ui.adapter.FileAdapter;
 import com.fongmi.android.tv.ui.base.BaseActivity;
+import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.PermissionUtil;
+import com.fongmi.android.tv.utils.PushId;
+import com.github.catvod.crawler.SpiderDebug;
 import com.fongmi.android.tv.utils.Task;
+import com.fongmi.android.tv.utils.VideoFolderUtil;
 import com.github.catvod.utils.Path;
 
 import java.io.File;
@@ -28,6 +34,7 @@ public class FileActivity extends BaseActivity implements FileAdapter.OnClickLis
     private FileAdapter mAdapter;
     private File dir;
     private boolean selectDir;
+    private boolean playMode;
     private Future<?> pending;
 
     private boolean isRoot() {
@@ -42,6 +49,7 @@ public class FileActivity extends BaseActivity implements FileAdapter.OnClickLis
     @Override
     protected void initView(Bundle savedInstanceState) {
         selectDir = getIntent().getBooleanExtra("select_dir", false);
+        playMode = getIntent().getBooleanExtra("play_mode", false);
         setRecyclerView();
         checkPermission();
     }
@@ -97,10 +105,42 @@ public class FileActivity extends BaseActivity implements FileAdapter.OnClickLis
     public void onItemClick(File file) {
         if (file.isDirectory()) {
             update(file);
-        } else {
-            setResult(RESULT_OK, new Intent().setData(Uri.fromFile(file)));
-            finish();
+            return;
         }
+        if (playMode) {
+            if (VideoFolderUtil.isVideoFile(file.getName())) VideoActivity.push(this, Uri.fromFile(file).toString());
+            return;
+        }
+        setResult(RESULT_OK, new Intent().setData(Uri.fromFile(file)));
+        finish();
+    }
+
+    /** 播放模式下长按文件夹：递归收集该目录视频，一键连播 */
+    @Override
+    public boolean onItemLongClick(File file) {
+        if (!playMode || !file.isDirectory()) return false;
+        playFolder(file);
+        return true;
+    }
+
+    private void playFolder(File folder) {
+        Notify.show(R.string.smb_loading);
+        Task.execute(() -> {
+            String urls = VideoFolderUtil.buildFolderPlayUrl(folder, isRecursive());
+            SpiderDebug.log("push-folder", "build folder=%s recursive=%s urls=%s", folder.getName(), isRecursive(), urls);
+            App.post(() -> {
+                if (isFinishing()) return;
+                if (urls.isEmpty()) {
+                    Notify.show(R.string.folder_no_video);
+                    return;
+                }
+                VideoActivity.start(this, SiteApi.PUSH, PushId.folder(folder.getName(), urls), folder.getName(), null);
+            });
+        });
+    }
+
+    private boolean isRecursive() {
+        return com.fongmi.android.tv.setting.Setting.isFolderRecursive();
     }
 
     @Override
