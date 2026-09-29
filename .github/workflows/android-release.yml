@@ -1,6 +1,10 @@
 name: Android Release
 
 on:
+  push:
+    branches:
+      - main
+      - fongmi-sync
   workflow_dispatch:
     inputs:
       release_tag:
@@ -43,8 +47,8 @@ env:
   TZ: Asia/Shanghai
   CNB_API_ENDPOINT: https://api.cnb.cool
   CNB_WEB_ENDPOINT: https://cnb.cool
-  CNB_REPO_SLUG: fish2035/webhtv-release
-  CNB_REPO_URL: https://cnb.cool/fish2035/webhtv-release.git
+  CNB_REPO_SLUG: muxd93/webhtv-release
+  CNB_REPO_URL: https://cnb.cool/muxd93/webhtv-release.git
 
 jobs:
   release:
@@ -299,7 +303,7 @@ jobs:
           if [ "${{ inputs.prerelease }}" = "true" ] || [ "${{ steps.meta.outputs.channel }}" = "beta" ]; then
             PRERELEASE_FLAG="--prerelease"
           fi
-          NOTES="${RELEASE_NOTES:-手动触发 GitHub Actions 构建发布。}"
+          NOTES="${RELEASE_NOTES:-推送触发 GitHub Actions 构建发布。}"
           gh release create "${{ steps.meta.outputs.tag }}" \
             --target "$GITHUB_SHA" \
             --title "${{ steps.meta.outputs.title }}" \

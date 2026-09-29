@@ -52,7 +52,7 @@ import java.util.concurrent.TimeoutException;
 
 public class Updater implements UpdateTransfer.Callback, UpdateListener {
 
-    private static final String DEFAULT_RELEASE_NOTES = "手动触发 GitHub Actions 构建发布。";
+    private static final String DEFAULT_RELEASE_NOTES = "推送触发 GitHub Actions 构建发布。";
     private static final long UPDATE_CHECK_TIMEOUT_MS = TimeUnit.SECONDS.toMillis(10);
     private static final long GITHUB_REQUEST_TIMEOUT_MS = TimeUnit.SECONDS.toMillis(4);
     private static final Map<String, String> GITHUB_API_HEADERS = Map.of("Accept", "application/vnd.github+json", "X-GitHub-Api-Version", "2022-11-28");
