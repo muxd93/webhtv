@@ -3,6 +3,8 @@ package com.fongmi.android.tv.api.loader;
 import android.content.Context;
 
 import com.fongmi.android.tv.App;
+import com.fongmi.android.tv.R;
+import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.Download;
 import com.fongmi.android.tv.utils.UrlUtil;
 import com.github.catvod.crawler.Spider;
@@ -162,6 +164,7 @@ public class JarLoader {
             if (!md5.isEmpty() && Util.equals(jar, md5)) {
                 load(key, Path.jar(jar));
             } else if (jar.startsWith("http")) {
+                App.post(() -> Notify.show(R.string.jar_downloading));
                 load(key, Download.create(jar, Path.jar(jar)).get());
             } else if (jar.startsWith("file")) {
                 load(key, Path.local(jar));

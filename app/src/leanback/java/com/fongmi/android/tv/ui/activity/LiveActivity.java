@@ -805,7 +805,7 @@ public class LiveActivity extends PlaybackActivity implements GroupAdapter.OnCli
 
     @Override
     public void onConfigError(String msg) {
-        Notify.show(msg);
+        Notify.retry(this, msg, () -> mSession.start(isEmpty()));
     }
 
     @Override

@@ -9,6 +9,7 @@ import com.fongmi.android.tv.bean.Config;
 import com.fongmi.android.tv.event.ConfigEvent;
 import com.fongmi.android.tv.impl.Callback;
 import com.fongmi.android.tv.server.Server;
+import com.fongmi.android.tv.setting.Setting;
 import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.Task;
 import com.fongmi.android.tv.utils.UrlUtil;
@@ -17,6 +18,8 @@ import com.github.catvod.bean.Proxy;
 import com.github.catvod.crawler.SpiderDebug;
 import com.github.catvod.net.OkHttp;
 import com.github.catvod.utils.Json;
+import com.github.catvod.utils.Prefers;
+import com.github.catvod.utils.Util;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -31,6 +34,8 @@ abstract class BaseConfig {
     public static final int VOD = 0;
     public static final int LIVE = 1;
     public static final int WALL = 2;
+
+    // 订阅源超龄刷新周期（小时）由 Setting.stale 控制（0 = 关闭自动刷新），默认 12h 对齐主流聚合源（iptv-api 等）
 
     private final AtomicInteger taskId = new AtomicInteger(0);
 
@@ -195,6 +200,30 @@ abstract class BaseConfig {
 
     /** 网络内容拉取并生效后回调（含内容未变的成功拉取）；回退缓存的失败路径不回调。 */
     protected void onFetched(Config config) {
+        if (config == null || TextUtils.isEmpty(config.getUrl())) return;
+        Prefers.put(fetchTsPrefix() + Util.md5(config.getUrl()), System.currentTimeMillis());
+    }
+
+    /** onFetched 时间戳键前缀；子类沿用历史键名（如 live_fetch_ts_）以保持既有数据兼容。 */
+    protected String fetchTsPrefix() {
+        return "fetch_ts_";
+    }
+
+    /** 内容超龄时静默重拉（SWR）：已有加载进行中则跳过，避免与启动加载重复拉网络；内容变化经既有事件生效。 */
+    public void refreshIfStale() {
+        try {
+            int hours = Setting.getStale();
+            if (hours <= 0) return;
+            if (future != null && !future.isDone()) return;
+            Config config = getConfig();
+            if (config.isEmpty() || sync) return;
+            if (!config.getUrl().startsWith("http")) return;
+            long ts = Prefers.getLong(fetchTsPrefix() + Util.md5(config.getUrl()));
+            if (ts > 0 && System.currentTimeMillis() - ts < hours * 3600_000L) return;
+            App.post(() -> load(new Callback()));
+        } catch (Throwable e) {
+            e.printStackTrace();
+        }
     }
 
     private void parseAndCache(Config config, String json) throws Throwable {

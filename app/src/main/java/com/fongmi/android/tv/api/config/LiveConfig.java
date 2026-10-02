@@ -2,7 +2,6 @@ package com.fongmi.android.tv.api.config;
 
 import android.text.TextUtils;
 
-import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.api.LiveApi;
 import com.fongmi.android.tv.api.loader.BaseLoader;
 import com.fongmi.android.tv.api.parser.LiveParser;
@@ -23,8 +22,6 @@ import com.fongmi.android.tv.utils.UrlUtil;
 import com.github.catvod.bean.Header;
 import com.github.catvod.bean.Proxy;
 import com.github.catvod.utils.Json;
-import com.github.catvod.utils.Prefers;
-import com.github.catvod.utils.Util;
 import com.google.gson.JsonObject;
 
 import java.util.ArrayList;
@@ -111,6 +108,12 @@ public class LiveConfig extends BaseConfig {
     }
 
     @Override
+    protected String fetchTsPrefix() {
+        // 与 LiveAggregator.parse 写入的键保持一致，池内源切换为普通配置时时间戳依然有效
+        return "live_fetch_ts_";
+    }
+
+    @Override
     protected Config defaultConfig() {
         return Config.live();
     }
@@ -156,31 +159,6 @@ public class LiveConfig extends BaseConfig {
     public void load() {
         if (sync) return;
         load(new Callback());
-    }
-
-    // 进直播页超龄检查的刷新周期，对齐主流聚合源（iptv-api 等）的 12h 更新节奏
-    private static final long STALE_MS = 12L * 60 * 60 * 1000;
-    // 缓存文件每次加载都会重写（parseAndCache），内容年龄只能靠网络成功路径写的独立时间戳
-    private static final String KEY_FETCH_TS = "live_fetch_ts_";
-
-    @Override
-    protected void onFetched(Config config) {
-        if (config == null || TextUtils.isEmpty(config.getUrl())) return;
-        Prefers.put(KEY_FETCH_TS + Util.md5(config.getUrl()), System.currentTimeMillis());
-    }
-
-    /** 进直播页时检查内容年龄：超过阈值后台静默重拉；内容未变无事件，变化对下次进入生效，不打断当前观看。 */
-    public void refreshIfStale() {
-        try {
-            Config config = getConfig();
-            if (config.isEmpty() || sync) return;
-            if (!config.getUrl().startsWith("http")) return;
-            long ts = Prefers.getLong(KEY_FETCH_TS + Util.md5(config.getUrl()));
-            if (ts > 0 && System.currentTimeMillis() - ts < STALE_MS) return;
-            App.post(this::load);
-        } catch (Throwable e) {
-            e.printStackTrace();
-        }
     }
 
     private void parseText(Config config, String text) {
@@ -250,6 +228,12 @@ public class LiveConfig extends BaseConfig {
 
     public void setKeep(Channel channel) {
         if (home != null && !channel.getGroup().isHidden()) home.keep(channel).save();
+    }
+
+    /** 订阅源删除后的联动清理（聚合池出池并重聚合）；type 非直播时为空操作，由删除流程显式调用。 */
+    public void onSourceDeleted(int type, String url) {
+        if (type != LIVE || TextUtils.isEmpty(url)) return;
+        LiveAggregator.onSourceDeleted(url);
     }
 
     public void applyKeepsToGroups(List<Group> items) {

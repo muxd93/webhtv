@@ -3,6 +3,7 @@ package com.fongmi.android.tv.ui.dialog;
 import androidx.fragment.app.FragmentActivity;
 import androidx.viewbinding.ViewBinding;
 
+import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.api.config.LiveConfig;
 import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.api.config.WallConfig;
@@ -91,7 +92,14 @@ public class HistoryDialog extends BaseAlertDialog implements ConfigAdapter.OnCl
 
     @Override
     public void onDeleteClick(Config item) {
-        if (adapter.remove(item) == 0) dismiss();
+        new MaterialAlertDialogBuilder(requireContext())
+                .setMessage(getString(R.string.config_delete_confirm, item.getDesc()))
+                .setNegativeButton(R.string.dialog_negative, null)
+                .setPositiveButton(R.string.dialog_positive, (dialog, which) -> {
+                    if (adapter.remove(item) == 0) dismiss();
+                    LiveConfig.get().onSourceDeleted(item.getType(), item.getUrl());
+                })
+                .show();
     }
 
     @Override

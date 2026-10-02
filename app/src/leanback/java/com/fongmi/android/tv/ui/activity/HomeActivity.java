@@ -430,7 +430,9 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
             @Override
             public void error(String msg) {
                 SpiderDebug.log("startup", "config load error cost=%sms msg=%s", System.currentTimeMillis() - App.time(), msg);
-                Notify.show(msg);
+                // 复位加载标志：失败后允许再次触发 initConfig（重试对话框走独立加载路径，不依赖该标志）
+                mConfigLoading = false;
+                Notify.retry(getActivity(), msg, () -> VodConfig.get().init().load(getCallback()));
                 showContent();
             }
         };
@@ -914,6 +916,8 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
         super.onResume();
         mClock.start();
         if (mWeb != null) mWeb.onResume();
+        // 长驻进程回前台时补齐点播订阅的超龄静默刷新（12h 内/加载进行中自动跳过）
+        VodConfig.get().refreshIfStale();
     }
 
     /**

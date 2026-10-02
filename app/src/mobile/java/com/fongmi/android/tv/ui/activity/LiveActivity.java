@@ -1203,7 +1203,7 @@ public class LiveActivity extends PlaybackActivity implements CustomKeyDown.List
 
     @Override
     public void onConfigError(String msg) {
-        Notify.show(msg);
+        Notify.retry(this, msg, () -> mSession.start(isEmpty()));
     }
 
     @Override

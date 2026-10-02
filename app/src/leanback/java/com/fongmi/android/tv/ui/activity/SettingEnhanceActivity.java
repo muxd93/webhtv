@@ -91,6 +91,7 @@ public class SettingEnhanceActivity extends BaseActivity {
             else Notify.show(R.string.setting_custom_csp_permission_required);
         }));
         mBinding.loginState.setOnClickListener(view -> LoginStateLearnDialog.show(this, this::setText));
+        mBinding.staleRefresh.setOnClickListener(this::setStaleRefresh);
         mBinding.oneKeySync.setOnClickListener(v -> OneKeySyncDialog.create().show(this));
     }
 
@@ -112,6 +113,7 @@ public class SettingEnhanceActivity extends BaseActivity {
                 mBinding.driveCheck,
                 mBinding.siteHealthSort,
                 mBinding.debugLog,
+                mBinding.staleRefresh,
                 mBinding.playbackWebhook
         };
         for (View view : order) parent.removeView(view);
@@ -136,6 +138,7 @@ public class SettingEnhanceActivity extends BaseActivity {
         safeSet("gitCloud", mBinding.gitCloudText, () -> getString(R.string.git_cloud_account_count, GitCloudAccountStore.list().size()));
         setShellProxyText();
         setCustomCspText();
+        safeSet("staleRefresh", mBinding.staleRefreshText, this::getStaleText);
         safeSet("loginState", mBinding.loginStateText, () -> {
             int learned = LoginStateSync.learnedCount();
             int pending = LoginStateSync.pendingPaths().size();
@@ -219,6 +222,19 @@ public class SettingEnhanceActivity extends BaseActivity {
 
     private void setCspWarmup(View view) {
         CspWarmupDialog.show(this, this::setText);
+    }
+
+    private void setStaleRefresh(View view) {
+        int[] options = Setting.getStaleOptions();
+        int index = 0;
+        for (int i = 0; i < options.length; i++) if (options[i] == Setting.getStale()) index = i;
+        Setting.putStale(options[(index + 1) % options.length]);
+        setText();
+    }
+
+    private String getStaleText() {
+        int hours = Setting.getStale();
+        return hours <= 0 ? getString(R.string.setting_disable) : getString(R.string.setting_stale_hours, hours);
     }
 
     private String getCspWarmupText() {

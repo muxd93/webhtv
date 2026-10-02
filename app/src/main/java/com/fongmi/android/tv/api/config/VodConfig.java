@@ -3,6 +3,7 @@ package com.fongmi.android.tv.api.config;
 import android.text.TextUtils;
 
 import com.fongmi.android.tv.App;
+import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.api.CspWarmup;
 import com.fongmi.android.tv.api.loader.BaseLoader;
 import com.fongmi.android.tv.bean.Config;
@@ -14,8 +15,11 @@ import com.fongmi.android.tv.event.ConfigEvent;
 import com.fongmi.android.tv.event.RefreshEvent;
 import com.fongmi.android.tv.impl.Callback;
 import com.fongmi.android.tv.setting.CustomCspSetting;
+import com.fongmi.android.tv.utils.Notify;
+import com.fongmi.android.tv.utils.ResUtil;
 import com.fongmi.android.tv.web.ext.WebHomeExtensionRegistry;
 import com.github.catvod.bean.Doh;
+import com.github.catvod.crawler.SpiderDebug;
 import com.github.catvod.bean.Header;
 import com.github.catvod.bean.Proxy;
 import com.github.catvod.utils.Json;
@@ -110,6 +114,11 @@ public class VodConfig extends BaseConfig {
     }
 
     @Override
+    protected String fetchTsPrefix() {
+        return "vod_fetch_ts_";
+    }
+
+    @Override
     protected Config defaultConfig() {
         return Config.vod();
     }
@@ -155,6 +164,8 @@ public class VodConfig extends BaseConfig {
         List<Config> configs = new ArrayList<>();
         for (Depot item : items) configs.add(Config.find(item, VOD));
         if (configs.isEmpty()) throw new Exception("Depot urls is empty");
+        // 与直播多仓（LIVE4）对齐：全部子源落库进历史供切换，仅加载第一个；点播不做跨源聚合
+        if (configs.size() > 1) App.post(() -> Notify.show(ResUtil.getString(R.string.vod_depot_imported, configs.size())));
         load(this.config = configs.get(0));
         Config.delete(config.getUrl());
     }
@@ -199,7 +210,13 @@ public class VodConfig extends BaseConfig {
 
     private void initSite(Config config, JsonObject object) {
         String spider = Json.safeString(object, "spider");
-        BaseLoader.get().parseJar(spider, true);
+        try {
+            BaseLoader.get().parseJar(spider, true);
+        } catch (Throwable e) {
+            // jar 失败不阻断配置本体生效：站点列表照常渲染，依赖该 jar 的站点运行时再报错
+            SpiderDebug.log(TAG, "spider jar load failed url=%s error=%s", config.getUrl(), e.getMessage());
+            App.post(() -> Notify.show(R.string.jar_failed));
+        }
         setSites(Json.safeListElement(object, "sites").stream().map(e -> Site.objectFrom(e, spider)).distinct().collect(Collectors.toCollection(ArrayList::new)));
         Map<String, Site> items = Site.findAll().stream().collect(Collectors.toMap(Site::getKey, Function.identity()));
         getSites().forEach(site -> site.sync(items.get(site.getKey())));

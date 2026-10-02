@@ -533,6 +533,21 @@ public class Setting {
         return getCspWarmupSelectedMode();
     }
 
+    /** 订阅源自动静默刷新周期候选（小时），0 = 关闭自动刷新。 */
+    private static final int[] STALE_OPTIONS = {6, 12, 24, 48, 0};
+
+    public static int[] getStaleOptions() {
+        return STALE_OPTIONS;
+    }
+
+    public static int getStale() {
+        return Prefers.getInt("stale", 12);
+    }
+
+    public static void putStale(int hours) {
+        Prefers.put("stale", hours);
+    }
+
     public static int getCspWarmupSelectedMode() {
         int mode = Prefers.getInt("csp_warmup_mode", CSP_WARMUP_DEFAULT);
         return mode == CSP_WARMUP_CUSTOM ? CSP_WARMUP_CUSTOM : CSP_WARMUP_DEFAULT;

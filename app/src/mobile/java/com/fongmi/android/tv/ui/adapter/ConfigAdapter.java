@@ -18,6 +18,7 @@ public class ConfigAdapter extends RecyclerView.Adapter<ConfigAdapter.ViewHolder
     private final OnClickListener listener;
     private List<Config> mItems;
     private boolean readOnly;
+    private String currentUrl;
 
     public ConfigAdapter(OnClickListener listener) {
         this.listener = listener;
@@ -41,8 +42,13 @@ public class ConfigAdapter extends RecyclerView.Adapter<ConfigAdapter.ViewHolder
 
     public ConfigAdapter addAll(int type, Config current) {
         mItems = Config.getAll(type);
-        String currentUrl = current == null ? null : current.getUrl();
-        if (!readOnly && !TextUtils.isEmpty(currentUrl)) mItems.removeIf(item -> TextUtils.equals(item.getUrl(), currentUrl));
+        currentUrl = current == null ? null : current.getUrl();
+        // 当前使用的配置置顶展示并标注（ViewHolder 内），不可从历史中删除
+        if (!readOnly && !TextUtils.isEmpty(currentUrl)) {
+            Config active = Config.find(currentUrl, type);
+            if (active != null) mItems.removeIf(item -> TextUtils.equals(item.getUrl(), currentUrl));
+            if (active != null) mItems.add(0, active);
+        }
         return this;
     }
 
@@ -69,9 +75,11 @@ public class ConfigAdapter extends RecyclerView.Adapter<ConfigAdapter.ViewHolder
     @Override
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
         Config item = mItems.get(position);
-        holder.binding.text.setText(item.getDesc());
+        boolean isCurrent = TextUtils.equals(item.getUrl(), currentUrl);
+        String desc = item.getDesc();
+        holder.binding.text.setText(isCurrent ? desc + holder.binding.text.getContext().getString(com.fongmi.android.tv.R.string.config_in_use) : desc);
         holder.binding.text.setOnClickListener(v -> listener.onTextClick(item));
-        holder.binding.delete.setVisibility(readOnly ? View.GONE : View.VISIBLE);
+        holder.binding.delete.setVisibility(readOnly || isCurrent ? View.GONE : View.VISIBLE);
         holder.binding.delete.setOnClickListener(v -> listener.onDeleteClick(item));
     }
 

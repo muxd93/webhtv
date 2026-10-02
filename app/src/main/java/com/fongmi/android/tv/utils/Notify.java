@@ -60,6 +60,14 @@ public class Notify {
         get().create(context);
     }
 
+    /** 配置加载失败等场景的轻量重试对话框（消息+重试/关闭）；retry 为空时仅提示。 */
+    public static void retry(Context context, String message, Runnable retry) {
+        if (context == null || TextUtils.isEmpty(message)) return;
+        MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(context).setMessage(message).setNegativeButton(com.fongmi.android.tv.R.string.dialog_negative, null);
+        if (retry != null) builder.setPositiveButton(com.fongmi.android.tv.R.string.action_retry, (dialog, which) -> retry.run());
+        builder.show();
+    }
+
     public static void dismiss() {
         try {
             if (get().mDialog != null) get().mDialog.dismiss();

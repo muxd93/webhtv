@@ -111,6 +111,13 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
     }
 
     @Override
+    protected void onResume() {
+        super.onResume();
+        // 长驻进程回前台时补齐点播订阅的超龄静默刷新（12h 内/加载进行中自动跳过）
+        VodConfig.get().refreshIfStale();
+    }
+
+    @Override
     protected void initEvent() {
         mBinding.navigation.findViewById(R.id.live).setOnLongClickListener(this::addShortcut);
     }
@@ -174,7 +181,7 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
                 resetVodChrome();
                 checkAction(getIntent());
                 StateEvent.empty();
-                Notify.show(msg);
+                Notify.retry(HomeActivity.this, msg, () -> initConfig());
             }
         };
     }

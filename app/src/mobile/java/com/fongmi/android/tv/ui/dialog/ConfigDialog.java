@@ -1,74 +1,57 @@
 package com.fongmi.android.tv.ui.dialog;
 
-import android.app.Activity;
-import android.content.Intent;
+import android.content.Context;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
-import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
 import android.view.inputmethod.EditorInfo;
+import android.widget.EditText;
 
-import androidx.activity.result.ActivityResultLauncher;
-import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.annotation.NonNull;
 import androidx.fragment.app.Fragment;
 import androidx.viewbinding.ViewBinding;
 
 import com.fongmi.android.tv.R;
-import com.fongmi.android.tv.api.config.LiveConfig;
-import com.fongmi.android.tv.api.config.VodConfig;
-import com.fongmi.android.tv.api.config.WallConfig;
 import com.fongmi.android.tv.bean.Config;
-import com.fongmi.android.tv.bean.LivePreset;
-import com.fongmi.android.tv.db.AppDatabase;
 import com.fongmi.android.tv.databinding.DialogConfigBinding;
 import com.fongmi.android.tv.impl.ConfigListener;
-import com.fongmi.android.tv.setting.LiveEpgSetting;
-import com.fongmi.android.tv.ui.custom.CustomTextListener;
-import com.fongmi.android.tv.utils.FileChooser;
-import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.ResUtil;
-import com.github.catvod.utils.Path;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
-import java.util.List;
-
-public class ConfigDialog extends BaseAlertDialog {
+public class ConfigDialog extends BaseConfigDialog {
 
     private DialogConfigBinding binding;
-    private boolean append = true;
-    private boolean edit;
-    private String ori;
-    private int type;
 
     public static ConfigDialog create() {
         return new ConfigDialog();
     }
 
+    @Override
     public ConfigDialog vod() {
-        type = 0;
-        return this;
+        return (ConfigDialog) super.vod();
     }
 
+    @Override
     public ConfigDialog live() {
-        type = 1;
-        return this;
+        return (ConfigDialog) super.live();
     }
 
+    @Override
     public ConfigDialog wall() {
-        type = 2;
-        return this;
+        return (ConfigDialog) super.wall();
     }
 
+    @Override
     public ConfigDialog edit() {
-        edit = true;
-        return this;
+        return (ConfigDialog) super.edit();
     }
 
-    public void show(Fragment fragment) {
+    public ConfigDialog show(Fragment fragment) {
         show(fragment.getChildFragmentManager(), null);
+        return this;
     }
 
     @Override
@@ -82,13 +65,30 @@ public class ConfigDialog extends BaseAlertDialog {
     }
 
     @Override
+    protected MaterialAlertDialogBuilder listDialog() {
+        return new MaterialAlertDialogBuilder(requireActivity(), R.style.ThemeOverlay_WebHTV_LightDialog);
+    }
+
+    @Override
+    protected EditText nameView() {
+        return binding.name;
+    }
+
+    @Override
+    protected EditText urlView() {
+        return binding.url;
+    }
+
+    @Override
+    protected void onConfigSaved(Config config) {
+        ((ConfigListener) requireParentFragment()).setConfig(config);
+    }
+
+    @Override
     protected void initView() {
-        Config config = getConfig();
         binding.title.setText(getDialogTitle());
-        binding.positive.setText(edit ? R.string.dialog_edit : R.string.dialog_positive);
-        binding.name.setText(edit ? config.getName() : "");
-        binding.url.setText(ori = config.getUrl());
-        binding.url.setSelection(TextUtils.isEmpty(ori) ? 0 : ori.length());
+        binding.positive.setText(getPositiveText());
+        initConfigViews();
         binding.preset.setVisibility(type == 1 && !edit ? View.VISIBLE : View.GONE);
     }
 
@@ -98,16 +98,7 @@ public class ConfigDialog extends BaseAlertDialog {
         binding.positive.setOnClickListener(v -> onPositive());
         binding.preset.setOnClickListener(this::onPreset);
         binding.choose.setEndIconOnClickListener(this::onChoose);
-        binding.url.addTextChangedListener(new CustomTextListener() {
-            @Override
-            public void onTextChanged(CharSequence s, int start, int before, int count) {
-                detect(s.toString());
-            }
-        });
-        binding.url.setOnEditorActionListener((textView, actionId, event) -> {
-            if (actionId == EditorInfo.IME_ACTION_DONE) onPositive();
-            return true;
-        });
+        initConfigEvents();
         binding.name.setOnEditorActionListener((textView, actionId, event) -> {
             if (actionId == EditorInfo.IME_ACTION_DONE) onPositive();
             return true;
@@ -119,107 +110,6 @@ public class ConfigDialog extends BaseAlertDialog {
         super.onStart();
         configureWindow();
         binding.url.requestFocus();
-    }
-
-    private Config getConfig() {
-        return switch (type) {
-            case 0 -> VodConfig.get().getConfig();
-            case 1 -> LiveConfig.get().getConfig();
-            case 2 -> WallConfig.get().getConfig();
-            default -> null;
-        };
-    }
-
-    private Config getStoredConfig() {
-        return switch (type) {
-            case 0 -> Config.vod();
-            case 1 -> Config.live();
-            case 2 -> Config.wall();
-            default -> Config.create(type);
-        };
-    }
-
-    private int getTypeName() {
-        return switch (type) {
-            case 0 -> R.string.setting_vod;
-            case 1 -> R.string.setting_live;
-            case 2 -> R.string.setting_wall;
-            default -> R.string.remote_trust_config_type;
-        };
-    }
-
-    private String getDialogTitle() {
-        int action = edit ? R.string.remote_trust_config_edit : R.string.remote_trust_config_add;
-        return getString(R.string.setting_config_dialog_title, getString(action), getString(getTypeName()));
-    }
-
-    private void onChoose(View view) {
-        FileChooser.from(launcher).show();
-    }
-
-    private void onPreset(View view) {
-        List<LivePreset> presets = LivePreset.get();
-        if (presets.isEmpty()) return;
-        LivePreset.refresh();
-        String[] names = presets.stream().map(LivePreset::getTitle).toArray(String[]::new);
-        new MaterialAlertDialogBuilder(requireActivity(), R.style.ThemeOverlay_WebHTV_LightDialog)
-                .setTitle(R.string.live_preset)
-                .setItems(names, (dialog, which) -> importPreset(presets.get(which)))
-                .show();
-    }
-
-    private void importPreset(LivePreset item) {
-        // 仅在用户未设全局 EPG 时随源挂载，避免覆盖已有配置
-        if (!item.getEpg().isEmpty() && LiveEpgSetting.getUrl().isEmpty()) LiveEpgSetting.putUrl(item.getEpg());
-        binding.name.setText(item.getName());
-        binding.url.setText(item.getUrl());
-        binding.url.setSelection(item.getUrl().length());
-        onPositive();
-    }
-
-    private void detect(String s) {
-        if (append && "h".equalsIgnoreCase(s)) {
-            append = false;
-            binding.url.append("ttp://");
-        } else if (append && "f".equalsIgnoreCase(s)) {
-            append = false;
-            binding.url.append("ile://");
-        } else if (append && "a".equalsIgnoreCase(s)) {
-            append = false;
-            binding.url.append("ssets://");
-        } else if (s.length() > 1) {
-            append = false;
-        } else if (s.isEmpty()) {
-            append = true;
-        }
-    }
-
-    private void onPositive() {
-        String url = binding.url.getText().toString().trim();
-        String name = binding.name.getText().toString().trim();
-        Config config = saveConfig(url, name);
-        if (config == null) {
-            Notify.show(R.string.remote_trust_config_url_required);
-            binding.url.requestFocus();
-            return;
-        }
-        ((ConfigListener) requireParentFragment()).setConfig(config);
-        dismiss();
-    }
-
-    private Config saveConfig(String url, String name) {
-        Config config;
-        if (url.isEmpty()) {
-            if (!edit) return null;
-            if (!TextUtils.isEmpty(ori)) Config.delete(ori, type);
-            return getStoredConfig();
-        } else if (edit) {
-            config = Config.find(ori, type).url(url).name(name).update();
-        } else {
-            Config exists = AppDatabase.get().getConfigDao().find(url, type);
-            config = exists != null ? exists : Config.create(type).url(url).name(name).update();
-        }
-        return config;
     }
 
     private void configureWindow() {
@@ -236,14 +126,4 @@ public class ConfigDialog extends BaseAlertDialog {
         window.setAttributes(params);
         window.setLayout(params.width, WindowManager.LayoutParams.WRAP_CONTENT);
     }
-
-    private final ActivityResultLauncher<Intent> launcher = registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> {
-        if (result.getResultCode() != Activity.RESULT_OK || result.getData() == null || result.getData().getData() == null) return;
-        String name = binding.name.getText().toString().trim();
-        String path = FileChooser.getPathFromUri(result.getData().getData());
-        if (TextUtils.isEmpty(path)) return;
-        String url = "file:/" + path.replace(Path.rootPath(), "");
-        ((ConfigListener) requireParentFragment()).setConfig(saveConfig(url, name));
-        dismiss();
-    });
 }

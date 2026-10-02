@@ -12,6 +12,8 @@ import com.fongmi.android.tv.bean.Config;
 import com.fongmi.android.tv.bean.Group;
 import com.fongmi.android.tv.bean.Live;
 import com.fongmi.android.tv.db.AppDatabase;
+import com.fongmi.android.tv.impl.Callback;
+import com.fongmi.android.tv.setting.Setting;
 import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.ResUtil;
 import com.fongmi.android.tv.utils.Task;
@@ -38,6 +40,10 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * 多仓聚合：把源池内各订阅源（txt/m3u）的频道按归一名合并成一份直播数据，
@@ -48,7 +54,6 @@ import java.util.Set;
 public class LiveAggregator {
 
     private static final String NAME = "聚合";
-    private static final long STALE_MS = 12L * 60 * 60 * 1000;
     private static final String KEY_FETCH_TS = "live_fetch_ts_";
     private static final long FETCH_TIMEOUT = 20000;
     // 全死频道隔离阈值：连续 2 轮全部线路失效才移出聚合文件（可自动复活）
@@ -235,34 +240,30 @@ public class LiveAggregator {
         JsonObject lines = meta.has("lines") ? meta.getAsJsonObject("lines") : new JsonObject();
         JsonObject probe = meta.has("probe") ? meta.getAsJsonObject("probe") : new JsonObject();
         Set<String> quarantine = quarantineKeys(meta);
-        List<Live> parsed = new ArrayList<>();
-        for (Config config : pool) {
-            JsonObject state = findState(sources, config.getUrl());
-            Live live = parse(config, state);
-            if (live == null) continue;
-            for (Group group : live.getGroups())
-                for (Channel channel : group.getChannel())
-                    for (String url : channel.getUrls()) lines.addProperty(url, config.getName());
-            parsed.add(live);
-        }
+        List<Live> parsed = fetchPool(pool, sources, lines);
         if (parsed.isEmpty()) {
             if (notify) App.post(() -> Notify.show(R.string.live_agg_failed));
             return false;
         }
         Live merged = merge(parsed, probe, quarantine);
+        int channelCount = 0, lineCount = 0;
+        for (Group group : merged.getGroups())
+            for (Channel channel : group.getChannel()) {
+                channelCount++;
+                lineCount += channel.getUrls().size();
+            }
         if (notify) {
-            int channels = 0, linesCount = 0;
-            for (Group group : merged.getGroups())
-                for (Channel channel : group.getChannel()) {
-                    channels++;
-                    linesCount += channel.getUrls().size();
-                }
-            int channelCount = channels, lineCount = linesCount;
-            App.post(() -> Notify.show(ResUtil.getString(R.string.live_agg_done, channelCount, lineCount)));
+            int channels = channelCount, linesCount = lineCount;
+            App.post(() -> Notify.show(ResUtil.getString(R.string.live_agg_done, channels, linesCount)));
         }
         String json = toJson(merged);
         String previous = file().exists() ? Path.read(file()) : "";
         meta.add("lines", lines);
+        JsonObject agg = new JsonObject();
+        agg.addProperty("ts", System.currentTimeMillis());
+        agg.addProperty("channels", channelCount);
+        agg.addProperty("lines", lineCount);
+        meta.add("agg", agg);
         if (json.equals(previous)) {
             writeMeta(meta);
             return false;
@@ -290,7 +291,7 @@ public class LiveAggregator {
     /** 单源拉取解析：超龄才走网络（成功回写缓存与时间戳），否则用缓存；两者皆空视为失败。 */
     private static Live parse(Config config, JsonObject state) {
         long ts = state.has("ts") ? state.get("ts").getAsLong() : 0;
-        boolean stale = ts <= 0 || System.currentTimeMillis() - ts >= STALE_MS;
+        boolean stale = ts <= 0 || System.currentTimeMillis() - ts >= staleMs();
         String content = null;
         if (stale) {
             try {
@@ -316,6 +317,262 @@ public class LiveAggregator {
             return null;
         }
         return live.getGroups().isEmpty() ? null : live;
+    }
+
+    /** 并发拉取解析各源（结果按池序返回，失败源跳过）；单源 20s 超时语义不变，总耗时从各源之和降为最慢单源。 */
+    private static List<Live> fetchPool(List<Config> pool, JsonArray sources, JsonObject lines) {
+        ExecutorService exec = Executors.newFixedThreadPool(Math.min(6, Math.max(1, pool.size())));
+        Map<Integer, Live> results = new ConcurrentHashMap<>();
+        CountDownLatch latch = new CountDownLatch(pool.size());
+        for (int i = 0; i < pool.size(); i++) {
+            Config config = pool.get(i);
+            // findState 保持在提交循环内串行执行，避免并发写 sources 数组；state 对象此后仅被本源任务独占修改
+            JsonObject state = findState(sources, config.getUrl());
+            int index = i;
+            exec.submit(() -> {
+                try {
+                    Live live = parse(config, state);
+                    if (live != null) {
+                        int chans = 0;
+                        for (Group group : live.getGroups()) chans += group.getChannel().size();
+                        state.addProperty("chan", chans);
+                        results.put(index, live);
+                    }
+                } finally {
+                    latch.countDown();
+                }
+            });
+        }
+        try {
+            latch.await();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } finally {
+            exec.shutdownNow();
+        }
+        List<Live> parsed = new ArrayList<>();
+        for (int i = 0; i < pool.size(); i++) {
+            Live live = results.get(i);
+            if (live == null) continue;
+            // JsonObject 非线程安全，lines 溯源映射在并发结束后单线程合并
+            for (Group group : live.getGroups())
+                for (Channel channel : group.getChannel())
+                    for (String url : channel.getUrls()) lines.addProperty(url, live.getName());
+            parsed.add(live);
+        }
+        return parsed;
+    }
+
+    // ---------- 删除联动 ----------
+
+    /** 池内源被删除后的联动：立即出池重聚合（内容变化则静默重载）；池被删空则清盘聚合产物。 */
+    public static void onSourceDeleted(String url) {
+        if (TextUtils.isEmpty(url)) return;
+        Task.submit(() -> {
+            try {
+                if (!containsSource(url)) return;
+                if (pool().isEmpty()) {
+                    reset();
+                    if (isAggregate(LiveConfig.get().getConfig()))
+                        App.post(() -> LiveConfig.load(ensureConfig(), new Callback()));
+                    return;
+                }
+                if (aggregate()) App.post(() -> LiveConfig.get().load());
+            } catch (Throwable e) {
+                e.printStackTrace();
+            }
+        });
+    }
+
+    public static boolean containsSource(String url) {
+        JsonObject meta = readMeta();
+        if (!meta.has("sources")) return false;
+        for (JsonElement e : meta.getAsJsonArray("sources")) {
+            if (url.equals(e.getAsJsonObject().get("url").getAsString())) return true;
+        }
+        return false;
+    }
+
+    /** 清空聚合产物：文件、旁车 meta 与对应配置缓存一并移除（仅池被删空时使用）。 */
+    public static void reset() {
+        file().delete();
+        metaFile().delete();
+        ConfigCache.delete(url());
+    }
+
+    // ---------- 源池管理（SUB2，供 UI 调用；只改 meta，聚合由调用方显式触发） ----------
+
+    public static class SourceInfo {
+
+        public final String url;
+        public final String name;
+        public final boolean ok;
+        public final long ts;
+        public final boolean enabled;
+        public final int channels;
+
+        SourceInfo(String url, String name, boolean ok, long ts, boolean enabled, int channels) {
+            this.url = url;
+            this.name = name;
+            this.ok = ok;
+            this.ts = ts;
+            this.enabled = enabled;
+            this.channels = channels;
+        }
+    }
+
+    public static class QuarantineInfo {
+
+        public final String group;
+        public final String name;
+        public final String key;
+
+        QuarantineInfo(String group, String name, String key) {
+            this.group = group;
+            this.name = name;
+            this.key = key;
+        }
+    }
+
+    /** 源池快照；channels 为最近一次聚合解析的频道数（旧数据为 -1）。 */
+    public static List<SourceInfo> poolStatus() {
+        List<SourceInfo> items = new ArrayList<>();
+        JsonObject meta = readMeta();
+        if (!meta.has("sources")) return items;
+        for (JsonElement e : meta.getAsJsonArray("sources")) {
+            JsonObject item = e.getAsJsonObject();
+            String url = item.has("url") ? item.get("url").getAsString() : "";
+            if (TextUtils.isEmpty(url)) continue;
+            items.add(new SourceInfo(url,
+                    item.has("name") ? item.get("name").getAsString() : "",
+                    item.has("ok") && item.get("ok").getAsBoolean(),
+                    item.has("ts") ? item.get("ts").getAsLong() : 0,
+                    !item.has("enabled") || item.get("enabled").getAsBoolean(),
+                    item.has("chan") ? item.get("chan").getAsInt() : -1));
+        }
+        return items;
+    }
+
+    /** 聚合产物信息 {ts,channels,lines}；从未聚合返回 null。 */
+    public static JsonObject aggInfo() {
+        JsonObject meta = readMeta();
+        return meta.has("agg") ? meta.getAsJsonObject("agg") : null;
+    }
+
+    /** 新增源入池（追加到末尾，默认启用）；已在池内时忽略。 */
+    public static void addSource(Config config) {
+        if (config == null || TextUtils.isEmpty(config.getUrl()) || containsSource(config.getUrl())) return;
+        JsonObject meta = readMeta();
+        if (!meta.has("sources")) meta.add("sources", new JsonArray());
+        JsonObject item = new JsonObject();
+        item.addProperty("url", config.getUrl());
+        item.addProperty("name", config.getName());
+        item.addProperty("order", meta.getAsJsonArray("sources").size());
+        item.addProperty("ok", true);
+        item.addProperty("ts", 0);
+        item.addProperty("enabled", true);
+        meta.getAsJsonArray("sources").add(item);
+        writeMeta(meta);
+    }
+
+    /** 移出源池（保留历史配置可再加回）；池因此变空时清盘聚合产物。 */
+    public static void removeSource(String url) {
+        JsonObject meta = readMeta();
+        if (!meta.has("sources")) return;
+        JsonArray kept = new JsonArray();
+        for (JsonElement e : meta.getAsJsonArray("sources")) {
+            if (!url.equals(e.getAsJsonObject().get("url").getAsString())) kept.add(e);
+        }
+        meta.add("sources", kept);
+        writeMeta(meta);
+        if (kept.size() == 0) reset();
+    }
+
+    public static void setEnabled(String url, boolean enabled) {
+        JsonObject meta = readMeta();
+        if (!meta.has("sources")) return;
+        for (JsonElement e : meta.getAsJsonArray("sources")) {
+            JsonObject item = e.getAsJsonObject();
+            if (url.equals(item.get("url").getAsString())) {
+                item.addProperty("enabled", enabled);
+                writeMeta(meta);
+                return;
+            }
+        }
+    }
+
+    /** 与相邻源交换顺序（delta 正下负上），并重排 order 字段。 */
+    public static void move(String url, int delta) {
+        JsonObject meta = readMeta();
+        if (!meta.has("sources")) return;
+        JsonArray sources = meta.getAsJsonArray("sources");
+        int index = -1;
+        for (int i = 0; i < sources.size(); i++) {
+            if (url.equals(sources.get(i).getAsJsonObject().get("url").getAsString())) {
+                index = i;
+                break;
+            }
+        }
+        int target = index + delta;
+        if (index == -1 || target < 0 || target >= sources.size()) return;
+        JsonObject item = sources.get(index).getAsJsonObject();
+        JsonObject other = sources.get(target).getAsJsonObject();
+        sources.set(index, other);
+        sources.set(target, item);
+        for (int i = 0; i < sources.size(); i++) sources.get(i).getAsJsonObject().addProperty("order", i);
+        writeMeta(meta);
+    }
+
+    /** 隔离区快照（UI 展示用）。 */
+    public static List<QuarantineInfo> quarantineList() {
+        List<QuarantineInfo> items = new ArrayList<>();
+        JsonObject meta = readMeta();
+        if (!meta.has("quarantine")) return items;
+        for (JsonElement e : meta.getAsJsonArray("quarantine")) {
+            JsonObject item = e.getAsJsonObject();
+            String key = item.has("key") ? item.get("key").getAsString() : "";
+            if (key.isEmpty()) continue;
+            String name = key;
+            if (item.has("channel")) {
+                try {
+                    Channel channel = App.gson().fromJson(item.getAsJsonObject("channel"), Channel.class);
+                    if (channel != null && !channel.getName().isEmpty()) name = channel.getName();
+                } catch (Throwable ignored) {
+                }
+            }
+            items.add(new QuarantineInfo(item.has("group") ? item.get("group").getAsString() : "", name, key));
+        }
+        return items;
+    }
+
+    /** 手动复活：按 组+归一键 移出隔离区，并重置其 http 线路探测 streak（防旧失败轮次立即再隔离）。 */
+    public static boolean revive(String group, String key) {
+        JsonObject meta = readMeta();
+        if (!meta.has("quarantine")) return false;
+        JsonArray kept = new JsonArray();
+        JsonObject target = null;
+        for (JsonElement e : meta.getAsJsonArray("quarantine")) {
+            JsonObject item = e.getAsJsonObject();
+            String itemKey = item.has("key") ? item.get("key").getAsString() : "";
+            String itemGroup = item.has("group") ? item.get("group").getAsString() : "";
+            if (target == null && key.equals(itemKey) && group.equals(itemGroup)) target = item;
+            else kept.add(e);
+        }
+        if (target == null) return false;
+        meta.add("quarantine", kept);
+        JsonObject probe = meta.has("probe") ? meta.getAsJsonObject("probe") : null;
+        if (probe != null && target.has("channel")) {
+            try {
+                Channel channel = App.gson().fromJson(target.getAsJsonObject("channel"), Channel.class);
+                if (channel != null) for (String url : channel.getUrls()) {
+                    if (!url.startsWith("http") || !probe.has(url)) continue;
+                    probe.getAsJsonObject(url).addProperty("streak", 0);
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+        writeMeta(meta);
+        return true;
     }
 
     // ---------- 合并与排序 ----------
@@ -441,9 +698,15 @@ public class LiveAggregator {
 
     // ---------- 刷新入口 ----------
 
+    /** 自动刷新阈值（小时，Setting.stale 控制，0 = 关闭自动刷新；0 使手动聚合强制全量重拉）。 */
+    private static long staleMs() {
+        return Setting.getStale() * 3600_000L;
+    }
+
     /** 进直播页检查：聚合配置激活且源池超龄时后台重聚合；内容变化则静默重载。 */
     public static void refreshIfStale() {
         try {
+            if (Setting.getStale() <= 0) return;
             if (!isAggregate(LiveConfig.get().getConfig())) return;
             if (!isStale()) return;
             Task.submit(() -> {
@@ -470,7 +733,7 @@ public class LiveAggregator {
         for (JsonElement e : meta.getAsJsonArray("sources")) {
             JsonObject item = e.getAsJsonObject();
             long ts = item.has("ts") ? item.get("ts").getAsLong() : 0;
-            if (ts <= 0 || now - ts >= STALE_MS) return true;
+            if (ts <= 0 || now - ts >= staleMs()) return true;
         }
         return false;
     }

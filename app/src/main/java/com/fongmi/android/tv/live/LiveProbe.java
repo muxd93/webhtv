@@ -32,6 +32,20 @@ import okhttp3.Response;
  */
 public class LiveProbe {
 
+    /** 页面级进度订阅（如聚合源管理页）；回调统一切主线程，置 null 取消订阅。 */
+    public interface ProgressListener {
+
+        void onProgress(int done, int total);
+
+        void onFinished(int results, int ok);
+    }
+
+    private static volatile ProgressListener listener;
+
+    public static void setProgressListener(ProgressListener l) {
+        listener = l;
+    }
+
     public static class Result {
 
         public final boolean ok;
@@ -115,6 +129,8 @@ public class LiveProbe {
                     } finally {
                         latch.countDown();
                         int done = total - (int) latch.getCount();
+                        ProgressListener l = listener;
+                        if (l != null) App.post(() -> l.onProgress(done, total));
                         if (running && done < total && done % step == 0) App.post(() -> Notify.show(ResUtil.getString(R.string.live_probe_progress, done, total)));
                     }
                 });
@@ -127,7 +143,11 @@ public class LiveProbe {
         }
         boolean cancelled = !running;
         running = false;
-        if (results.isEmpty()) return;
+        if (results.isEmpty()) {
+            ProgressListener empty = listener;
+            if (empty != null) App.post(() -> empty.onFinished(0, 0));
+            return;
+        }
         boolean changed;
         try {
             changed = LiveAggregator.applyProbe(results);
@@ -143,6 +163,9 @@ public class LiveProbe {
             LiveConfig.get().load();
         });
         else App.post(() -> Notify.show(summary));
+        ProgressListener l = listener;
+        int okCount = ok;
+        if (l != null) App.post(() -> l.onFinished(results.size(), okCount));
     }
 
     private static Result probe(OkHttpClient client, Entry entry) {
