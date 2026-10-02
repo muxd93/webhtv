@@ -57,6 +57,11 @@
                     android:id="@+id/epg"
                     style="@style/ControlSheetButton"
                     android:text="@string/live_control_epg" />
+
+                <com.google.android.material.textview.MaterialTextView
+                    android:id="@+id/detect"
+                    style="@style/ControlSheetButton"
+                    android:text="@string/live_detect" />
             </androidx.appcompat.widget.LinearLayoutCompat>
 
             <com.google.android.material.textview.MaterialTextView

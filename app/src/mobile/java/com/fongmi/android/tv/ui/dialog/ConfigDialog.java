@@ -21,15 +21,19 @@ import com.fongmi.android.tv.api.config.LiveConfig;
 import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.api.config.WallConfig;
 import com.fongmi.android.tv.bean.Config;
+import com.fongmi.android.tv.bean.LivePreset;
 import com.fongmi.android.tv.db.AppDatabase;
 import com.fongmi.android.tv.databinding.DialogConfigBinding;
 import com.fongmi.android.tv.impl.ConfigListener;
+import com.fongmi.android.tv.setting.LiveEpgSetting;
 import com.fongmi.android.tv.ui.custom.CustomTextListener;
 import com.fongmi.android.tv.utils.FileChooser;
 import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.ResUtil;
 import com.github.catvod.utils.Path;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+
+import java.util.List;
 
 public class ConfigDialog extends BaseAlertDialog {
 
@@ -85,12 +89,14 @@ public class ConfigDialog extends BaseAlertDialog {
         binding.name.setText(edit ? config.getName() : "");
         binding.url.setText(ori = config.getUrl());
         binding.url.setSelection(TextUtils.isEmpty(ori) ? 0 : ori.length());
+        binding.preset.setVisibility(type == 1 && !edit ? View.VISIBLE : View.GONE);
     }
 
     @Override
     protected void initEvent() {
         binding.negative.setOnClickListener(v -> dismiss());
         binding.positive.setOnClickListener(v -> onPositive());
+        binding.preset.setOnClickListener(this::onPreset);
         binding.choose.setEndIconOnClickListener(this::onChoose);
         binding.url.addTextChangedListener(new CustomTextListener() {
             @Override
@@ -149,6 +155,26 @@ public class ConfigDialog extends BaseAlertDialog {
 
     private void onChoose(View view) {
         FileChooser.from(launcher).show();
+    }
+
+    private void onPreset(View view) {
+        List<LivePreset> presets = LivePreset.get();
+        if (presets.isEmpty()) return;
+        LivePreset.refresh();
+        String[] names = presets.stream().map(LivePreset::getTitle).toArray(String[]::new);
+        new MaterialAlertDialogBuilder(requireActivity(), R.style.ThemeOverlay_WebHTV_LightDialog)
+                .setTitle(R.string.live_preset)
+                .setItems(names, (dialog, which) -> importPreset(presets.get(which)))
+                .show();
+    }
+
+    private void importPreset(LivePreset item) {
+        // 仅在用户未设全局 EPG 时随源挂载，避免覆盖已有配置
+        if (!item.getEpg().isEmpty() && LiveEpgSetting.getUrl().isEmpty()) LiveEpgSetting.putUrl(item.getEpg());
+        binding.name.setText(item.getName());
+        binding.url.setText(item.getUrl());
+        binding.url.setSelection(item.getUrl().length());
+        onPositive();
     }
 
     private void detect(String s) {

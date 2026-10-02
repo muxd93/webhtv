@@ -21,11 +21,13 @@ import com.fongmi.android.tv.api.config.LiveConfig;
 import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.api.config.WallConfig;
 import com.fongmi.android.tv.bean.Config;
+import com.fongmi.android.tv.bean.LivePreset;
 import com.fongmi.android.tv.db.AppDatabase;
 import com.fongmi.android.tv.databinding.DialogConfigBinding;
 import com.fongmi.android.tv.event.ServerEvent;
 import com.fongmi.android.tv.impl.ConfigListener;
 import com.fongmi.android.tv.server.Server;
+import com.fongmi.android.tv.setting.LiveEpgSetting;
 import com.fongmi.android.tv.ui.custom.CustomTextListener;
 import com.fongmi.android.tv.utils.FileChooser;
 import com.fongmi.android.tv.utils.Notify;
@@ -38,6 +40,7 @@ import org.greenrobot.eventbus.EventBus;
 import org.greenrobot.eventbus.Subscribe;
 import org.greenrobot.eventbus.ThreadMode;
 
+import java.util.List;
 import java.util.Objects;
 
 public class ConfigDialog extends BaseAlertDialog {
@@ -102,6 +105,7 @@ public class ConfigDialog extends BaseAlertDialog {
         binding.text.setText(url = config.getUrl());
         binding.text.setSelection(TextUtils.isEmpty(url) ? 0 : url.length());
         binding.positive.setText(edit ? R.string.dialog_edit : R.string.dialog_positive);
+        binding.preset.setVisibility(type == 1 && !edit ? View.VISIBLE : View.GONE);
         binding.code.setImageBitmap(QRCode.getLightBitmap(Server.get().getAddress(4), 200, 0));
         binding.info.setText(ResUtil.getString(R.string.push_info, Server.get().getAddress()).replace("\uff0c", "\n"));
     }
@@ -109,6 +113,7 @@ public class ConfigDialog extends BaseAlertDialog {
     @Override
     protected void initEvent() {
         binding.choose.setOnClickListener(this::onChoose);
+        binding.preset.setOnClickListener(this::onPreset);
         binding.positive.setOnClickListener(this::onPositive);
         binding.negative.setOnClickListener(this::onNegative);
         binding.text.addTextChangedListener(new CustomTextListener() {
@@ -166,6 +171,23 @@ public class ConfigDialog extends BaseAlertDialog {
 
     private void onChoose(View view) {
         FileChooser.from(launcher).show();
+    }
+
+    private void onPreset(View view) {
+        List<LivePreset> presets = LivePreset.get();
+        if (presets.isEmpty()) return;
+        LivePreset.refresh();
+        String[] names = presets.stream().map(LivePreset::getTitle).toArray(String[]::new);
+        builder().setTitle(R.string.live_preset).setItems(names, (dialog, which) -> importPreset(presets.get(which))).show();
+    }
+
+    private void importPreset(LivePreset item) {
+        // 仅在用户未设全局 EPG 时随源挂载，避免覆盖已有配置
+        if (!item.getEpg().isEmpty() && LiveEpgSetting.getUrl().isEmpty()) LiveEpgSetting.putUrl(item.getEpg());
+        binding.name.setText(item.getName());
+        binding.text.setText(item.getUrl());
+        binding.text.setSelection(item.getUrl().length());
+        onPositive(null);
     }
 
     private void detect(String s) {

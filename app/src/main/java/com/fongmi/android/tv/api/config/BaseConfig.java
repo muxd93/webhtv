@@ -171,6 +171,7 @@ abstract class BaseConfig {
     protected void load(Config config) throws Throwable {
         try {
             parseAndCache(config, fetchJson(config));
+            onFetched(config);
         } catch (Throwable e) {
             String cached = ConfigCache.get(config.getUrl());
             if (cached == null) throw e;
@@ -190,6 +191,10 @@ abstract class BaseConfig {
 
     /** 子类把 JSON 解析进内存状态；默认空实现供未迁移的子类（如 WallConfig）继续重写 load 使用。 */
     protected void parse(Config config, String json) throws Throwable {
+    }
+
+    /** 网络内容拉取并生效后回调（含内容未变的成功拉取）；回退缓存的失败路径不回调。 */
+    protected void onFetched(Config config) {
     }
 
     private void parseAndCache(Config config, String json) throws Throwable {

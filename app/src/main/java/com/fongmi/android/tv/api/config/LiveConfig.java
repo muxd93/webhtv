@@ -2,6 +2,7 @@ package com.fongmi.android.tv.api.config;
 
 import android.text.TextUtils;
 
+import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.api.LiveApi;
 import com.fongmi.android.tv.api.loader.BaseLoader;
 import com.fongmi.android.tv.api.parser.LiveParser;
@@ -15,12 +16,15 @@ import com.fongmi.android.tv.bean.Rule;
 import com.fongmi.android.tv.db.AppDatabase;
 import com.fongmi.android.tv.event.ConfigEvent;
 import com.fongmi.android.tv.impl.Callback;
+import com.fongmi.android.tv.live.LiveAggregator;
 import com.fongmi.android.tv.setting.CustomCspSetting;
 import com.fongmi.android.tv.setting.LiveSetting;
 import com.fongmi.android.tv.utils.UrlUtil;
 import com.github.catvod.bean.Header;
 import com.github.catvod.bean.Proxy;
 import com.github.catvod.utils.Json;
+import com.github.catvod.utils.Prefers;
+import com.github.catvod.utils.Util;
 import com.google.gson.JsonObject;
 
 import java.util.ArrayList;
@@ -154,6 +158,31 @@ public class LiveConfig extends BaseConfig {
         load(new Callback());
     }
 
+    // 进直播页超龄检查的刷新周期，对齐主流聚合源（iptv-api 等）的 12h 更新节奏
+    private static final long STALE_MS = 12L * 60 * 60 * 1000;
+    // 缓存文件每次加载都会重写（parseAndCache），内容年龄只能靠网络成功路径写的独立时间戳
+    private static final String KEY_FETCH_TS = "live_fetch_ts_";
+
+    @Override
+    protected void onFetched(Config config) {
+        if (config == null || TextUtils.isEmpty(config.getUrl())) return;
+        Prefers.put(KEY_FETCH_TS + Util.md5(config.getUrl()), System.currentTimeMillis());
+    }
+
+    /** 进直播页时检查内容年龄：超过阈值后台静默重拉；内容未变无事件，变化对下次进入生效，不打断当前观看。 */
+    public void refreshIfStale() {
+        try {
+            Config config = getConfig();
+            if (config.isEmpty() || sync) return;
+            if (!config.getUrl().startsWith("http")) return;
+            long ts = Prefers.getLong(KEY_FETCH_TS + Util.md5(config.getUrl()));
+            if (ts > 0 && System.currentTimeMillis() - ts < STALE_MS) return;
+            App.post(this::load);
+        } catch (Throwable e) {
+            e.printStackTrace();
+        }
+    }
+
     private void parseText(Config config, String text) {
         Live live = new Live(UrlUtil.getName(config.getUrl()), config.getUrl()).sync();
         lives = new ArrayList<>(List.of(live));
@@ -173,10 +202,16 @@ public class LiveConfig extends BaseConfig {
 
     private void parseDepot(Config config, JsonObject object) throws Throwable {
         List<Depot> items = Depot.arrayFrom(object.getAsJsonArray("urls").toString());
+        if (items.isEmpty()) throw new Exception("Depot urls is empty");
         List<Config> configs = new ArrayList<>();
         for (Depot item : items) configs.add(Config.find(item, LIVE));
-        if (configs.isEmpty()) throw new Exception("Depot urls is empty");
-        load(this.config = configs.get(0));
+        if (configs.size() > 1) {
+            // 多仓：全量展开进源池，聚合落盘后加载聚合配置；池未变且未超龄时直接复用现有聚合文件
+            if (LiveAggregator.savePool(configs) || LiveAggregator.isStale()) LiveAggregator.aggregate(true);
+            load(this.config = LiveAggregator.ensureConfig());
+        } else {
+            load(this.config = configs.get(0));
+        }
         Config.delete(config.getUrl());
     }
 

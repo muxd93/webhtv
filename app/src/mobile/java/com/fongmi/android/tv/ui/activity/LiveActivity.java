@@ -634,7 +634,7 @@ public class LiveActivity extends PlaybackActivity implements CustomKeyDown.List
     }
 
     private void onLine() {
-        nextLine(false);
+        mSession.nextLine(false);
     }
 
     private void onScale() {

@@ -119,6 +119,8 @@ public class LiveSession {
 
     public void start(boolean empty) {
         if (!empty) {
+            LiveConfig.get().refreshIfStale();
+            LiveAggregator.refreshIfStale();
             load();
             return;
         }

@@ -1134,6 +1134,17 @@
     <string name="setting_hide">Hide</string>
     <string name="dialog_select_title">Select chapter</string>
     <string name="dialog_config_hint">Please enter the config…</string>
+    <string name="live_preset">Presets</string>
+    <string name="live_detect">Detect</string>
+    <string name="live_probe_start">Probing %1$d lines, tap again to cancel</string>
+    <string name="live_probe_progress">Probing %1$d/%2$d…</string>
+    <string name="live_probe_done">Probe done: %1$d ok, %2$d dead</string>
+    <string name="live_probe_partial">Probe cancelled: %1$d done, %2$d ok</string>
+    <string name="live_probe_cancel">Probe cancelled</string>
+    <string name="live_probe_unsupported">Probing works on the aggregated live source only</string>
+    <string name="live_agg_start">Aggregating %1$d sources…</string>
+    <string name="live_agg_done">Aggregated: %1$d channels, %2$d lines</string>
+    <string name="live_agg_failed">Aggregation failed: no usable source</string>
     <string name="dialog_config_name">Please enter the name…</string>
     <string name="dialog_config_url">Please enter the url…</string>
 

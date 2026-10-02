@@ -1131,6 +1131,17 @@
     <string name="setting_hide">隐藏</string>
     <string name="dialog_select_title">选择章节</string>
     <string name="dialog_config_hint">请输入配置…</string>
+    <string name="live_preset">推荐源</string>
+    <string name="live_detect">检测</string>
+    <string name="live_probe_start">开始检测 %1$d 条线路，再次点击可取消</string>
+    <string name="live_probe_progress">检测中 %1$d/%2$d…</string>
+    <string name="live_probe_done">检测完成：可用 %1$d，失效 %2$d</string>
+    <string name="live_probe_partial">检测已取消：完成 %1$d 条，可用 %2$d</string>
+    <string name="live_probe_cancel">已取消检测</string>
+    <string name="live_probe_unsupported">仅聚合直播源支持检测</string>
+    <string name="live_agg_start">正在聚合 %1$d 个直播源…</string>
+    <string name="live_agg_done">聚合完成：%1$d 个频道，%2$d 条线路</string>
+    <string name="live_agg_failed">聚合失败：所有订阅源均不可用</string>
     <string name="dialog_config_name">请输入名称…</string>
     <string name="dialog_config_url">请输入地址…</string>
 
