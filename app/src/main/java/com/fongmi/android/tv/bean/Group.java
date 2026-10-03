@@ -41,7 +41,9 @@ public class Group {
     public static List<Group> arrayFrom(String str) {
         Type listType = TypeToken.getParameterized(List.class, Group.class).getType();
         List<Group> items = App.gson().fromJson(str, listType);
-        return items == null ? Collections.emptyList() : items;
+        if (items == null) return Collections.emptyList();
+        for (Group group : items) for (Channel channel : group.getChannel()) channel.normalizeLines();
+        return items;
     }
 
     public static Group create() {
@@ -121,7 +123,7 @@ public class Group {
 
     public void add(Channel channel) {
         Channel exist = getChannel().stream().filter(item -> item.equals(channel)).findFirst().orElse(null);
-        if (exist != null) exist.getUrls().addAll(channel.getUrls());
+        if (exist != null) exist.mergeLines(channel);
         else getChannel().add(Channel.create(channel));
     }
 

@@ -137,6 +137,7 @@ public class Live {
             if (live.getJar().isEmpty()) live.setJar(spider);
             live.setApi(UrlUtil.convert(live.getApi()));
             live.setExt(UrlUtil.convert(live.getExt()));
+            for (Group group : live.getGroups()) for (Channel channel : group.getChannel()) channel.normalizeLines();
             return live.trans();
         } catch (Exception e) {
             return new Live();

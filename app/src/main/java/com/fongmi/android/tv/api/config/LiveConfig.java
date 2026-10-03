@@ -14,6 +14,7 @@ import com.fongmi.android.tv.bean.Live;
 import com.fongmi.android.tv.bean.Rule;
 import com.fongmi.android.tv.db.AppDatabase;
 import com.fongmi.android.tv.event.ConfigEvent;
+import com.fongmi.android.tv.event.RefreshEvent;
 import com.fongmi.android.tv.impl.Callback;
 import com.fongmi.android.tv.live.LiveAggregator;
 import com.fongmi.android.tv.setting.CustomCspSetting;
@@ -122,6 +123,16 @@ public class LiveConfig extends BaseConfig {
     protected void postEvent() {
         super.postEvent();
         ConfigEvent.live();
+    }
+
+    /** 后台内容更新（探测重排/聚合刷新/删源联动）后的静默重载：不打断在播会话，成功后广播 liveUpdated 供其软刷新。 */
+    public void reloadQuietly() {
+        loadSilent(new Callback() {
+            @Override
+            public void success() {
+                RefreshEvent.liveUpdated();
+            }
+        });
     }
 
     @Override

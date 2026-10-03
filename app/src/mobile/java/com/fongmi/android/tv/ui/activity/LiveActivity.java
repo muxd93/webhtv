@@ -1196,6 +1196,19 @@ public class LiveActivity extends PlaybackActivity implements CustomKeyDown.List
     }
 
     @Override
+    public void onSoftReloaded() {
+        mGroupAdapter.addAll(mSession.groups());
+        Group group = mSession.currentGroup();
+        if (group == null) {
+            mChannelAdapter.clear();
+            return;
+        }
+        mGroupAdapter.setSelected(group);
+        mChannelAdapter.addAll(group.getChannel(), getCurrentChannelPosition(group));
+        scrollToChannelPosition(Math.max(group.getPosition(), 0));
+    }
+
+    @Override
     public void onBusy(boolean busy) {
         if (busy) showProgress();
         else hideProgress();
@@ -1430,6 +1443,7 @@ public class LiveActivity extends PlaybackActivity implements CustomKeyDown.List
     public void onRefreshEvent(RefreshEvent event) {
         switch (event.getType()) {
             case LIVE -> mSession.switchLive(getHome());
+            case LIVE_UPDATE -> mSession.softReload();
             case PLAYER -> mSession.fetchLive();
         }
     }

@@ -798,6 +798,19 @@ public class LiveActivity extends PlaybackActivity implements GroupAdapter.OnCli
     }
 
     @Override
+    public void onSoftReloaded() {
+        mGroupAdapter.addAll(mSession.groups());
+        Group group = mSession.currentGroup();
+        if (group == null) return;
+        int index = mGroupAdapter.indexOf(group);
+        if (index >= 0 && mBinding.group.getSelectedPosition() != index) mBinding.group.setSelectedPosition(index);
+        mChannelAdapter.addAll(setWidth(group).getChannel());
+        int position = Math.max(group.getPosition(), 0);
+        mChannelAdapter.setSelected(position);
+        mBinding.channel.setSelectedPosition(position);
+    }
+
+    @Override
     public void onBusy(boolean busy) {
         if (busy) showProgress();
         else hideProgress();
@@ -866,6 +879,9 @@ public class LiveActivity extends PlaybackActivity implements GroupAdapter.OnCli
         switch (event.getType()) {
             case LIVE:
                 mSession.switchLive(getHome());
+                break;
+            case LIVE_UPDATE:
+                mSession.softReload();
                 break;
             case PLAYER:
                 mSession.fetchLive();

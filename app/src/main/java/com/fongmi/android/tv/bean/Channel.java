@@ -34,6 +34,8 @@ public class Channel {
 
     @SerializedName("urls")
     private List<String> urls;
+    @SerializedName("lineNames")
+    private List<String> lineNames;
     @SerializedName("number")
     private String number;
     @SerializedName("logo")
@@ -79,7 +81,9 @@ public class Channel {
     }
 
     public static Channel objectFrom(JsonElement element) {
-        return App.gson().fromJson(element, Channel.class);
+        Channel channel = App.gson().fromJson(element, Channel.class);
+        if (channel != null) channel.normalizeLines();
+        return channel;
     }
 
     public static Channel create(int number) {
@@ -100,6 +104,71 @@ public class Channel {
 
     public void setUrls(List<String> urls) {
         this.urls = urls;
+    }
+
+    public List<String> getLineNames() {
+        return lineNames = lineNames == null ? new ArrayList<>() : lineNames;
+    }
+
+    public void setLineNames(List<String> lineNames) {
+        this.lineNames = lineNames;
+    }
+
+    public String lineName(int index) {
+        return lineNames != null && index >= 0 && index < lineNames.size() ? lineNames.get(index) : "";
+    }
+
+    /** [$名称] 后缀拆分：$ 后含 "://" 视为 URL 本体的一部分，不拆；$ 起始视为 URL，不拆。 */
+    public static String[] splitLine(String url) {
+        if (url == null) return new String[]{"", ""};
+        int index = url.indexOf('$');
+        if (index < 1) return new String[]{url, ""};
+        String tail = url.substring(index + 1);
+        if (tail.contains("://")) return new String[]{url, ""};
+        return new String[]{url.substring(0, index), tail};
+    }
+
+    /** 追加原始线路（可含 $名称 后缀），拆分后保持 urls 与 lineNames 等长。 */
+    public void addLine(String url) {
+        String[] parts = splitLine(url);
+        addLine(parts[0], parts[1]);
+    }
+
+    public void addLine(String url, String name) {
+        getUrls().add(url);
+        getLineNames().add(name == null ? "" : name);
+    }
+
+    /** 把另一频道的线路并入本频道：URL 按整洁值去重，名称随行。 */
+    public void mergeLines(Channel other) {
+        List<String> theirs = other.getUrls();
+        for (int i = 0; i < theirs.size(); i++) {
+            if (getUrls().contains(theirs.get(i))) continue;
+            addLine(theirs.get(i), other.lineName(i));
+        }
+    }
+
+    /** 按给定次序（order[i] = 原索引）同步重排线路与名称。 */
+    public void orderLines(int[] order) {
+        List<String> orderedUrls = new ArrayList<>(order.length);
+        List<String> orderedNames = new ArrayList<>(order.length);
+        for (int index : order) {
+            orderedUrls.add(getUrls().get(index));
+            orderedNames.add(lineName(index));
+        }
+        this.urls = orderedUrls;
+        this.lineNames = orderedNames;
+    }
+
+    /** 反序列化/旧数据归一：URL 内联 $名称 剥离进 lineNames，并补齐等长。 */
+    public void normalizeLines() {
+        List<String> names = getLineNames();
+        while (names.size() < getUrls().size()) names.add("");
+        for (int i = 0; i < getUrls().size(); i++) {
+            String[] parts = splitLine(getUrls().get(i));
+            urls.set(i, parts[0]);
+            if (names.get(i).isEmpty()) names.set(i, parts[1]);
+        }
     }
 
     public String getNumber() {
@@ -336,8 +405,8 @@ public class Channel {
 
     public String getLine() {
         if (getUrls().size() <= 1) return "";
-        String[] sp = getUrls().get(getIndex()).split("\\$");
-        if (sp.length > 1 && !sp[1].isEmpty()) return sp[1];
+        String name = lineName(getIndex());
+        if (!name.isEmpty()) return name;
         return ResUtil.getString(R.string.live_line, getIndex() + 1);
     }
 
@@ -384,6 +453,8 @@ public class Channel {
         setDrm(item.getDrm());
         setEpg(item.getEpg());
         setUa(item.getUa());
+        setLineNames(item.lineNames == null ? new ArrayList<>() : new ArrayList<>(item.getLineNames()));
+        normalizeLines();
         return this;
     }
 

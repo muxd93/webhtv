@@ -77,4 +77,17 @@ public class LiveProbePolicyTest {
     public void emptyChannelNeverQuarantined() {
         assertFalse(LiveAggregator.allDead(Arrays.asList(), new JsonObject(), 2));
     }
+
+    @Test
+    public void orderIndicesMatchOrderUrlsPermutation() {
+        JsonObject probe = new JsonObject();
+        probe.add("http://a", state(true, 300, 0));
+        probe.add("http://b", state(true, 80, 0));
+        probe.add("http://c", state(false, 0, 3));
+        List<String> input = Arrays.asList("http://c", "http://x", "http://a", "http://b");
+        int[] order = LiveAggregator.orderIndices(input, probe);
+        List<String> ordered = LiveAggregator.orderUrls(input, probe);
+        assertEquals(input.size(), order.length);
+        for (int i = 0; i < order.length; i++) assertEquals(ordered.get(i), input.get(order[i]));
+    }
 }
