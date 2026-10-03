@@ -120,6 +120,7 @@ public class BackupPreferenceFilterTest {
 
         assertTrue(Backup.include("interface_failover_mode", settings));
         assertTrue(Backup.include("interface_order_vod", settings));
+        assertTrue(Backup.include("history_aggregation", settings));
         assertFalse(Backup.include("interface_failover_mode", none));
     }
 

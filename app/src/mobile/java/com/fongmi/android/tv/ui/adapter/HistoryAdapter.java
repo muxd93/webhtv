@@ -11,8 +11,11 @@ import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.bean.History;
 import com.fongmi.android.tv.databinding.AdapterVodBinding;
+import com.fongmi.android.tv.setting.Setting;
 import com.fongmi.android.tv.utils.HistoryProgressFormatter;
 import com.fongmi.android.tv.utils.ImgUtil;
+
+import java.util.Map;
 
 public class HistoryAdapter extends BaseDiffAdapter<History, HistoryAdapter.ViewHolder> {
 
@@ -20,6 +23,7 @@ public class HistoryAdapter extends BaseDiffAdapter<History, HistoryAdapter.View
     private int width, height;
     private boolean animate;
     private boolean delete;
+    private Map<Integer, String> configNames = Map.of();
 
     public HistoryAdapter(OnClickListener listener) {
         this.listener = listener;
@@ -40,6 +44,11 @@ public class HistoryAdapter extends BaseDiffAdapter<History, HistoryAdapter.View
         this.height = size[1];
     }
 
+    /** 聚合模式下用于把跨配置条目的站点名替换为来源配置名。 */
+    public void setConfigNames(Map<Integer, String> names) {
+        this.configNames = names == null ? Map.of() : names;
+    }
+
     public boolean isDelete() {
         return delete;
     }
@@ -54,7 +63,8 @@ public class HistoryAdapter extends BaseDiffAdapter<History, HistoryAdapter.View
     public void clear() {
         super.clear();
         setDelete(false);
-        History.deleteAndSync(VodConfig.getCid());
+        if (Setting.isHistoryAggregation()) History.deleteAllAndSync();
+        else History.deleteAndSync(VodConfig.getCid());
     }
 
     @NonNull
@@ -71,7 +81,7 @@ public class HistoryAdapter extends BaseDiffAdapter<History, HistoryAdapter.View
         History item = getItem(position);
         boolean same = item.getVodName().equals(item.getVodRemarks());
         holder.binding.name.setText(item.getVodName());
-        holder.binding.site.setText(item.getSiteName());
+        holder.binding.site.setText(siteText(item));
         holder.binding.remark.setText(item.getVodRemarks());
         holder.binding.site.setVisibility(item.getSiteVisible());
         int duration = (int) Math.min(Integer.MAX_VALUE, Math.max(0, item.getDuration()));
@@ -85,6 +95,11 @@ public class HistoryAdapter extends BaseDiffAdapter<History, HistoryAdapter.View
         holder.binding.historyProgress.setVisibility(delete || watchedTime.isEmpty() ? View.GONE : View.VISIBLE);
         ImgUtil.load(item.getVodName(), item.getVodPic(), holder.binding.image);
         setClickListener(holder.binding.getRoot(), item);
+    }
+
+    private String siteText(History item) {
+        String configName = configNames.get(item.getCid());
+        return item.getCid() != VodConfig.getCid() && configName != null ? configName : item.getSiteName();
     }
 
     private void setClickListener(View root, History item) {

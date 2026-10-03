@@ -81,6 +81,7 @@ import com.fongmi.android.tv.utils.AppListUtil;
 import com.fongmi.android.tv.utils.Clock;
 import com.fongmi.android.tv.utils.CrashRestartMode;
 import com.fongmi.android.tv.utils.FileChooser;
+import com.fongmi.android.tv.utils.HistoryOpener;
 import com.fongmi.android.tv.utils.ImgUtil;
 import com.fongmi.android.tv.utils.KeyUtil;
 import com.fongmi.android.tv.utils.Notify;
@@ -579,9 +580,11 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
     }
 
     private void getHistory(boolean renew) {
-        List<History> items = History.get();
+        boolean aggregated = Setting.isHistoryAggregation();
+        List<History> items = aggregated ? History.getAll() : History.get();
         boolean exist = hasRow(R.string.home_history);
         if (renew) mHistoryAdapter = new ArrayObjectAdapter(mPresenter = new HistoryPresenter(this));
+        if (aggregated) mPresenter.setConfigNames(History.configNameMap());
         if ((items.isEmpty() && exist) || (renew && exist)) mAdapter.removeItems(getHistoryIndex(), 1);
         if ((!items.isEmpty() && !exist) || (renew && exist)) mAdapter.add(getHistoryIndex(), new ListRow(mHistoryAdapter));
         mHistoryAdapter.setItems(items, new BaseDiffCallback<History>());
@@ -615,7 +618,8 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
 
     private void clearHistory() {
         mAdapter.removeItems(getHistoryIndex(), 1);
-        History.deleteAndSync(VodConfig.getCid());
+        if (Setting.isHistoryAggregation()) History.deleteAllAndSync();
+        else History.deleteAndSync(VodConfig.getCid());
         mPresenter.setDelete(false);
         mHistoryAdapter.clear();
     }
@@ -775,7 +779,7 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
 
     @Override
     public void onItemClick(History item) {
-        VideoActivity.start(this, item.getSiteKey(), item.getVodId(), item.getVodName(), item.getVodPic(), null, item.getWallPic());
+        HistoryOpener.open(this, item);
     }
 
     @Override

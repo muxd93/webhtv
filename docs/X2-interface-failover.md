@@ -36,6 +36,11 @@
 
 复审确认无问题的点：failover 仅由用户发起加载触发（SWR/缓存先行第二段均 silent）；候选去重与上限（origin+2）；轮次生命周期由 taskId 代次校验兜底（迟到回调全部丢弃）；`finishSuccess` 先于被抑制的 finally postEvent 执行（App.post 时序），事件只补发一次；X1 两端 skip 路径与 `arm()` 同步落盘（`commit()`）语义正确；E-SP3 装载点覆盖 release/reset/seekTo/状态迁移/超时，`setMediaItemNow` 未显式取消但 BUFFERING 重 arm 语义等价；E-SP6 的 UNKNOWN 不声称失配。
 
-### 阶段 2b（待做，独立会话）：设置 UI 与确认模式
+### 阶段 2b（批次 C 完成，2026-10-03）：确认弹窗与设置 UI
+- **VodConfig**：移植 CONFIRM 确认弹窗全套——`showConfirmDialog`（单选候选列表，`App.activity()` 不可用时终态报错）、`startSelectedAttempt`（`state.select` 一轮一次）、`cancelFailover(round)`/`cancelRound`/`stopFailover`、`failoverDialog` 字段与 `abandonFailover` 弹窗清理；新增公开 `VodConfig.cancelFailover()` 供设置页切到"关闭"时终止进行中轮次。
+- **设置 UI**（增强功能页，两端 `SettingEnhance*`）：新增"点播接口容灾"选择器（关闭/自动/确认，写入 `interface_failover_mode`，切到关闭即 `cancelFailover()`）与"跨配置历史聚合"开关（`history_aggregation`）；行样式/焦点/reorderItems 按两端既有模式。
+- **文案**：`setting_interface_failover`、`select_interface_failover_mode` 数组、`interface_failover_title/message/switch/cancelled`、`setting_history_aggregation` 三语（values/values-zh-rCN/values-zh-rTW）补齐。
+- 验证：双端 arm64 release Java 编译通过；聚焦测试（setting + BackupPreferenceFilter）通过。
+- X2 全部阶段收口。遗留可选：批次 D 拖拽排序（`InterfaceOrderStore` 接线 `ConfigDialog`，含 `selectConfig` 手动选择入口）。
 - 已知冲突点：本仓 VodConfig/BaseConfig/ConfigDialog 刚经历 SUB1–SUB3 订阅重构与配置缓存/离线回退改造，与源分叉基于旧基线的 +380 行 VodConfig diff 不能直接套用；需先读本仓现行 load 流程再设计接入点（候选加载、空 sites 判定、失效处理、终态事件唯一性）。
 - 设置 UI：leanback `SettingPersonalActivity`（+286 行）与 mobile `SettingPersonalFragment`（+248 行）含模式选择与历史拖拽排序；CONFIRM 确认弹窗（`showConfirmDialog`/`startSelectedAttempt`/`cancelFailover`）与 `selectConfig` 手动选择入口；所需文案 `interface_failover_title/message/switch/cancelled`、`setting_interface_failover`、`select_interface_failover_mode` 数组。

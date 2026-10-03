@@ -22,7 +22,9 @@ import com.google.gson.reflect.TypeToken;
 
 import java.lang.reflect.Type;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
@@ -121,6 +123,18 @@ public class History implements Diffable<History> {
         return AppDatabase.get().getHistoryDao().find(cid, System.currentTimeMillis() - Constant.HISTORY_TIME);
     }
 
+    /** 聚合模式：跨点播配置的近期历史（数据源开关由调用方决定）。 */
+    public static List<History> getAll() {
+        return AppDatabase.get().getHistoryDao().findAcrossConfigs(System.currentTimeMillis() - Constant.HISTORY_TIME);
+    }
+
+    /** 聚合模式渲染用的配置名映射（id → desc）。 */
+    public static Map<Integer, String> configNameMap() {
+        Map<Integer, String> names = new HashMap<>();
+        for (Config config : Config.getAll(VodConfig.VOD)) names.put(config.getId(), config.getDesc());
+        return names;
+    }
+
     public static History find(String key) {
         return AppDatabase.get().getHistoryDao().find(VodConfig.getCid(), key);
     }
@@ -139,6 +153,12 @@ public class History implements Diffable<History> {
 
     public static void deleteAndSync(int cid) {
         PlaybackProgressWriter.deleteAllFromUser(cid);
+    }
+
+    /** 聚合模式清空：按表内现存 cid 逐一走用户删除墓碑。 */
+    public static void deleteAllAndSync() {
+        AppDatabase.get().getHistoryDao().findAll().stream().mapToInt(History::getCid)
+                .distinct().forEach(PlaybackProgressWriter::deleteAllFromUser);
     }
 
     public static void sync(List<History> targets) {

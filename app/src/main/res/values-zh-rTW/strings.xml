@@ -1240,6 +1240,27 @@
     <string name="crash_details_title">錯誤訊息</string>
     <string name="crash_details_close">關閉</string>
 
+    <!-- Interface failover -->
+    <string name="interface_failover_next">正在嘗試下一個接口：%1$s</string>
+    <string name="interface_failover_title">接口加載失敗</string>
+    <string name="interface_failover_message">當前接口：%1$s</string>
+    <string name="interface_failover_switch">切換接口</string>
+    <string name="interface_failover_cancelled">已取消接口切換</string>
+    <string name="setting_interface_failover">點播接口容災</string>
+    <string-array name="select_interface_failover_mode">
+        <item>關閉</item>
+        <item>自動</item>
+        <item>確認</item>
+    </string-array>
+
+    <!-- History aggregation -->
+    <string name="history_config_deleted">該記錄所屬的配置已刪除</string>
+    <string name="history_switch_title">切換配置</string>
+    <string name="history_switch_message">切換到「%1$s」繼續播放《%2$s》？</string>
+    <string name="history_switching">正在切換配置：%1$s</string>
+    <string name="dialog_delete_global_history">將刪除所有點播配置的歷史記錄，確定繼續嗎？</string>
+    <string name="setting_history_aggregation">跨配置歷史聚合</string>
+
     <!-- Hint -->
     <string name="copied">已複製</string>
     <string name="debug_log_dialog_message">調試日誌服務已啟動。\n\n局域網地址：\n%1$s\n\n本機地址：\n%2$s\n\n電視端沒有瀏覽器也沒關係，請在同一局域網的電腦或手機瀏覽器中打開局域網地址。</string>
