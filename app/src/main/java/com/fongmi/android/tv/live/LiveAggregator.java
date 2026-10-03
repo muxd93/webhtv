@@ -349,7 +349,10 @@ public class LiveAggregator {
         if (TextUtils.isEmpty(content)) return null;
         Live live = new Live(config.getName(), config.getUrl());
         try {
-            LiveParser.text(live, content);
+            // 订阅源内容为分组数组 JSON（{"name","channel":[…]}）时直接解析；txt/m3u 交 LiveParser；
+            // 完整配置对象（含 lives/spider）不支持，按失败源跳过
+            if (Json.isArray(content)) live.getGroups().addAll(Group.arrayFrom(content));
+            else LiveParser.text(live, content);
         } catch (Throwable e) {
             return null;
         }

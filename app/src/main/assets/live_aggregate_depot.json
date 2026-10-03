@@ -1,0 +1,7 @@
+{
+  "urls": [
+    {"name": "范明明", "url": "https://live.fanmingming.com/tv/m3u/global.m3u"},
+    {"name": "范明明IPv6", "url": "https://live.fanmingming.com/tv/m3u/ipv6.m3u"},
+    {"name": "iptv-org", "url": "https://iptv-org.github.io/iptv/index.m3u"}
+  ]
+}

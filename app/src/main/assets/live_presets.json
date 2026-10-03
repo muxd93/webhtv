@@ -1,4 +1,5 @@
 [
+  {"name": "推荐聚合", "url": "assets://live_aggregate_depot.json", "epg": "http://epg.51zmt.top:8000/e.xml", "note": "内置三源合一，导入即聚合"},
   {"name": "范明明聚合源", "url": "https://live.fanmingming.com/tv/m3u/global.m3u", "epg": "http://epg.51zmt.top:8000/e.xml", "note": "央视/卫视/地方，国内直连"},
   {"name": "范明明IPv6", "url": "https://live.fanmingming.com/tv/m3u/ipv6.m3u", "epg": "http://epg.51zmt.top:8000/e.xml", "note": "需IPv6网络"},
   {"name": "iptv-org全球", "url": "https://iptv-org.github.io/iptv/index.m3u", "note": "全球公开频道"}
