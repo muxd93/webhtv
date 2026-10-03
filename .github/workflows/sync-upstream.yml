@@ -1,0 +1,33 @@
+name: Sync Upstream
+
+on:
+  schedule:
+    # 01:30 UTC = 09:30 Asia/Shanghai, daily
+    - cron: "30 1 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Merge upstream main
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Merge upstream via GitHub API
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -o pipefail
+          result="$(gh api "repos/${{ github.repository }}/merge-upstream" -f branch=main 2>&1)" || {
+            echo "$result"
+            echo "::error title=Upstream sync failed::merge-upstream returned an error. HTTP 409 means merge conflicts; resolve them manually the same way as the Sync fork button."
+            exit 1
+          }
+          echo "$result"
+          echo "merge_type=$(echo "$result" | jq -r '.merge_type // "unknown"')"
