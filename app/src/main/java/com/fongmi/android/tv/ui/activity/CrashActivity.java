@@ -9,6 +9,7 @@ import androidx.viewbinding.ViewBinding;
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.databinding.ActivityCrashBinding;
 import com.fongmi.android.tv.ui.base.BaseActivity;
+import com.fongmi.android.tv.utils.CrashRestartMode;
 import com.github.catvod.utils.Prefers;
 
 import java.util.Objects;
@@ -38,7 +39,15 @@ public class CrashActivity extends BaseActivity {
     @Override
     protected void initEvent() {
         mBinding.details.setOnClickListener(v -> showError());
-        mBinding.restart.setOnClickListener(v -> CustomActivityOnCrash.restartApplication(this, Objects.requireNonNull(CustomActivityOnCrash.getConfigFromIntent(getIntent()))));
+        mBinding.restart.setOnClickListener(v -> restartApplication());
+        mBinding.silentRestart.setOnClickListener(v -> {
+            CrashRestartMode.arm();
+            restartApplication();
+        });
+    }
+
+    private void restartApplication() {
+        CustomActivityOnCrash.restartApplication(this, Objects.requireNonNull(CustomActivityOnCrash.getConfigFromIntent(getIntent())));
     }
 
     private void setCrash() {

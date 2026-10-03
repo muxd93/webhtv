@@ -101,24 +101,47 @@ abstract class BaseConfig {
     }
 
     public void load(Callback callback) {
+        load(callback, false);
+    }
+
+    /** SWR 静默刷新等后台路径专用：失败直接报错，不进入故障转移轮次，避免后台静默切换接口。 */
+    void loadSilent(Callback callback) {
+        load(callback, true);
+    }
+
+    private void load(Callback callback, boolean silent) {
         beforeLoad();
         int id = taskId.incrementAndGet();
         if (future != null && !future.isDone()) future.cancel(true);
         suppressEvent = false;
         Config target = config == null ? defaultConfig() : config;
-        future = Task.submit(() -> loadDispatch(id, target, callback));
+        future = Task.submit(() -> loadDispatch(id, target, callback, silent));
         callback.start();
     }
 
+    /** 使当前加载失效；interrupt=false 只作代次失效，不打断在途请求。 */
+    protected void cancelLoad(boolean interrupt) {
+        taskId.incrementAndGet();
+        if (interrupt) {
+            if (future != null && !future.isDone()) future.cancel(true);
+            OkHttp.cancel(getTag());
+        }
+    }
+
+    /** 配置加载失败统一出口；VodConfig 覆写以接入接口故障转移轮次。 */
+    void onConfigFailure(Config config, Callback callback, Throwable error) {
+        App.post(() -> callback.error(Notify.getError(R.string.error_config_get, error)));
+    }
+
     // 缓存判定在后台线程做，避免启动路径在主线程读文件
-    private void loadDispatch(int id, Config config, Callback callback) {
+    private void loadDispatch(int id, Config config, Callback callback, boolean silent) {
         String cached = ConfigCache.get(config.getUrl());
-        if (cached == null) loadConfig(id, config, callback);
-        else loadCachedConfig(id, config, cached, callback);
+        if (cached == null) loadConfig(id, config, callback, silent);
+        else loadCachedConfig(id, config, cached, callback, silent);
     }
 
     /** 缓存先行：本地缓存立即渲染，成功后再静默拉网络；内容未变则不重复发事件。 */
-    private void loadCachedConfig(int id, Config config, String cached, Callback callback) {
+    private void loadCachedConfig(int id, Config config, String cached, Callback callback, boolean silent) {
         try {
             Server.get().start();
             OkHttp.cancel(getTag());
@@ -133,25 +156,25 @@ abstract class BaseConfig {
             // 缓存损坏：删掉后直接走网络路径，行为等同无缓存
             ConfigCache.delete(config.getUrl());
             suppressEvent = true;
-            App.post(() -> loadFromNetwork(callback));
+            App.post(() -> loadFromNetwork(callback, false));
             return;
         } finally {
             if (taskId.get() == id && !suppressEvent) postEvent();
         }
-        if (taskId.get() == id) App.post(() -> loadFromNetwork(new Callback()));
+        if (taskId.get() == id) App.post(() -> loadFromNetwork(new Callback(), true));
     }
 
-    private void loadFromNetwork(Callback callback) {
+    private void loadFromNetwork(Callback callback, boolean silent) {
         beforeLoad();
         int id = taskId.incrementAndGet();
         if (future != null && !future.isDone()) future.cancel(true);
         suppressEvent = false;
         Config target = config == null ? defaultConfig() : config;
-        future = Task.submit(() -> loadConfig(id, target, callback));
+        future = Task.submit(() -> loadConfig(id, target, callback, silent));
         callback.start();
     }
 
-    protected void loadConfig(int id, Config config, Callback callback) {
+    protected void loadConfig(int id, Config config, Callback callback, boolean silent) {
         try {
             Server.get().start();
             OkHttp.cancel(getTag());
@@ -165,8 +188,12 @@ abstract class BaseConfig {
             e.printStackTrace();
             if (isCanceled(e)) return;
             if (taskId.get() != id) return;
-            if (TextUtils.isEmpty(config.getUrl())) App.post(() -> callback.error(""));
-            else App.post(() -> callback.error(Notify.getError(R.string.error_config_get, e)));
+            if (TextUtils.isEmpty(config.getUrl())) {
+                App.post(() -> callback.error(""));
+                return;
+            }
+            if (silent) App.post(() -> callback.error(Notify.getError(R.string.error_config_get, e)));
+            else onConfigFailure(config, callback, e);
         } finally {
             if (taskId.get() == id && !suppressEvent) postEvent();
         }
@@ -220,7 +247,7 @@ abstract class BaseConfig {
             if (!config.getUrl().startsWith("http")) return;
             long ts = Prefers.getLong(fetchTsPrefix() + Util.md5(config.getUrl()));
             if (ts > 0 && System.currentTimeMillis() - ts < hours * 3600_000L) return;
-            App.post(() -> load(new Callback()));
+            App.post(() -> loadSilent(new Callback()));
         } catch (Throwable e) {
             e.printStackTrace();
         }

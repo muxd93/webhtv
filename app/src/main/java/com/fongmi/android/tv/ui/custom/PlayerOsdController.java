@@ -370,6 +370,7 @@ public class PlayerOsdController {
         String softTune = getSoftDecodeTuneText(player);
         String playerText = join(" / ", player.getPlayerText(), player.getDecodeText(), render, "隧道" + tunnel, "性能" + performance, frameRateMatch, preload, softTune, player.isExo() ? "兜底开" : "");
         String playback = join(" / ", state, buffer, "重缓冲 " + rebuffer, "掉帧 " + player.getDroppedFrames());
+        String startup = getStartupText(player);
         String error = getErrorText(player, snapshot);
         String main = join("\n",
                 TextUtils.isEmpty(error) ? "" : row("错误", error),
@@ -385,6 +386,7 @@ public class PlayerOsdController {
                 TextUtils.isEmpty(frameTiming) ? "" : row("帧调度", frameTiming),
                 row("播放", playback),
                 row("配置", playerText),
+                TextUtils.isEmpty(startup) ? "" : row("起播", startup),
                 row("结论", getDiagnosis(player, snapshot, video, audioTrack, audioDetails, localSource)));
         String extra = join("\n",
                 row("设备", getDeviceText()),
@@ -394,6 +396,17 @@ public class PlayerOsdController {
                 row("WebView", getWebViewText()),
                 row("网络环境", getNetworkEnvironmentText()));
         return new DiagnosticsText(main, extra);
+    }
+
+    /**
+     * Startup timeline plus the stage that consumed the most time, so a slow start can
+     * be attributed on-device instead of requiring a debug log export.
+     */
+    private String getStartupText(PlayerManager player) {
+        String summary = player.getStartupSummary();
+        if (TextUtils.isEmpty(summary)) return "";
+        String slowest = player.getSlowestStartupStage();
+        return TextUtils.isEmpty(slowest) ? summary : summary + "  最慢 " + slowest;
     }
 
     private String getDiagnosis(PlayerManager player, PlaybackAnalyticsListener.Snapshot snapshot, Format video, AudioTrackState audioTrack, AudioPlaybackDiagnostics.Snapshot audioDetails, boolean localSource) {

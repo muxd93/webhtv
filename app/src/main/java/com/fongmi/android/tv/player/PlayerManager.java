@@ -47,6 +47,7 @@ import com.fongmi.android.tv.player.engine.PlaySpec;
 import com.fongmi.android.tv.player.engine.PlayerCacheState;
 import com.fongmi.android.tv.player.engine.PlayerEngine;
 import com.fongmi.android.tv.player.cache.PlaybackDiskBufferStore;
+import com.fongmi.android.tv.player.exo.ExoBufferingStallWatchdog;
 import com.fongmi.android.tv.player.exo.ExoDecoderResourceRecoveryLimiter;
 import com.fongmi.android.tv.player.exo.ExoNetworkGuardBufferPolicy;
 import com.fongmi.android.tv.player.exo.ExoNetworkGuardController;
@@ -150,14 +151,18 @@ public class PlayerManager implements ParseCallback {
     private static final long PLAYBACK_TELEMETRY_INTERVAL_MS = 5000L;
     private static final long MPV_FRAME_TIMING_LOG_INTERVAL_MS = 5000L;
     private static final long DISK_RANGE_GAP_TOLERANCE_MS = 2000L;
+    private static final long BUFFERING_STALL_POLL_INTERVAL_MS = 1000L;
     private static final long LUT_PREVIEW_FRAME_INTERVAL_MS = 16L;
     private static final float[] SPEED_PRESETS = new float[]{0.5f, 0.75f, 1f, 1.2f, 1.25f, 1.5f, 1.75f, 2f, 2.5f, 3f, 5f};
     private static final DecimalFormat SPEED_FORMAT = new DecimalFormat("0.##x");
 
     private final Runnable runnable;
+    private final Runnable bufferingStallRunnable;
     private final Runnable liveDanmakuMetricsRunnable;
     private final Runnable networkProtectionRunnable;
     private final Runnable playbackTelemetryRunnable;
+    private final ExoBufferingStallWatchdog bufferingStallWatchdog =
+            new ExoBufferingStallWatchdog();
     private final Callback callback;
     private final DynamicLutEffect dynamicLutEffect;
     private final AudioManager.OnAudioFocusChangeListener audioFocusChangeListener;
@@ -285,6 +290,7 @@ public class PlayerManager implements ParseCallback {
                 playbackExperimentCoordinator.addListener(update ->
                         App.post(() -> onPlaybackExperimentPolicyChanged(update)));
         this.runnable = this::onPlaybackTimeout;
+        this.bufferingStallRunnable = this::checkBufferingStall;
         this.liveDanmakuMetricsRunnable = () -> logLiveDanmakuMetrics("periodic", true);
         this.networkProtectionRunnable = this::evaluateNetworkProtection;
         this.playbackTelemetryRunnable = this::publishPlaybackTelemetryTick;
@@ -346,6 +352,7 @@ public class PlayerManager implements ParseCallback {
         clearExoDecoderResourceRecovery(true);
         player.removeListener(listener);
         App.removeCallbacks(runnable);
+        cancelBufferingStallWatchdog();
         App.removeCallbacks(networkProtectionRunnable);
         App.removeCallbacks(playbackTelemetryRunnable);
         mpvResourceMemoryRegistration.close();
@@ -415,7 +422,71 @@ public class PlayerManager implements ParseCallback {
                         .SHARED_PROFILE_AB_VALIDATION));
     }
 
+    private void armBufferingStallWatchdog() {
+        if (!isExo() || player == null || spec == null) return;
+        bufferingStallWatchdog.arm(
+                SystemClock.elapsedRealtime(),
+                Math.max(0, player.getCurrentPosition()),
+                nativeBufferedPosition());
+        App.post(bufferingStallRunnable, BUFFERING_STALL_POLL_INTERVAL_MS);
+    }
+
+    private void cancelBufferingStallWatchdog() {
+        bufferingStallWatchdog.reset();
+        App.removeCallbacks(bufferingStallRunnable);
+    }
+
+    private long nativeBufferedPosition() {
+        return player == null ? 0 : Math.max(0, player.getBufferedPosition());
+    }
+
+    public String getStartupSummary() {
+        return playbackTrace.startupSummary();
+    }
+
+    public String getSlowestStartupStage() {
+        return playbackTrace.slowestStage();
+    }
+
+    private void checkBufferingStall() {
+        if (!isExo() || player == null || spec == null) {
+            cancelBufferingStallWatchdog();
+            return;
+        }
+        int state = player.getPlaybackState();
+        if (state == Player.STATE_READY || state == Player.STATE_ENDED || state == Player.STATE_IDLE) {
+            cancelBufferingStallWatchdog();
+            return;
+        }
+        long now = SystemClock.elapsedRealtime();
+        if (!player.getPlayWhenReady()) {
+            bufferingStallWatchdog.arm(now,
+                    Math.max(0, player.getCurrentPosition()), nativeBufferedPosition());
+            App.post(bufferingStallRunnable, BUFFERING_STALL_POLL_INTERVAL_MS);
+            return;
+        }
+        long position = Math.max(0, player.getCurrentPosition());
+        long buffered = nativeBufferedPosition();
+        bufferingStallWatchdog.observe(now, position, buffered);
+        if (bufferingStallWatchdog.shouldTimeout(now, position, buffered, player.isLoading())) {
+            onBufferingStall(position, buffered);
+            return;
+        }
+        App.post(bufferingStallRunnable, BUFFERING_STALL_POLL_INTERVAL_MS);
+    }
+
+    private void onBufferingStall(long positionMs, long bufferedPositionMs) {
+        cancelBufferingStallWatchdog();
+        PlaybackTrace.log("buffering-stall", playbackTrace.current(),
+                "stalled position=%d buffered=%d player=%d", positionMs, bufferedPositionMs, playerType);
+        // 原分叉此处会先走 fallbackPlayback 内核兜底链（本仓未移植该特性），
+        // 因此直接落到与播放超时一致的错误回调，由界面给出重试入口。
+        finishPlaybackProfileAbSession("buffering-stall", SystemClock.elapsedRealtime());
+        callback.onError(ResUtil.getString(R.string.error_play_timeout));
+    }
+
     private void onPlaybackTimeout() {
+        cancelBufferingStallWatchdog();
         completeIjkBufferManagedReload(
                 false, "timeout", SystemClock.elapsedRealtime(), true);
         if (retryLutWarmupByRefresh("timeout")) return;
@@ -757,8 +828,28 @@ public class PlayerManager implements ParseCallback {
         return SPEED_FORMAT.format(getSpeed());
     }
 
+    /**
+     * Decode label that reflects the running decoder, not only the configured profile. In the
+     * hard-decode profile Exo still installs the FFmpeg renderer as a fallback for codecs
+     * MediaCodec refuses, so a session labelled 硬解 can be decoding in software; showing only
+     * the configured value hides exactly the case a user needs when playback is slow.
+     */
     public String getDecodeText() {
-        return engine.getDecodeText();
+        return DecodeLabelPolicy.decodeLabel(
+                engine.getDecodeText(), getSoftDecodeLabel(),
+                engine.isHard(), getActualDecodeMode());
+    }
+
+    /** Index 0 of the same localized array every engine's label comes from. */
+    private String getSoftDecodeLabel() {
+        String[] labels = ResUtil.getStringArray(R.array.select_decode);
+        return labels.length > PlayerEngine.SOFT ? labels[PlayerEngine.SOFT] : "";
+    }
+
+    public PlaybackAutoContext.DecodeMode getActualDecodeMode() {
+        PlaybackAutoContext.Fact<PlaybackAutoContext.DecodeMode> fact =
+                playbackAutoContextStore.snapshot().media().decoder().videoDecodeMode();
+        return fact.hasValue() ? fact.value() : PlaybackAutoContext.DecodeMode.UNKNOWN;
     }
 
     public boolean isHardDecode() {
@@ -1283,6 +1374,8 @@ public class PlayerManager implements ParseCallback {
                     player.isPlaying());
         }
         player.seekTo(time);
+        cancelBufferingStallWatchdog();
+        if (isExo()) armBufferingStallWatchdog();
     }
 
     public long getTextOffsetMs() {
@@ -1305,6 +1398,7 @@ public class PlayerManager implements ParseCallback {
 
     public void reset() {
         App.removeCallbacks(runnable);
+        cancelBufferingStallWatchdog();
         boolean activePlayback = player != null
                 && player.getPlaybackState() == Player.STATE_READY
                 && player.getPlayWhenReady();
@@ -7492,6 +7586,7 @@ public class PlayerManager implements ParseCallback {
             if (SpiderDebug.isEnabled()) SpiderDebug.log("player", "state=%s spec=%s", stateName(state), debugSpec());
             publishPlaybackAutoContext(state != Player.STATE_IDLE);
             if (state == Player.STATE_READY) {
+                cancelBufferingStallWatchdog();
                 completeMpvDirectFirstFrame(state);
                 ijkRuntimeProfileController.onPrepared(playbackAutoSession);
                 onMpvHlsPlaybackReady(SystemClock.elapsedRealtime());
@@ -7506,6 +7601,7 @@ public class PlayerManager implements ParseCallback {
                 applyLutForCurrentItem();
                 scheduleNetworkProtection(0);
             } else if (state == Player.STATE_BUFFERING) {
+                if (isExo()) armBufferingStallWatchdog();
                 App.removeCallbacks(networkProtectionRunnable);
                 // Do not reset/disrupt the network guard here. BUFFERING is transient and
                 // clearing its trend makes repeated stalls permanently outrun the 10 s
@@ -7513,6 +7609,7 @@ public class PlayerManager implements ParseCallback {
                 // retained pre-stall trend plus the newly recorded rebuffer count.
                 networkProtectionReason = "buffering-hold";
             } else {
+                cancelBufferingStallWatchdog();
                 resetNetworkProtectionSession(state == Player.STATE_ENDED ? "ended" : "inactive");
             }
             recordBufferingState(state);

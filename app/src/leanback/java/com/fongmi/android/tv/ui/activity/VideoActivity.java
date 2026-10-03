@@ -1252,6 +1252,7 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
         if (shouldUseImmersiveAudio()) setAudioStageVisible(true);
         SpiderDebug.log("video-flow", "player audio stage cost=%dms visible=%s", System.currentTimeMillis() - step, isMusicLike());
         step = System.currentTimeMillis();
+        mViewModel.cancelPlayerContent();
         mViewModel.playerContent(getKey(), playFlag, episode.getUrl());
         SpiderDebug.log("video-flow", "player content request dispatch cost=%dms", System.currentTimeMillis() - step);
         mBinding.widget.title.setSelected(true);
@@ -1260,7 +1261,7 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
     }
 
     private void setPlayer(Result result) {
-        if (isFinishing() || isDestroyed()) return;
+        if (result == null || isFinishing() || isDestroyed()) return;
         SpiderDebug.log("video-flow", "player finish cost=%dms useParse=%s multi=%s msg=%s", System.currentTimeMillis() - playerStartTime, result.shouldUseParse(), result.getUrl().isMulti(), result.getMsg());
         if (service() == null) {
             mPendingPlayer = result;

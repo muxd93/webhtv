@@ -114,6 +114,16 @@ public class BackupPreferenceFilterTest {
     }
 
     @Test
+    public void interfaceFailoverSettingsFollowAppSettingsSync() {
+        SyncOptions settings = new SyncOptions().config(false).spider(false).settings(true);
+        SyncOptions none = new SyncOptions().config(false).spider(false).webHome(false).settings(false);
+
+        assertTrue(Backup.include("interface_failover_mode", settings));
+        assertTrue(Backup.include("interface_order_vod", settings));
+        assertFalse(Backup.include("interface_failover_mode", none));
+    }
+
+    @Test
     public void updateDownloadSettingsFollowAppSettingsSync() {
         SyncOptions settings = new SyncOptions().config(false).spider(false).settings(true);
 

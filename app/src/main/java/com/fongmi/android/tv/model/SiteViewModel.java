@@ -133,6 +133,17 @@ public class SiteViewModel extends ViewModel {
         execute(TaskType.PLAYER, player, () -> SiteApi.playerContent(key, flag, id));
     }
 
+    /**
+     * 换条目时使旧取流请求失效；LiveData 消费方只接受下一次请求或空值。
+     */
+    public void cancelPlayerContent() {
+        taskIds.get(TaskType.PLAYER).incrementAndGet();
+        ListenableFuture<?> future = futures.get(TaskType.PLAYER);
+        if (future != null) future.cancel(true);
+        player.setValue(null);
+        futures.remove(TaskType.PLAYER);
+    }
+
     public void searchContent(Site site, String keyword, boolean quick, String page) {
         long start = System.currentTimeMillis();
         execute(TaskType.RESULT, result, SearchTask.create(site, keyword, quick, page),

@@ -281,6 +281,11 @@ public class Setting {
         Prefers.put("reset", reset);
     }
 
+    /** 点播接口容灾模式：0=关 1=自动 2=确认（默认自动；设置入口随 X2-2b 提供）。 */
+    public static int getInterfaceFailoverMode() {
+        return Prefers.getInt("interface_failover_mode", InterfaceFailoverPolicy.AUTO);
+    }
+
     public static int getSiteMode() {
         return Prefers.getInt("site_mode");
     }

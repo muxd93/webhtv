@@ -1252,9 +1252,13 @@
     <!-- Crash -->
     <string name="crash_info">发生意外错误\n抱歉给您带来不便</string>
     <string name="crash_restart">重新启动</string>
+    <string name="crash_silent_restart">静默重启</string>
     <string name="crash_details">错误信息</string>
     <string name="crash_details_title">错误信息</string>
     <string name="crash_details_close">关闭</string>
+
+    <!-- Interface failover -->
+    <string name="interface_failover_next">正在尝试下一个接口：%1$s</string>
 
     <!-- Hint -->
     <string name="copied">已复制</string>

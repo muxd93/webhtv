@@ -79,6 +79,7 @@ import com.fongmi.android.tv.ui.presenter.ProgressPresenter;
 import com.fongmi.android.tv.ui.presenter.VodPresenter;
 import com.fongmi.android.tv.utils.AppListUtil;
 import com.fongmi.android.tv.utils.Clock;
+import com.fongmi.android.tv.utils.CrashRestartMode;
 import com.fongmi.android.tv.utils.FileChooser;
 import com.fongmi.android.tv.utils.ImgUtil;
 import com.fongmi.android.tv.utils.KeyUtil;
@@ -411,6 +412,11 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
     }
 
     private void initConfig() {
+        if (CrashRestartMode.consume()) {
+            SpiderDebug.log("startup", "skip config load once after crash restart");
+            showContent();
+            return;
+        }
         if (mConfigLoading) return;
         mConfigLoading = true;
         SpiderDebug.log("startup", "config load start cost=%sms", System.currentTimeMillis() - App.time());
