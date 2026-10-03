@@ -37,6 +37,8 @@ public class LiveViewModel extends ViewModel {
     private final Map<TaskType, ListenableFuture<?>> futures;
     private final Map<TaskType, AtomicInteger> taskIds;
     private volatile ZoneId zoneId;
+    /** 正在后台解析分组的 Live（引用比较）；主线程 softReload/preview 据此避开并发遍历同一棵树。 */
+    private volatile Live parsing;
 
     public LiveViewModel() {
         this.epg = new MutableLiveData<>();
@@ -75,10 +77,16 @@ public class LiveViewModel extends ViewModel {
     }
 
     public void parse(Live item) {
+        parsing = item;
         execute(TaskType.LIVE, () -> {
-            LiveApi.parse(item);
-            setTimeZone(item);
-            return item;
+            try {
+                LiveApi.parse(item);
+                setTimeZone(item);
+                return item;
+            } finally {
+                // 解析结束（含失败/取消）即发布完整分组树，主线程此后可安全遍历
+                parsing = null;
+            }
         }, live::postValue, error -> {
             if (error instanceof ExtractException) {
                 url.postValue(Result.error(error.getMessage()));
@@ -87,6 +95,11 @@ public class LiveViewModel extends ViewModel {
                 message.postValue(error.getMessage() == null ? "" : error.getMessage());
             }
         });
+    }
+
+    /** 该 Live 是否正在后台解析分组（未发布完整树）；主线程遍历其 groups 前必须检查。 */
+    public boolean isParsing(Live live) {
+        return live != null && parsing == live;
     }
 
     public void parseXml(Live item) {

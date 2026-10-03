@@ -193,10 +193,18 @@ public class LiveSession {
      * re-parse finishes. No-op once this session has rendered.
      */
     public void preview() {
-        render(LiveConfig.get().getHome());
+        Live home = LiveConfig.get().getHome();
+        // 后台解析进行中的树尚未发布完整分组，避免主线程遍历到半成品（CME）
+        if (viewModel.isParsing(home)) return;
+        render(home);
     }
 
     public void onLiveParsed(Live live) {
+        // 已渲染会话收到重解析结果（如聚合更新后的重入）：走软重绑而非丢弃
+        if (rendered) {
+            softReload();
+            return;
+        }
         render(live);
     }
 
@@ -208,6 +216,8 @@ public class LiveSession {
         if (!rendered) return;
         Live home = LiveConfig.get().getHome();
         if (home == null || home.getGroups().isEmpty()) return;
+        // 后台解析进行中的树尚未发布完整分组，避免主线程遍历到半成品（CME）；解析完成会经 onLiveParsed 软重绑补上
+        if (viewModel.isParsing(home)) return;
         String groupName = group == null ? "" : group.getName();
         String channelName = channel == null ? "" : channel.getName();
         groups.clear();
