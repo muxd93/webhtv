@@ -13,9 +13,11 @@ import com.fongmi.android.tv.bean.Depot;
 import com.fongmi.android.tv.bean.Parse;
 import com.fongmi.android.tv.bean.Rule;
 import com.fongmi.android.tv.bean.Site;
+import com.fongmi.android.tv.bean.Live;
 import com.fongmi.android.tv.event.ConfigEvent;
 import com.fongmi.android.tv.event.RefreshEvent;
 import com.fongmi.android.tv.impl.Callback;
+import com.fongmi.android.tv.live.LiveAggregator;
 import com.fongmi.android.tv.setting.CustomCspSetting;
 import com.fongmi.android.tv.setting.InterfaceFailoverPolicy;
 import com.fongmi.android.tv.setting.InterfaceFailoverState;
@@ -479,6 +481,10 @@ public class VodConfig extends BaseConfig {
         Config temp = Config.find(config, LIVE).save();
         boolean sync = LiveConfig.get().needSync(config.getUrl());
         if (sync) LiveConfig.get().config(temp.update()).parse(object);
+        // 随仓自动聚合（LIVE6）：带 url 的直播源自动入池（带来源与参数），后台聚合并按策略自动启用
+        String spider = Json.safeString(object, "spider");
+        List<Live> lives = Json.safeListElement(object, "lives").stream().map(e -> Live.objectFrom(e, spider)).collect(Collectors.toCollection(ArrayList::new));
+        LiveAggregator.integrateFromVod(lives, config.getUrl());
     }
 
     private void initWall(Config config, JsonObject object) {

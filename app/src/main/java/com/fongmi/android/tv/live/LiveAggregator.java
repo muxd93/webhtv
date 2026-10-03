@@ -24,6 +24,8 @@ import com.github.catvod.utils.Prefers;
 import com.github.catvod.utils.Path;
 import com.github.catvod.utils.Trans;
 import com.github.catvod.utils.Util;
+import com.google.common.net.HttpHeaders;
+import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -33,6 +35,7 @@ import java.io.FileOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -57,7 +60,10 @@ public class LiveAggregator {
     private static final String KEY_FETCH_TS = "live_fetch_ts_";
     /** 聚合完成时间戳（Prefers）：进直播页的 staleness 判定只读它，避免主线程解析大 meta。 */
     private static final String KEY_AGG_TS = "live_agg_ts_";
+    /** 手动优先标记（Prefers）：用户在会话里手动选过非聚合配置后，自动聚合不再抢切。 */
+    private static final String KEY_MANUAL = "live_manual";
     private static final long FETCH_TIMEOUT = 20000;
+    private static final Gson GSON = new Gson();
     // 全死频道隔离阈值：连续 2 轮全部线路失效才移出聚合文件（可自动复活）
     private static final int STREAK_LIMIT = 2;
     // 频道名归一时剔除的分隔符；刻意保留 +（CCTV5+）
@@ -332,7 +338,8 @@ public class LiveAggregator {
         String content = null;
         if (stale) {
             try {
-                content = OkHttp.string(UrlUtil.convert(config.getUrl()), FETCH_TIMEOUT);
+                // 池条目自带 ua/header（随仓 lives 常需要），拉取时随源传递
+                content = OkHttp.string(UrlUtil.convert(config.getUrl()), sourceHeaders(state), FETCH_TIMEOUT);
             } catch (Throwable e) {
                 content = null;
             }
@@ -348,6 +355,8 @@ public class LiveAggregator {
         }
         if (TextUtils.isEmpty(content)) return null;
         Live live = new Live(config.getName(), config.getUrl());
+        // 随仓入池的源携带 lives 条目的 epg，参与合并 union
+        if (state.has("epg")) live.setEpg(state.get("epg").getAsString());
         try {
             // 订阅源内容为分组数组 JSON（{"name","channel":[…]}）时直接解析；txt/m3u 交 LiveParser；
             // 完整配置对象（含 lives/spider）不支持，按失败源跳过
@@ -565,6 +574,126 @@ public class LiveAggregator {
         sources.set(target, item);
         for (int i = 0; i < sources.size(); i++) sources.get(i).getAsJsonObject().addProperty("order", i);
         writeMeta(meta);
+    }
+
+    // ---------- 随仓自动聚合（LIVE6） ----------
+
+    /** 池条目构造（纯函数，供单测）：prev 存在时复用状态字段；from/ua/header/epg 仅非空写入。 */
+    static JsonObject poolItem(String url, String name, String from, String ua, Map<String, String> header, String epg, int order, JsonObject prev) {
+        JsonObject item = new JsonObject();
+        item.addProperty("url", url);
+        item.addProperty("name", name == null || name.isEmpty() ? url : name);
+        item.addProperty("order", order);
+        item.addProperty("ok", prev == null || !prev.has("ok") || prev.get("ok").getAsBoolean());
+        item.addProperty("ts", prev != null && prev.has("ts") ? prev.get("ts").getAsLong() : 0);
+        item.addProperty("enabled", prev == null || !prev.has("enabled") || prev.get("enabled").getAsBoolean());
+        if (prev != null && prev.has("chan")) item.addProperty("chan", prev.get("chan").getAsInt());
+        if (from != null && !from.isEmpty()) item.addProperty("from", from);
+        if (ua != null && !ua.isEmpty()) item.addProperty("ua", ua);
+        if (header != null && !header.isEmpty()) item.add("header", GSON.toJsonTree(header));
+        if (epg != null && !epg.isEmpty()) item.addProperty("epg", epg);
+        return item;
+    }
+
+    /** 池条目携带的请求头（ua/header 字段），无则空 Map；聚合拉取时随源传递。 */
+    static Map<String, String> sourceHeaders(JsonObject state) {
+        Map<String, String> headers = new HashMap<>();
+        if (state.has("ua")) headers.put(HttpHeaders.USER_AGENT, state.get("ua").getAsString());
+        if (state.has("header")) {
+            try {
+                for (Map.Entry<String, JsonElement> e : state.getAsJsonObject("header").entrySet())
+                    headers.put(e.getKey(), e.getValue().getAsString());
+            } catch (Throwable ignored) {
+            }
+        }
+        return headers;
+    }
+
+    /**
+     * 点播配置 lives 自动入池（LIVE6 核心）：带 url 的直播源按 url 去重入池，
+     * 带 from=点播配置 来源标记并保留 ua/header/epg 参数；spider 型（无 url）不参与。
+     * 有新增才后台聚合并按策略自动启用；重复解析/来回切换无副作用。
+     */
+    public static void integrateFromVod(List<Live> lives, String from) {
+        if (lives == null || lives.isEmpty()) return;
+        Task.submit(() -> {
+            try {
+                JsonObject meta = readMeta();
+                JsonArray sources = meta.has("sources") ? meta.getAsJsonArray("sources") : new JsonArray();
+                Set<String> existing = new HashSet<>();
+                for (JsonElement e : sources) existing.add(e.getAsJsonObject().get("url").getAsString());
+                boolean changed = false;
+                for (Live live : lives) {
+                    String url = live.getUrl();
+                    if (TextUtils.isEmpty(url) || !url.startsWith("http") || existing.contains(url)) continue;
+                    existing.add(url);
+                    sources.add(poolItem(url, live.getName(), from, live.getUa(), live.getHeader(), live.getEpg(), sources.size(), null));
+                    changed = true;
+                }
+                if (!changed) return;
+                meta.add("sources", sources);
+                writeMeta(meta);
+                Prefers.put(KEY_AGG_TS, 0);
+                if (aggregate()) applyAutoUse();
+            } catch (Throwable e) {
+                e.printStackTrace();
+            }
+        });
+    }
+
+    /** 手动选择直播配置（会话换源汇入点）：非「聚合」即记手动优先，自动聚合不再抢切；选回「聚合」恢复自动。 */
+    public static void onManualSelect(Config config) {
+        Prefers.put(KEY_MANUAL, !isAggregate(config));
+    }
+
+    /** 聚合内容变化后的自动启用：聚合在用 → 静默重载；未手动选择过其他源 → 静默切到聚合（软刷新不断播）。 */
+    private static void applyAutoUse() {
+        App.post(() -> {
+            try {
+                Config current = LiveConfig.get().getConfig();
+                if (isAggregate(current)) {
+                    LiveConfig.get().reloadQuietly();
+                    return;
+                }
+                if (Prefers.getBoolean(KEY_MANUAL)) return;
+                LiveConfig.get().config(ensureConfig()).reloadQuietly();
+            } catch (Throwable e) {
+                e.printStackTrace();
+            }
+        });
+    }
+
+    /** 点播配置删除联动：移除其带入（from 匹配）的池条目并重聚合；池删空则清盘聚合产物。 */
+    public static void onVodConfigDeleted(String url) {
+        if (TextUtils.isEmpty(url)) return;
+        Task.submit(() -> {
+            try {
+                JsonObject meta = readMeta();
+                if (!meta.has("sources")) return;
+                JsonArray kept = new JsonArray();
+                boolean removed = false;
+                for (JsonElement e : meta.getAsJsonArray("sources")) {
+                    JsonObject item = e.getAsJsonObject();
+                    if (url.equals(item.has("from") ? item.get("from").getAsString() : "")) {
+                        removed = true;
+                        continue;
+                    }
+                    kept.add(e);
+                }
+                if (!removed) return;
+                meta.add("sources", kept);
+                writeMeta(meta);
+                Prefers.put(KEY_AGG_TS, 0);
+                if (kept.size() == 0) {
+                    reset();
+                    if (isAggregate(LiveConfig.get().getConfig())) App.post(() -> LiveConfig.load(ensureConfig(), new Callback()));
+                    return;
+                }
+                if (aggregate()) applyAutoUse();
+            } catch (Throwable e) {
+                e.printStackTrace();
+            }
+        });
     }
 
     /** 隔离区快照（UI 展示用）。 */

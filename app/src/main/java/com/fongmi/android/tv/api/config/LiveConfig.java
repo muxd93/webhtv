@@ -242,10 +242,11 @@ public class LiveConfig extends BaseConfig {
         if (home != null && !channel.getGroup().isHidden()) home.keep(channel).save();
     }
 
-    /** 订阅源删除后的联动清理（聚合池出池并重聚合）；type 非直播时为空操作，由删除流程显式调用。 */
+    /** 配置删除后的联动清理：直播源出池重聚合；点播配置移除其带入（from 匹配）的池源，由删除流程显式调用。 */
     public void onSourceDeleted(int type, String url) {
-        if (type != LIVE || TextUtils.isEmpty(url)) return;
-        LiveAggregator.onSourceDeleted(url);
+        if (TextUtils.isEmpty(url)) return;
+        if (type == LIVE) LiveAggregator.onSourceDeleted(url);
+        else if (type == VOD) LiveAggregator.onVodConfigDeleted(url);
     }
 
     public void applyKeepsToGroups(List<Group> items) {

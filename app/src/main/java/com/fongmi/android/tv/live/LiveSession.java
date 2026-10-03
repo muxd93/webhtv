@@ -141,6 +141,8 @@ public class LiveSession {
 
     public void setConfig(Config config) {
         Config current = LiveConfig.get().getConfig();
+        // 会话手动换源：非「聚合」即记手动优先，自动聚合不再抢切（LIVE6）
+        LiveAggregator.onManualSelect(config);
         LiveConfig.load(config, new Callback() {
             @Override
             public void start() {
