@@ -15,6 +15,8 @@ def fastRelease = (project.findProperty('fastRelease') ?: 'false').toString().to
 def buildTimestamp = new Date().format('yyyyMMddHHmm', TimeZone.getTimeZone('Asia/Shanghai'))
 def buildTime = fastRelease ? "fast-${buildTimestamp}" : buildTimestamp
 def releaseTag = (System.getenv('WEBHTV_RELEASE_TAG') ?: '').replace('\\', '\\\\').replace('"', '\\"')
+def envVersionCode = System.getenv('WEBHTV_VERSION_CODE')?.trim()
+def releaseVersionCode = (envVersionCode && envVersionCode.isInteger()) ? envVersionCode.toInteger() : 112
 def apkSuffix = (System.getenv('WEBHTV_APK_SUFFIX') ?: '').replaceAll('[^A-Za-z0-9._-]', '')
 def gitRevision = 'unavailable'
 def gitState = 'unavailable'
@@ -38,7 +40,7 @@ android {
         applicationId "com.xd.android.tv"
         minSdk libs.versions.minSdk.get().toInteger()
         targetSdk libs.versions.targetSdk.get().toInteger()
-        versionCode 112
+        versionCode releaseVersionCode
         versionName "1.1.2"
         buildConfigField "String", "BUILD_TIME", "\"${buildTime}\""
         buildConfigField "String", "BUILD_TAG", "\"${releaseTag}\""
@@ -68,6 +70,7 @@ android {
         }
         mobile {
             dimension "mode"
+            applicationIdSuffix ".mobile"
         }
         arm64_v8a {
             dimension "abi"

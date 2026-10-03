@@ -30,6 +30,7 @@ import com.fongmi.android.tv.ui.activity.ScanActivity;
 import com.fongmi.android.tv.ui.adapter.DeviceAdapter;
 import com.fongmi.android.tv.ui.custom.SpaceItemDecoration;
 import com.fongmi.android.tv.utils.Notify;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.fongmi.android.tv.utils.ResUtil;
 import com.fongmi.android.tv.utils.ScanTask;
 import com.github.catvod.net.OkHttp;
@@ -165,10 +166,19 @@ public class SyncDialog extends BaseBottomSheetDialog implements DeviceAdapter.O
     public boolean onLongClick(Device item) {
         String mode = binding.mode.getTag().toString();
         if (mode.equals("0")) return false;
+        if (mode.equals("2")) {
+            // 覆盖本地会先清空本地该类型全部数据，先二次确认
+            new MaterialAlertDialogBuilder(requireContext()).setMessage(R.string.dialog_sync_overwrite).setNegativeButton(R.string.dialog_negative, null).setPositiveButton(R.string.dialog_positive, (dialog, which) -> sync(item, mode)).show();
+            return true;
+        }
+        sync(item, mode);
+        return true;
+    }
+
+    private void sync(Device item, String mode) {
         if (mode.equals("2")) deleteLocal();
         String force = mode.equals("1") ? "&force=true" : "";
         OkHttp.newCall(client, String.format(Locale.getDefault(), "%s/action?do=sync&mode=%s&type=%s%s", item.getIp(), mode, type, force), body.build()).enqueue(getCallback());
-        return true;
     }
 
     private void deleteLocal() {

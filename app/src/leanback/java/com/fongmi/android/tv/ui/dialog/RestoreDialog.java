@@ -67,7 +67,12 @@ public class RestoreDialog extends BaseAlertDialog implements RestoreAdapter.OnC
 
     @Override
     public void onItemClick(File item) {
-        BackupProgressDialog progress = BackupProgressDialog.open(getParentFragmentManager(), "恢复应用数据");
+        // 恢复会清空当前全部数据并覆盖，先二次确认
+        new MaterialAlertDialogBuilder(requireContext()).setTitle(R.string.restore_select).setMessage(R.string.dialog_restore_confirm).setNegativeButton(R.string.dialog_negative, null).setPositiveButton(R.string.dialog_positive, (dialog, which) -> restore(item)).show();
+    }
+
+    private void restore(File item) {
+        BackupProgressDialog progress = BackupProgressDialog.open(getParentFragmentManager(), getString(R.string.restore_progress));
         AppDatabase.restore(item, new Callback() {
             @Override
             public void success() {
@@ -86,6 +91,10 @@ public class RestoreDialog extends BaseAlertDialog implements RestoreAdapter.OnC
 
     @Override
     public void onDeleteClick(File item) {
+        new MaterialAlertDialogBuilder(requireContext()).setMessage(R.string.dialog_delete_backup).setNegativeButton(R.string.dialog_negative, null).setPositiveButton(R.string.dialog_positive, (dialog, which) -> removeBackup(item)).show();
+    }
+
+    private void removeBackup(File item) {
         int count = adapter.remove(item);
         if (count == 0) {
             dismiss();

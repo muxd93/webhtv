@@ -89,7 +89,12 @@ public class Catchup {
     }
 
     public boolean match(String url) {
-        return url.contains(getRegex()) || Pattern.compile(getRegex()).matcher(url).find();
+        try {
+            return url.contains(getRegex()) || Pattern.compile(getRegex()).matcher(url).find();
+        } catch (Exception e) {
+            // 配置自带非法 regex 时回退为子串匹配，主线程路径不允许抛 PatternSyntaxException
+            return url.contains(getRegex());
+        }
     }
 
     public boolean isEmpty() {

@@ -60,13 +60,15 @@ public class EpisodeAdapter extends RecyclerView.Adapter<BaseEpisodeHolder> {
     }
 
     public Episode getNext() {
+        if (mItems.isEmpty()) return new Episode();
         int current = getPosition();
-        int max = getItemCount() - 1;
+        int max = mItems.size() - 1;
         current = ++current > max ? max : current;
         return mItems.get(current);
     }
 
     public Episode getPrev() {
+        if (mItems.isEmpty()) return new Episode();
         int current = getPosition();
         current = --current < 0 ? 0 : current;
         return mItems.get(current);

@@ -262,6 +262,9 @@ public class LiveAggregator {
     public static boolean aggregate(boolean notify) {
         List<Config> pool = pool();
         if (pool.isEmpty()) return false;
+        // 清理历史崩溃遗留的孤儿临时文件（1 小时以上，避开在途写入）
+        File[] stale = dir().listFiles((d, name) -> name.endsWith(".tmp") && System.currentTimeMillis() - new File(d, name).lastModified() > 3600_000L);
+        if (stale != null) for (File item : stale) item.delete();
         if (notify) App.post(() -> Notify.show(ResUtil.getString(R.string.live_agg_start, pool.size())));
         JsonObject meta = readMeta();
         JsonArray sources = meta.getAsJsonArray("sources");
@@ -716,7 +719,8 @@ public class LiveAggregator {
     private static void write(File file, String json) {
         File temp = null;
         try {
-            temp = new File(file.getParentFile(), file.getName() + ".tmp");
+            // 唯一临时名：并发聚合不互写同一 .tmp；崩溃遗留孤儿由 aggregate() 开头按龄清理
+            temp = new File(file.getParentFile(), file.getName() + "." + Thread.currentThread().getId() + ".tmp");
             try (FileOutputStream out = new FileOutputStream(temp)) {
                 out.write(json.getBytes(StandardCharsets.UTF_8));
             }

@@ -33,16 +33,18 @@ import com.google.common.net.HttpHeaders;
 
 import java.io.File;
 
-import java.util.Collections;
-import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 import jahirfiquitiva.libs.textdrawable.TextDrawable;
 
 public class ImgUtil {
 
-    private static final Set<String> failed = Collections.synchronizedSet(new HashSet<>());
+    /** 封面加载失败记录：带 TTL，网络恢复后允许重试，避免整个会话停留在文字占位图 */
+    private static final long FAILED_TTL = 5 * 60 * 1000L;
+    private static final int FAILED_MAX = 256;
+    private static final Map<String, Long> failed = new ConcurrentHashMap<>();
 
     public static void logo(ImageView view) {
         try {
@@ -100,7 +102,7 @@ public class ImgUtil {
     public static void load(String text, String url, ImageView view, boolean vod, int width, int height) {
         view.setScaleType(vod ? CENTER_CROP : FIT_CENTER);
         if (!vod) view.setVisibility(TextUtils.isEmpty(url) ? View.GONE : View.VISIBLE);
-        if (TextUtils.isEmpty(url) || failed.contains(url)) view.setImageDrawable(getTextDrawable(text, vod));
+        if (TextUtils.isEmpty(url) || failedRecently(url)) view.setImageDrawable(getTextDrawable(text, vod));
         else try {
             RequestBuilder<Drawable> builder = Glide.with(view).load(getUrl(url)).listener(getListener(text, url, view, vod));
             if (width > 0 && height > 0) builder.override(width, height);
@@ -136,12 +138,32 @@ public class ImgUtil {
         return builder.buildRoundRect(text, ColorGenerator.get400(text), ResUtil.dp2px(4));
     }
 
+    private static boolean failedRecently(String url) {
+        Long time = failed.get(url);
+        if (time == null) return false;
+        if (System.currentTimeMillis() - time > FAILED_TTL) {
+            failed.remove(url);
+            return false;
+        }
+        return true;
+    }
+
+    private static void markFailed(String url) {
+        if (failed.size() >= FAILED_MAX) purgeFailed();
+        failed.put(url, System.currentTimeMillis());
+    }
+
+    private static void purgeFailed() {
+        long now = System.currentTimeMillis();
+        failed.entrySet().removeIf(entry -> now - entry.getValue() > FAILED_TTL);
+    }
+
     private static RequestListener<Drawable> getListener(String text, String url, ImageView view, boolean vod) {
         return new RequestListener<>() {
             @Override
             public boolean onLoadFailed(@Nullable GlideException e, Object model, @NonNull Target<Drawable> target, boolean isFirstResource) {
                 view.setImageDrawable(getTextDrawable(text, vod));
-                failed.add(url);
+                markFailed(url);
                 return true;
             }
 

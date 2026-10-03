@@ -3,27 +3,24 @@ package com.fongmi.android.tv.ui.activity;
 import android.app.Activity;
 import android.content.Intent;
 import android.os.Bundle;
-import android.view.Menu;
-import android.view.MenuItem;
+import android.view.View;
 
-import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
-import androidx.appcompat.widget.Toolbar;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.viewbinding.ViewBinding;
 
 import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.Product;
 import com.fongmi.android.tv.R;
+import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.bean.History;
 import com.fongmi.android.tv.databinding.ActivityHistoryBinding;
 import com.fongmi.android.tv.event.RefreshEvent;
 import com.fongmi.android.tv.setting.Setting;
 import com.fongmi.android.tv.ui.adapter.HistoryAdapter;
 import com.fongmi.android.tv.ui.base.BaseActivity;
-import com.fongmi.android.tv.ui.dialog.SyncDialog;
+import com.fongmi.android.tv.ui.custom.SpaceItemDecoration;
 import com.fongmi.android.tv.utils.HistoryOpener;
-import com.fongmi.android.tv.utils.MobileWindow;
+import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.Task;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
@@ -48,24 +45,22 @@ public class HistoryActivity extends BaseActivity implements HistoryAdapter.OnCl
     }
 
     @Override
-    public void setSupportActionBar(@Nullable Toolbar toolbar) {
-        super.setSupportActionBar(toolbar);
-        getSupportActionBar().setDisplayHomeAsUpEnabled(true);
-    }
-
-    @Override
     protected void initView(Bundle savedInstanceState) {
-        setSupportActionBar(mBinding.toolbar);
         setRecyclerView();
+        setEvent();
         getHistory();
     }
 
+    private void setEvent() {
+        mBinding.clear.setOnClickListener(v -> clearHistory());
+    }
+
     private void setRecyclerView() {
-        int column = MobileWindow.isWide(this) ? Product.getColumn(this) : 3;
         mBinding.recycler.setHasFixedSize(true);
-        mBinding.recycler.setLayoutManager(new GridLayoutManager(this, column));
+        mBinding.recycler.setItemAnimator(null);
         mBinding.recycler.setAdapter(mAdapter = new HistoryAdapter(this));
-        mAdapter.setSize(Product.getSpec(this, column));
+        mBinding.recycler.setLayoutManager(new GridLayoutManager(this, Product.getColumn()));
+        mBinding.recycler.addItemDecoration(new SpaceItemDecoration(Product.getColumn(), 16));
     }
 
     private int historyEpoch;
@@ -80,30 +75,36 @@ public class HistoryActivity extends BaseActivity implements HistoryAdapter.OnCl
             App.post(() -> {
                 if (epoch != historyEpoch || isFinishing() || isDestroyed()) return;
                 if (configNames != null) mAdapter.setConfigNames(configNames);
-                mAdapter.setItems(items, (hasChange) -> {
-                    mBinding.progressLayout.showContent(true, mAdapter.getItemCount());
-                    if (hasChange) mBinding.recycler.scrollToPosition(0);
+                mAdapter.setItems(items, () -> {
+                    mBinding.count.setText(getString(R.string.keep_count, mAdapter.getItemCount()));
+                    mBinding.empty.setVisibility(mAdapter.getItemCount() == 0 ? View.VISIBLE : View.GONE);
+                    mBinding.progressLayout.showContent();
                 });
             });
         });
     }
 
-    private void onSync() {
-        SyncDialog.create().history().show(this);
+    private void clearHistory() {
+        if (mAdapter.getItemCount() == 0) return;
+        int message = Setting.isHistoryAggregation() ? R.string.dialog_delete_global_history : R.string.dialog_clear_history;
+        new MaterialAlertDialogBuilder(this).setTitle(R.string.home_history).setMessage(message).setNegativeButton(R.string.dialog_negative, null).setPositiveButton(R.string.dialog_positive, (dialog, which) -> doClear()).show();
     }
 
-    private void onDelete() {
-        if (mAdapter.isDelete()) {
-            int message = Setting.isHistoryAggregation() ? R.string.dialog_delete_global_history : R.string.dialog_delete_history;
-            new MaterialAlertDialogBuilder(this).setTitle(R.string.dialog_delete_record).setMessage(message).setNegativeButton(R.string.dialog_negative, null).setPositiveButton(R.string.dialog_positive, (dialog, which) -> mAdapter.clear()).show();
-        } else if (mAdapter.getItemCount() > 0) {
-            mAdapter.setDelete(true);
-        }
+    private void doClear() {
+        Task.submit(() -> {
+            if (Setting.isHistoryAggregation()) History.deleteAllAndSync();
+            else History.deleteAndSync(VodConfig.getCid());
+            App.post(() -> {
+                mAdapter.setDelete(false);
+                getHistory();
+                RefreshEvent.history();
+            });
+        });
     }
 
     @Subscribe(threadMode = ThreadMode.MAIN)
     public void onRefreshEvent(RefreshEvent event) {
-        if (event.getType().equals(RefreshEvent.Type.HISTORY)) getHistory();
+        if (event.getType() == RefreshEvent.Type.HISTORY) getHistory();
     }
 
     @Override
@@ -116,26 +117,16 @@ public class HistoryActivity extends BaseActivity implements HistoryAdapter.OnCl
         mAdapter.remove(item.deleteAndSync(), () -> {
             if (mAdapter.getItemCount() == 0) mAdapter.setDelete(false);
         });
+        // 首页历史行需要同步收起/更新
+        RefreshEvent.history();
     }
 
     @Override
     public boolean onLongClick() {
         mAdapter.setDelete(!mAdapter.isDelete());
+        // 删除模式的退出/清空手势不可见，进入时提示一次
+        if (mAdapter.isDelete()) Notify.show(R.string.history_delete_hint);
         return true;
-    }
-
-    @Override
-    public boolean onCreateOptionsMenu(Menu menu) {
-        getMenuInflater().inflate(R.menu.menu_history, menu);
-        return true;
-    }
-
-    @Override
-    public boolean onOptionsItemSelected(@NonNull MenuItem item) {
-        if (item.getItemId() == android.R.id.home) onBackInvoked();
-        else if (item.getItemId() == R.id.delete) onDelete();
-        else if (item.getItemId() == R.id.sync) onSync();
-        return super.onOptionsItemSelected(item);
     }
 
     @Override

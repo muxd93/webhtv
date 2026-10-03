@@ -23,6 +23,7 @@ import androidx.media3.session.SessionError;
 import androidx.media3.session.SessionResult;
 
 import com.fongmi.android.tv.App;
+import com.fongmi.android.tv.api.config.LiveConfig;
 import com.fongmi.android.tv.BuildConfig;
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.setting.Setting;
@@ -107,6 +108,9 @@ public class PlaybackService extends MediaLibraryService implements MediaLibrary
     public void onCreate() {
         long start = System.currentTimeMillis();
         super.onCreate();
+        // 后台预热直播配置加载：浏览树首用路径会在共享 5 线程池内经 ensureLoaded 同步持锁拉网络，
+        // 预热把这次加载挪到服务启动时完成，避免慢源下占满线程池导致换台/点播解析排队卡死
+        Task.submit(() -> LiveConfig.get().ensureLoaded());
         if (SpiderDebug.isEnabled()) SpiderDebug.log("playback-flow", "service onCreate start");
         running = true;
         player = new PlayerManager(this);

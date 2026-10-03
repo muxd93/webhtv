@@ -87,6 +87,10 @@ public class SocketHttpStreamServer implements StreamServer<SocketHttpStreamServ
 
     private static class SocketUpnpStream extends UpnpStream {
 
+        // LAN 输入上限：Content-Length 与请求行长不可信，防 OOM（catch(Exception) 不捕获 Error）
+        private static final int MAX_BODY_BYTES = 8 * 1024 * 1024;
+        private static final int MAX_LINE_BYTES = 64 * 1024;
+
         private final Socket socket;
 
         SocketUpnpStream(ProtocolFactory protocolFactory, Socket socket) {
@@ -104,6 +108,7 @@ public class SocketHttpStreamServer implements StreamServer<SocketHttpStreamServ
                     return sb.toString();
                 }
                 sb.append((char) b);
+                if (sb.length() > MAX_LINE_BYTES) throw new IOException("request line too long");
                 prev = b;
             }
             return sb.toString();
@@ -172,6 +177,7 @@ public class SocketHttpStreamServer implements StreamServer<SocketHttpStreamServ
             if (length == null || length.isEmpty()) return;
             int len = Integer.parseInt(length.get(0).trim());
             if (len <= 0) return;
+            if (len > MAX_BODY_BYTES) throw new IOException("content-length too large: " + len);
             byte[] body = new byte[len];
             int offset = 0, read;
             while (offset < len && (read = is.read(body, offset, len - offset)) != -1) offset += read;

@@ -45,6 +45,10 @@ public class VodPresenter extends Presenter {
         void onItemClick(Vod item);
 
         boolean onLongClick(Vod item);
+
+        /** 焦点变化回调，默认空实现：供 TTS 播报等可选能力使用 */
+        default void onItemFocus(Vod item) {
+        }
     }
 
     @NonNull

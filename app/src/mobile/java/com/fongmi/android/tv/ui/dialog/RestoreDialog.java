@@ -10,11 +10,13 @@ import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentActivity;
 import androidx.viewbinding.ViewBinding;
 
+import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.databinding.DialogRestoreBinding;
 import com.fongmi.android.tv.db.AppDatabase;
 import com.fongmi.android.tv.impl.Callback;
 import com.fongmi.android.tv.ui.adapter.RestoreAdapter;
 import com.fongmi.android.tv.ui.custom.SpaceItemDecoration;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
 import java.io.File;
 
@@ -50,7 +52,12 @@ public class RestoreDialog extends BaseBottomSheetDialog implements RestoreAdapt
 
     @Override
     public void onItemClick(File item) {
-        BackupProgressDialog progress = BackupProgressDialog.open(getParentFragmentManager(), "恢复应用数据");
+        // 恢复会清空当前全部数据并覆盖，先二次确认
+        new MaterialAlertDialogBuilder(requireContext()).setTitle(R.string.restore_select).setMessage(R.string.dialog_restore_confirm).setNegativeButton(R.string.dialog_negative, null).setPositiveButton(R.string.dialog_positive, (dialog, which) -> restore(item)).show();
+    }
+
+    private void restore(File item) {
+        BackupProgressDialog progress = BackupProgressDialog.open(getParentFragmentManager(), getString(R.string.restore_progress));
         AppDatabase.restore(item, new Callback() {
             @Override
             public void success() {
@@ -69,6 +76,8 @@ public class RestoreDialog extends BaseBottomSheetDialog implements RestoreAdapt
 
     @Override
     public void onDeleteClick(File item) {
-        if (adapter.remove(item) == 0) dismiss();
+        new MaterialAlertDialogBuilder(requireContext()).setMessage(R.string.dialog_delete_backup).setNegativeButton(R.string.dialog_negative, null).setPositiveButton(R.string.dialog_positive, (dialog, which) -> {
+            if (adapter.remove(item) == 0) dismiss();
+        }).show();
     }
 }
