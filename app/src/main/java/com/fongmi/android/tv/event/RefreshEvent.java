@@ -42,6 +42,11 @@ public class RefreshEvent {
         EventBus.getDefault().post(new RefreshEvent(Type.LIVE));
     }
 
+    /** 后台内容更新（探测重排/聚合刷新）专用：在播会话静默换新树，不打断播放。 */
+    public static void liveUpdated() {
+        EventBus.getDefault().post(new RefreshEvent(Type.LIVE_UPDATE));
+    }
+
     public static void detail() {
         EventBus.getDefault().post(new RefreshEvent(Type.DETAIL));
     }
@@ -89,6 +94,6 @@ public class RefreshEvent {
     }
 
     public enum Type {
-        HOME, CATEGORY, HISTORY, KEEP, SIZE, THEME, LANGUAGE, LIVE, DETAIL, PLAYER, SUBTITLE, DANMAKU, VOD
+        HOME, CATEGORY, HISTORY, KEEP, SIZE, THEME, LANGUAGE, LIVE, LIVE_UPDATE, DETAIL, PLAYER, SUBTITLE, DANMAKU, VOD
     }
 }

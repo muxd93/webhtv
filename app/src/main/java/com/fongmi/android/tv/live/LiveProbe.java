@@ -19,6 +19,7 @@ import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.function.Supplier;
 
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -93,19 +94,29 @@ public class LiveProbe {
             App.post(() -> Notify.show(R.string.live_probe_unsupported));
             return;
         }
-        run(collect(false));
+        run(() -> collect(false));
     }
 
     /** 聚合写盘后的增量探测：probe 状态缺失的线路 + 隔离区线路。 */
     public static void startMissing() {
-        run(collect(true));
+        run(() -> collect(true));
     }
 
-    private static void run(List<Entry> entries) {
-        if (running || entries.isEmpty()) return;
+    /** 采集在后台执行（需解析整个聚合文件），入口线程只做运行态标记，避免主线程文件 I/O。 */
+    private static void run(Supplier<List<Entry>> supplier) {
+        if (running) return;
         running = true;
-        App.post(() -> Notify.show(ResUtil.getString(R.string.live_probe_start, entries.size())));
-        Task.submit(() -> execute(entries));
+        Task.submit(() -> {
+            List<Entry> entries = supplier.get();
+            if (entries.isEmpty()) {
+                running = false;
+                ProgressListener idle = listener;
+                if (idle != null) App.post(() -> idle.onFinished(0, 0));
+                return;
+            }
+            App.post(() -> Notify.show(ResUtil.getString(R.string.live_probe_start, entries.size())));
+            execute(entries);
+        });
     }
 
     private static void execute(List<Entry> entries) {
@@ -160,7 +171,7 @@ public class LiveProbe {
         String summary = cancelled ? ResUtil.getString(R.string.live_probe_partial, results.size(), ok) : ResUtil.getString(R.string.live_probe_done, ok, results.size() - ok);
         if (changed) App.post(() -> {
             Notify.show(summary);
-            LiveConfig.get().load();
+            LiveConfig.get().reloadQuietly();
         });
         else App.post(() -> Notify.show(summary));
         ProgressListener l = listener;

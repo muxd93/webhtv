@@ -56,13 +56,7 @@ public class LiveParser {
         return text.contains("://");
     }
 
-    /** iptv-api 系开启 open_url_info 时在 URL 后追加 "$说明"；仅当 $ 之后不含 "://" 时按信息后缀剥离。 */
-    private static String stripInfo(String url) {
-        int index = url.indexOf('$');
-        if (index < 1 || url.substring(index).contains("://")) return url;
-        return url.substring(0, index);
-    }
-
+    /** iptv-api 系开启 open_url_info 时在 URL 后追加 "$说明"；与源作者命名的 $线路名 语法不可区分，统一按线路名捕获。 */
     public static void start(Live live) throws Exception {
         if (!live.getGroups().isEmpty()) return;
         String text = getText(live);
@@ -135,7 +129,7 @@ public class LiveParser {
                 String[] parts = line.split("\\|", 2);
                 if (!isPlayableUrl(parts[0])) continue;
                 if (parts.length > 1) setting.headers(parts[1]);
-                channel.getUrls().add(stripInfo(parts[0]));
+                channel.addLine(parts[0]);
                 setting.copy(channel).clear();
             }
         }
@@ -159,7 +153,7 @@ public class LiveParser {
                     Group group = live.getGroups().get(live.getGroups().size() - 1);
                     Channel channel = group.find(Channel.create(split[0]));
                     if (parts.length > 1) setting.headers(parts[1]);
-                    channel.getUrls().add(stripInfo(parts[0]));
+                    channel.addLine(parts[0]);
                     setting.copy(channel);
                 }
             }

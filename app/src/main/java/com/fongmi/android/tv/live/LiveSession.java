@@ -64,6 +64,8 @@ public class LiveSession {
         void onLiveSwitched();
 
         void onUnlocked(Group group);
+
+        void onSoftReloaded();
     }
 
     private final Listener listener;
@@ -194,6 +196,51 @@ public class LiveSession {
 
     public void onLiveParsed(Live live) {
         render(live);
+    }
+
+    /**
+     * 后台内容更新（探测重排/聚合刷新/删源联动）后的会话软刷新：换到新树并尽量
+     * 对位当前台，不触碰播放器。找不到原台时保留旧引用继续播，列表反映新树。
+     */
+    public void softReload() {
+        if (!rendered) return;
+        Live home = LiveConfig.get().getHome();
+        if (home == null || home.getGroups().isEmpty()) return;
+        String groupName = group == null ? "" : group.getName();
+        String channelName = channel == null ? "" : channel.getName();
+        groups.clear();
+        hides.clear();
+        for (Group item : home.getGroups()) (item.isHidden() ? hides : groups).add(item);
+        Group target = groupName.isEmpty() ? null : findGroupByName(groupName);
+        if (target != null) group = target;
+        Channel found = target == null || channel == null ? null : findChannelByName(target, channelName);
+        if (found != null) {
+            channel = found.group(target);
+            List<Channel> channels = target.getChannel();
+            for (int i = 0; i < channels.size(); i++) {
+                if (channels.get(i) == found) {
+                    target.setPosition(i);
+                    break;
+                }
+            }
+        } else if (target != null && channel != null) {
+            // 原台已不在新树（被隔离/改名）：保留引用继续播，但重绑到新树同名组，
+            // 否则 isTuned/syncToTuned 会拿到脱离树的旧组导致列表选中态错位
+            channel.group(target);
+        }
+        listener.onSoftReloaded();
+    }
+
+    @Nullable
+    private Group findGroupByName(String name) {
+        for (Group item : groups) if (item.getName().equals(name)) return item;
+        return null;
+    }
+
+    @Nullable
+    private Channel findChannelByName(Group target, String name) {
+        for (Channel item : target.getChannel()) if (item.getName().equals(name)) return item;
+        return null;
     }
 
     private void render(Live live) {
