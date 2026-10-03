@@ -2,6 +2,8 @@ package com.fongmi.android.tv.api.config;
 
 import android.text.TextUtils;
 
+import androidx.appcompat.app.AlertDialog;
+
 import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.api.CspWarmup;
@@ -27,6 +29,7 @@ import com.github.catvod.crawler.SpiderDebug;
 import com.github.catvod.bean.Header;
 import com.github.catvod.bean.Proxy;
 import com.github.catvod.utils.Json;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.gson.JsonObject;
 
 import java.util.ArrayList;
@@ -50,6 +53,7 @@ public class VodConfig extends BaseConfig {
     private List<String> flags;
     private List<Parse> parses;
     private volatile FailoverRound failoverRound;
+    private volatile AlertDialog failoverDialog;
 
     public static VodConfig get() {
         return Loader.INSTANCE;
@@ -86,6 +90,11 @@ public class VodConfig extends BaseConfig {
     public static void load(Config config, Callback callback) {
         get().abandonFailover();
         get().clear().config(config).load(callback);
+    }
+
+    /** 外部终止进行中的容灾轮次（如设置页把模式切到关闭）。 */
+    public static void cancelFailover() {
+        get().stopFailover();
     }
 
     @Override
@@ -240,8 +249,11 @@ public class VodConfig extends BaseConfig {
         FailoverRound round = new FailoverRound(config.getDesc(), remaining, callback, message,
                 new InterfaceFailoverState(mode, originUrl, urls(remaining)));
         failoverRound = round;
-        // CONFIRM 模式的确认弹窗随 X2-2b 提供；当前 CONFIRM 无候选可自动推进，等同终止报错
-        App.post(this::startNextAttempt);
+        if (InterfaceFailoverPolicy.isConfirm(mode)) {
+            App.post(() -> showConfirmDialog(round));
+        } else {
+            App.post(this::startNextAttempt);
+        }
     }
 
     private void onAttemptFailure(FailoverRound round) {
@@ -325,6 +337,96 @@ public class VodConfig extends BaseConfig {
             cancelLoad(false);
         }
         failoverRound = null;
+        AlertDialog dialog = failoverDialog;
+        failoverDialog = null;
+        if (dialog != null) App.post(dialog::dismiss);
+    }
+
+    /** 用户在容灾确认弹窗中选定的候选开始尝试；一轮只允许一次选择。 */
+    private void startSelectedAttempt(FailoverRound round, int index) {
+        if (failoverRound != round || index < 0 || index >= round.candidates.size()) return;
+        if (!InterfaceFailoverPolicy.shouldFailover(Setting.getInterfaceFailoverMode())) {
+            finishFailure(round, round.lastError);
+            return;
+        }
+        Config selected = round.candidates.get(index);
+        String selectedUrl = round.state.select(index);
+        if (selectedUrl == null) {
+            finishFailure(round, round.lastError);
+            return;
+        }
+        Notify.show(ResUtil.getString(R.string.interface_failover_next, selected.getDesc()));
+        round.attemptCallback = new Callback() {
+            @Override
+            public void success() {
+                if (round.attemptCallback != this) return;
+                finishSuccess(round);
+            }
+
+            @Override
+            public void error(String msg) {
+                if (round.attemptCallback != this) return;
+                round.lastError = msg;
+                App.post(() -> {
+                    if (round.attemptCallback == this) onAttemptFailure(round);
+                });
+            }
+        };
+        loadFailoverAttempt(selected, round.attemptCallback);
+    }
+
+    private void showConfirmDialog(FailoverRound round) {
+        if (failoverRound != round) return;
+        android.app.Activity activity = App.activity();
+        if (activity == null || activity.isFinishing() || activity.isDestroyed()) {
+            finishFailure(round, round.lastError);
+            return;
+        }
+        CharSequence[] labels = new CharSequence[round.candidates.size()];
+        for (int i = 0; i < labels.length; i++) labels[i] = round.candidates.get(i).getDesc();
+        final int[] selected = {0};
+        AlertDialog dialog = new MaterialAlertDialogBuilder(activity)
+                .setTitle(R.string.interface_failover_title)
+                .setMessage(ResUtil.getString(R.string.interface_failover_message, round.originDesc))
+                .setSingleChoiceItems(labels, 0, (dialog1, which) -> selected[0] = which)
+                .setPositiveButton(R.string.interface_failover_switch, (dialog1, which) -> startSelectedAttempt(round, selected[0]))
+                .setNegativeButton(R.string.dialog_cancel, (dialog1, which) -> cancelFailover(round))
+                .create();
+        failoverDialog = dialog;
+        dialog.setOnCancelListener(dialog1 -> cancelFailover(round));
+        dialog.setOnDismissListener(dialog1 -> {
+            if (failoverDialog == dialog) failoverDialog = null;
+        });
+        dialog.show();
+    }
+
+    private void cancelFailover(FailoverRound round) {
+        if (failoverRound != round) return;
+        cancelRound(round);
+        Notify.show(R.string.interface_failover_cancelled);
+    }
+
+    private void stopFailover() {
+        FailoverRound round = failoverRound;
+        if (round == null) return;
+        round.state.cancel();
+        if (round.attemptCallback != null) cancelLoad(true);
+        failoverRound = null;
+        AlertDialog dialog = failoverDialog;
+        failoverDialog = null;
+        if (dialog != null) dialog.dismiss();
+        round.callback.error(errorMessage(round.lastError));
+    }
+
+    private void cancelRound(FailoverRound round) {
+        if (failoverRound != round) return;
+        round.state.cancel();
+        if (round.attemptCallback != null) cancelLoad(true);
+        failoverRound = null;
+        AlertDialog dialog = failoverDialog;
+        failoverDialog = null;
+        if (dialog != null) dialog.dismiss();
+        round.callback.error(errorMessage(round.lastError));
     }
 
     private int indexOfUrl(List<Config> configs, String url) {

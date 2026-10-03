@@ -1262,6 +1262,24 @@
 
     <!-- Interface failover -->
     <string name="interface_failover_next">Trying next interface: %1$s</string>
+    <string name="interface_failover_title">Interface load failed</string>
+    <string name="interface_failover_message">Current: %1$s</string>
+    <string name="interface_failover_switch">Switch</string>
+    <string name="interface_failover_cancelled">Interface switch cancelled</string>
+    <string name="setting_interface_failover">VOD config failover</string>
+    <string-array name="select_interface_failover_mode">
+        <item>Off</item>
+        <item>Auto</item>
+        <item>Confirm</item>
+    </string-array>
+
+    <!-- History aggregation -->
+    <string name="history_config_deleted">The config for this record no longer exists</string>
+    <string name="history_switch_title">Switch config</string>
+    <string name="history_switch_message">Switch to %1$s to continue %2$s?</string>
+    <string name="history_switching">Switching config: %1$s</string>
+    <string name="dialog_delete_global_history">This deletes history from ALL configs. Continue?</string>
+    <string name="setting_history_aggregation">Cross-config history</string>
 
     <!-- Hint -->
     <string name="copied">Copied</string>

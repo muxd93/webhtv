@@ -10,21 +10,30 @@ import androidx.leanback.widget.Presenter;
 import com.bumptech.glide.Glide;
 import com.fongmi.android.tv.Product;
 import com.fongmi.android.tv.R;
+import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.bean.History;
 import com.fongmi.android.tv.databinding.AdapterVodBinding;
 import com.fongmi.android.tv.utils.HistoryProgressFormatter;
 import com.fongmi.android.tv.utils.ImgUtil;
 import com.fongmi.android.tv.utils.ResUtil;
 
+import java.util.Map;
+
 public class HistoryPresenter extends Presenter {
 
     private final OnClickListener listener;
     private int width, height;
     private boolean delete;
+    private Map<Integer, String> configNames = Map.of();
 
     public HistoryPresenter(OnClickListener listener) {
         this.listener = listener;
         setLayoutSize();
+    }
+
+    /** 聚合模式下用于把跨配置条目的站点名替换为来源配置名。 */
+    public void setConfigNames(Map<Integer, String> names) {
+        this.configNames = names == null ? Map.of() : names;
     }
 
     public interface OnClickListener {
@@ -51,6 +60,11 @@ public class HistoryPresenter extends Presenter {
 
     public void setDelete(boolean delete) {
         this.delete = delete;
+    }
+
+    private String siteText(History item) {
+        String configName = configNames.get(item.getCid());
+        return item.getCid() != VodConfig.getCid() && configName != null ? configName : item.getSiteName();
     }
 
     private void setClickListener(View root, History item) {
@@ -80,7 +94,7 @@ public class HistoryPresenter extends Presenter {
         ViewHolder holder = (ViewHolder) viewHolder;
         setClickListener(holder.view, item);
         holder.binding.name.setText(item.getVodName());
-        holder.binding.site.setText(item.getSiteName());
+        holder.binding.site.setText(siteText(item));
         holder.binding.remark.setText(item.getVodRemarks());
         holder.binding.site.setVisibility(item.getSiteVisible());
         holder.binding.delete.setVisibility(!delete ? View.GONE : View.VISIBLE);

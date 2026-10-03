@@ -286,6 +286,19 @@ public class Setting {
         return Prefers.getInt("interface_failover_mode", InterfaceFailoverPolicy.AUTO);
     }
 
+    /** 历史记录跨点播配置聚合展示开关（X16；设置入口随批次 C）。 */
+    public static boolean isHistoryAggregation() {
+        return Prefers.getInt("history_aggregation", 0) != 0;
+    }
+
+    public static void putInterfaceFailoverMode(int mode) {
+        Prefers.put("interface_failover_mode", InterfaceFailoverPolicy.clampMode(mode));
+    }
+
+    public static void putHistoryAggregation(boolean aggregation) {
+        Prefers.put("history_aggregation", aggregation ? 1 : 0);
+    }
+
     public static int getSiteMode() {
         return Prefers.getInt("site_mode");
     }

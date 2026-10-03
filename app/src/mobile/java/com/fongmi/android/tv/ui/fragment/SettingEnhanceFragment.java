@@ -12,12 +12,14 @@ import androidx.annotation.Nullable;
 import androidx.viewbinding.ViewBinding;
 
 import com.fongmi.android.tv.R;
+import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.gitcloud.GitCloudAccountStore;
 import com.fongmi.android.tv.playback.ViewingRecordSyncStore;
 import com.fongmi.android.tv.remote.RemoteStore;
 import com.fongmi.android.tv.setting.Setting;
 import com.fongmi.android.tv.databinding.FragmentSettingEnhanceBinding;
 import com.fongmi.android.tv.setting.CustomCspSetting;
+import com.fongmi.android.tv.setting.InterfaceFailoverPolicy;
 import com.fongmi.android.tv.setting.ProxySetting;
 import com.fongmi.android.tv.setting.SiteHealthStore;
 import com.fongmi.android.tv.ui.activity.HomeActivity;
@@ -37,8 +39,10 @@ import com.fongmi.android.tv.ui.dialog.WebHomeExtensionDialog;
 import com.fongmi.android.tv.utils.LoginStateSync;
 import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.PermissionUtil;
+import com.fongmi.android.tv.utils.ResUtil;
 import com.fongmi.android.tv.web.ext.WebHomeExtensionRegistry;
 import com.github.catvod.crawler.SpiderDebug;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.gson.JsonObject;
 
 public class SettingEnhanceFragment extends BaseFragment {
@@ -82,6 +86,8 @@ public class SettingEnhanceFragment extends BaseFragment {
         });
         mBinding.driveCheck.setOnClickListener(this::setDriveCheck);
         mBinding.debugLog.setOnClickListener(this::setDebugLog);
+        mBinding.interfaceFailover.setOnClickListener(this::setInterfaceFailover);
+        mBinding.historyAggregation.setOnClickListener(this::setHistoryAggregation);
         mBinding.siteHealthSort.setOnClickListener(view -> SiteHealthDialog.show(this, this::setText));
         mBinding.siteHealthSort.setOnLongClickListener(this::clearSiteHealth);
         mBinding.webHomeExtension.setOnClickListener(view -> WebHomeExtensionDialog.show(this, this::setText));
@@ -109,6 +115,8 @@ public class SettingEnhanceFragment extends BaseFragment {
     private void reorderItems() {
         ViewGroup parent = (ViewGroup) mBinding.customCsp.getParent();
         View[] order = {
+                mBinding.interfaceFailover,
+                mBinding.historyAggregation,
                 mBinding.customCsp,
                 mBinding.webHomeExtension,
                 mBinding.gitCloud,
@@ -134,6 +142,8 @@ public class SettingEnhanceFragment extends BaseFragment {
     private void setText() {
         if (!canSetText()) return;
         safeSet("driveCheck", mBinding.driveCheckText, () -> getSwitch(Setting.isDriveCheck()));
+        safeSet("interfaceFailover", mBinding.interfaceFailoverText, this::getFailoverText);
+        safeSet("historyAggregation", mBinding.historyAggregationText, () -> getSwitch(Setting.isHistoryAggregation()));
         safeSet("debugLog", mBinding.debugLogText, () -> getSwitch(Setting.isDebugLog()));
         safeSet("siteHealthSort", mBinding.siteHealthSortText, () -> getSwitch(Setting.isSiteHealthSort()));
         safeSet("webHomeExtension", mBinding.webHomeExtensionText, () -> {
@@ -212,6 +222,35 @@ public class SettingEnhanceFragment extends BaseFragment {
     private void setDriveCheck(View view) {
         Setting.putDriveCheck(!Setting.isDriveCheck());
         mBinding.driveCheckText.setText(getSwitch(Setting.isDriveCheck()));
+    }
+
+    private void setInterfaceFailover(View view) {
+        int[] modes = {InterfaceFailoverPolicy.OFF, InterfaceFailoverPolicy.AUTO, InterfaceFailoverPolicy.CONFIRM};
+        String[] labels = ResUtil.getStringArray(R.array.select_interface_failover_mode);
+        int index = 0;
+        for (int i = 0; i < modes.length; i++) if (modes[i] == Setting.getInterfaceFailoverMode()) index = i;
+        new MaterialAlertDialogBuilder(requireContext())
+                .setTitle(R.string.setting_interface_failover)
+                .setSingleChoiceItems(labels, index, (dialog, which) -> {
+                    Setting.putInterfaceFailoverMode(modes[which]);
+                    if (modes[which] == InterfaceFailoverPolicy.OFF) VodConfig.cancelFailover();
+                    dialog.dismiss();
+                    setText();
+                })
+                .show();
+    }
+
+    private String getFailoverText() {
+        String[] labels = ResUtil.getStringArray(R.array.select_interface_failover_mode);
+        int[] modes = {InterfaceFailoverPolicy.OFF, InterfaceFailoverPolicy.AUTO, InterfaceFailoverPolicy.CONFIRM};
+        int index = 0;
+        for (int i = 0; i < modes.length; i++) if (modes[i] == Setting.getInterfaceFailoverMode()) index = i;
+        return labels.length > index ? labels[index] : "";
+    }
+
+    private void setHistoryAggregation(View view) {
+        Setting.putHistoryAggregation(!Setting.isHistoryAggregation());
+        mBinding.historyAggregationText.setText(getSwitch(Setting.isHistoryAggregation()));
     }
 
     private void setDebugLog(View view) {

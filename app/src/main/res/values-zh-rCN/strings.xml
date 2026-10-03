@@ -1259,6 +1259,24 @@
 
     <!-- Interface failover -->
     <string name="interface_failover_next">正在尝试下一个接口：%1$s</string>
+    <string name="interface_failover_title">接口加载失败</string>
+    <string name="interface_failover_message">当前接口：%1$s</string>
+    <string name="interface_failover_switch">切换接口</string>
+    <string name="interface_failover_cancelled">已取消接口切换</string>
+    <string name="setting_interface_failover">点播接口容灾</string>
+    <string-array name="select_interface_failover_mode">
+        <item>关闭</item>
+        <item>自动</item>
+        <item>确认</item>
+    </string-array>
+
+    <!-- History aggregation -->
+    <string name="history_config_deleted">该记录所属的配置已删除</string>
+    <string name="history_switch_title">切换配置</string>
+    <string name="history_switch_message">切换到「%1$s」继续播放《%2$s》？</string>
+    <string name="history_switching">正在切换配置：%1$s</string>
+    <string name="dialog_delete_global_history">将删除所有点播配置的历史记录，确定继续吗？</string>
+    <string name="setting_history_aggregation">跨配置历史聚合</string>
 
     <!-- Hint -->
     <string name="copied">已复制</string>
