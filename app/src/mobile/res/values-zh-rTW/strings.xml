@@ -125,4 +125,8 @@
         <item>標準</item>
     </string-array>
 
+    <string name="dialog_restore_confirm">恢復備份將清空並覆蓋當前全部數據，確定繼續嗎？</string>
+    <string name="dialog_delete_backup">刪除該備份文件？</string>
+    <string name="restore_progress">恢復應用數據</string>
+    <string name="dialog_sync_overwrite">覆蓋同步將清空本地該類型的全部數據，確定繼續嗎？</string>
 </resources>

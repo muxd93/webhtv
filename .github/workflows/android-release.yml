@@ -98,7 +98,11 @@ jobs:
         id: meta
         run: |
           VERSION_NAME="$(sed -n 's/^[[:space:]]*versionName[[:space:]]*"\([^"]*\)".*/\1/p' app/build.gradle | head -1)"
-          VERSION_CODE="$(sed -n 's/^[[:space:]]*versionCode[[:space:]]*\([0-9][0-9]*\).*/\1/p' app/build.gradle | head -1)"
+          VERSION_CODE="$(date +%y%m%d%H)"
+          if [ "$VERSION_CODE" -le 112 ]; then
+            echo "::error title=Invalid version code::$VERSION_CODE is not greater than the baseline 112"
+            exit 1
+          fi
           CHANNEL="${{ inputs.release_channel }}"
           if [ "$CHANNEL" = "auto" ] || [ -z "$CHANNEL" ]; then
             if [ "${{ github.ref_name }}" = "fongmi-sync" ]; then
@@ -172,6 +176,7 @@ jobs:
         env:
           WEBHTV_RELEASE_TAG: ${{ steps.meta.outputs.tag }}
           WEBHTV_APK_SUFFIX: ${{ steps.meta.outputs.apk_suffix }}
+          WEBHTV_VERSION_CODE: ${{ steps.meta.outputs.version_code }}
         run: |
           chmod +x ./gradlew
           rm -rf Release/apk

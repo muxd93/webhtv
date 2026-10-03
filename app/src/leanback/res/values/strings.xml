@@ -57,4 +57,12 @@
     <string name="timer_60">1 hour</string>
     <string name="timer_delay">Delay 5 minutes</string>
     <string name="timer_cancel">Cancel timer</string>
+    <string name="exit_press_again">Press back again to exit</string>
+    <string name="dialog_clear_history">Clear the displayed watch history?</string>
+    <string name="dialog_clear_keep">All keeps will be removed.</string>
+    <string name="dialog_restore_confirm">Restoring will overwrite ALL current data. Continue?</string>
+    <string name="dialog_delete_backup">Delete this backup file?</string>
+    <string name="backup_progress">Backing up app data</string>
+    <string name="restore_progress">Restoring app data</string>
+    <string name="history_delete_hint">Delete mode: click a card to delete, long-press again to clear all, back to exit</string>
 </resources>

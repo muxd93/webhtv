@@ -14,8 +14,10 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
@@ -37,7 +39,10 @@ public class ScanTask {
 
     public ScanTask(Listener listener) {
         this.client = OkHttp.client(500);
-        this.executor = Executors.newFixedThreadPool(PARALLELISM);
+        // 核心线程允许 60s 空闲超时：排队语义与固定池一致，但无人调 stop() 的孤儿实例线程终将回收
+        ThreadPoolExecutor pool = new ThreadPoolExecutor(PARALLELISM, PARALLELISM, 60L, TimeUnit.SECONDS, new LinkedBlockingQueue<>());
+        pool.allowCoreThreadTimeOut(true);
+        this.executor = pool;
         this.future = new CopyOnWriteArrayList<>();
         this.listener = listener;
     }

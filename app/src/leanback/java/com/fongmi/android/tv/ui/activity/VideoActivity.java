@@ -1835,6 +1835,7 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
     }
 
     private void onKeep() {
+        if (mHistory == null) return;
         Keep keep = Keep.find(getHistoryKey());
         Notify.show(keep != null ? R.string.keep_del : R.string.keep_add);
         if (keep != null) keep.delete();
@@ -1843,6 +1844,7 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
     }
 
     private void checkPlay() {
+        if (service() == null) return;
         setR1Callback();
         if (player().isPlaying()) onPaused();
         else if (player().isEmpty()) onRefresh();
@@ -3140,11 +3142,14 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
     }
 
     private void checkNext(boolean notify) {
+        // 媒体会话回调可先于详情返回（mHistory 未建）；音频舞台按钮可在服务连接前点击
+        if (service() == null || mHistory == null) return;
         if (mHistory.isRevPlay()) onPrev(notify);
         else onNext(notify);
     }
 
     private void checkPrev() {
+        if (service() == null || mHistory == null) return;
         if (mHistory.isRevPlay()) onNext(true);
         else onPrev(true);
     }
@@ -5638,10 +5643,10 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
     public void onRefreshEvent(RefreshEvent event) {
         if (isRedirect()) return;
         if (event.getType() == RefreshEvent.Type.DETAIL) getDetail();
-        else if (event.getType() == RefreshEvent.Type.PLAYER) onRefresh();
+        else if (event.getType() == RefreshEvent.Type.PLAYER) { if (service() != null) onRefresh(); }
         else if (event.getType() == RefreshEvent.Type.VOD) updateVod(event.getVod());
-        else if (event.getType() == RefreshEvent.Type.SUBTITLE) player().setSub(Sub.from(event.getPath()));
-        else if (event.getType() == RefreshEvent.Type.DANMAKU) player().reloadDanmaku(Danmaku.from(event.getPath()));
+        else if (event.getType() == RefreshEvent.Type.SUBTITLE) { if (service() != null) player().setSub(Sub.from(event.getPath())); }
+        else if (event.getType() == RefreshEvent.Type.DANMAKU) { if (service() != null) player().reloadDanmaku(Danmaku.from(event.getPath())); }
     }
 
     @Subscribe(threadMode = ThreadMode.MAIN)

@@ -388,7 +388,7 @@ public class SettingActivity extends BaseActivity implements ConfigListener, Sit
 
     private void onBackup(View view) {
         PermissionUtil.requestFile(this, allGranted -> {
-            BackupProgressDialog progress = BackupProgressDialog.open(getSupportFragmentManager(), "备份应用数据");
+            BackupProgressDialog progress = BackupProgressDialog.open(getSupportFragmentManager(), getString(R.string.backup_progress));
             AppDatabase.backup(new Callback() {
             @Override
             public void success() {

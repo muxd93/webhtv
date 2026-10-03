@@ -46,11 +46,11 @@ public class Url {
     }
 
     public String v(int position) {
-        return position >= getValues().size() ? "" : getValues().get(position).getV();
+        return position < 0 || position >= getValues().size() ? "" : getValues().get(position).getV();
     }
 
     public String n(int position) {
-        return position >= getValues().size() ? "" : getValues().get(position).getN();
+        return position < 0 || position >= getValues().size() ? "" : getValues().get(position).getN();
     }
 
     public Url add(String v) {
@@ -70,7 +70,8 @@ public class Url {
     }
 
     public Url set(int position) {
-        this.position = Math.min(position, getValues().size() - 1);
+        // 空结果时 size-1 为 -1，钳到 0 防止后续 v() 越界（isEmpty() 会先经 v() 判空收敛）
+        this.position = Math.max(0, Math.min(position, getValues().size() - 1));
         return this;
     }
 

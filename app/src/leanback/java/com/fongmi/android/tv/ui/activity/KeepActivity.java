@@ -20,6 +20,7 @@ import com.fongmi.android.tv.ui.adapter.KeepAdapter;
 import com.fongmi.android.tv.ui.base.BaseActivity;
 import com.fongmi.android.tv.ui.custom.SpaceItemDecoration;
 import com.fongmi.android.tv.utils.Notify;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
 import org.greenrobot.eventbus.Subscribe;
 import org.greenrobot.eventbus.ThreadMode;
@@ -71,6 +72,10 @@ public class KeepActivity extends BaseActivity implements KeepAdapter.OnClickLis
 
     private void clearKeep() {
         if (mAdapter.getItemCount() == 0) return;
+        new MaterialAlertDialogBuilder(this).setTitle(R.string.home_keep_row).setMessage(R.string.dialog_clear_keep).setNegativeButton(R.string.dialog_negative, null).setPositiveButton(R.string.dialog_positive, (dialog, which) -> doClearKeep()).show();
+    }
+
+    private void doClearKeep() {
         // 只清视频收藏，不影响直播收藏
         Keep.getVod().forEach(Keep::delete);
         getKeep();

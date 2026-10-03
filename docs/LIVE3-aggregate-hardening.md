@@ -57,3 +57,27 @@ LIVE3a 补丁（本节同 commit）：
 已知边缘（记录不修）：softReload 时整个组消失的场景，session 仍持旧组引用继续播（换台后自愈）；URL 查询参数含 `$` 会被 splitLine 误拆名称（与旧 stripInfo 行为等同，非回归）。
 
 维持不修决策（本轮复核确认）：探测 UA 与播放侧默认 UA 不一致（三种播放引擎默认 UA 各异，无对齐收益，2 轮全死+复活兜底）；collect 按 URL 去重取首个频道 headers（误配窗口极窄）；parseDepot 同步 aggregate(true)（实际在后台线程执行且有 Toast，池未变未超龄直接复用文件）；单源配置 SWR 内容变化不补页内热更广播（需给 BaseConfig 加内容变化信号，低频场景不值得引入事件时序风险）。
+
+## 2026-10-03 ANR/crash 审计（LIVE3b）
+
+对直播链路做 ANR/crash 定向审计：无 crash 级缺陷；配置加载/探测/EPG 全链路线程模型核实无主线程网络与重解析；Channel EPG 锁仅覆盖小开销拷贝；适配器主线程 clear-then-add 无 CME。发现并修复（本节同 commit）：
+
+1. **revive 主线程大文件 I/O**：双端 LivePoolDialog"复活"经 apply() 内联执行 `LiveAggregator.revive()`，其内部 readState/writeState 同步读写大 state 文件（lines+probe 随池增长且 lines 无清理）。改为 `Task.submit` 后台执行、完成后主线程 `loadData()+reaggregate()`。
+2. **池对话框重聚合后停留旧树**：`reaggregate()` 成功改用 `reloadQuietly()`（原全量事件 `load()`，页面不订阅 ConfigEvent 故不刷新），经 `liveUpdated → softReload` 静默对位。
+3. **sync 守卫对齐**：`LiveConfig.reloadQuietly()` 补 `if (sync) return;`，与 `load()` 一致，防同步模式被静默重载。
+
+鲁棒性记录项（非 ANR/crash）：并发 aggregate() 可能竞态写同一 `.tmp` 文件，`write()` 捕获异常且下次聚合自愈。
+
+## 2026-10-03 全直播面 ANR/crash 审计（LIVE3c）
+
+三路并行审计（UI 层、数据/API 层、集成层）+ 逐条人工复核原始代码。无 P0；修复 4 个 P1 崩溃/泄漏 + 1 个缓解（本节同 commit）：
+
+1. **leanback LiveActivity 粘性 Result 崩溃**：Activity 重建（uiMode/fontScale）后 `observeForever` 同步重放 ViewModel 存活 Result，`mService` 未连接时 `player().setSpeed`/`Track.delete(player().getKey())` NPE。照 mobile 模式补 `mPendingStartResult` 暂存 + `onServiceConnected` 补放。
+2. **数字选台定时器逃逸**：`CustomKeyDownLive` 的 2s 定时器 runnable 不在 leanback onDestroy 清理清单，退出页面后触发 `onFind→…→player().clear()` NPE。新增 `CustomKeyDownLive.release()` 并在 onDestroy 调用。
+3. **Catchup 非法 regex 主线程崩溃**：JSON 配置 `catchup.regex` 非法时 `Pattern.compile` 抛 PatternSyntaxException（`LiveSession.onEpgDataClick → hasCatchup → match`）。`match()` 加 try-catch 回退子串匹配。
+4. **ScanTask 线程泄漏**：`Manage/devices?scan=1` 每次创建孤儿 ScanTask（无人调 stop()），`newFixedThreadPool(64)` 核心线程永久驻留 → 反复扫描后 pthread_create OOM。改为允许核心线程 60s 空闲超时的等价池（排队语义不变；CastDialog 同实例重扫描流程不受影响——这正是不能"完成即关池"的原因）。
+5. **浏览路径池饥饿缓解**：`LiveBrowse → LiveConfig.ensureLoaded`（synchronized）在共享 5 线程池内同步拉网络+EPG，慢源首用最多 5 线程串行阻塞。PlaybackService onCreate 后台预热 `ensureLoaded()`，把首次加载挪离浏览关键路径。
+
+P2 记录不修（详情见审计报告）：Action.java onControl/onDanmaku 服务销毁窄竞态 NPE；`Task.execute` 裸执行语义（全应用决策，现存可达点在 VOD 历史保存）；Manage.reloadConfigs 主线程读 CSP 小文件；mobile LiveControlDialog Fragment 重建 parent NPE；leanback seek 250ms lambda 窗口；mobile refreshInjectedLives 主线程读小文件；Catchup 格式化异常致回看静默失败（后台兜底）；{date} 模板 EPG 超时不打断底层 OkHttp（资源占用）；EpgParser gzip 截断文件当有效缓存 + 无 zip 炸弹防护（归 LIVE2 域）。
+
+审计"已查清无问题"面：EventBus 33 处订阅全 MAIN；配置加载/EPG/换台解析全后台且异常闭合；ensureLoaded 无主线程调用方；BrowseTree/LiveBrowse 并发缓存安全；Prefers 全 apply()；Clock/Traffic/OSD 定时器生命周期正确；适配器 clear-then-add；Room 主线程为既有允许模式。

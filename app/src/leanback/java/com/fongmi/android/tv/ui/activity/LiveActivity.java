@@ -85,6 +85,8 @@ public class LiveActivity extends PlaybackActivity implements GroupAdapter.OnCli
     private GroupAdapter mGroupAdapter;
     private Observer<Result> mObserveUrl;
     private CustomKeyDownLive mKeyDown;
+    @Nullable
+    private Result mPendingStartResult;
     private Observer<Epg> mObserveEpg;
     private LiveViewModel mViewModel;
     private PlayerOsdController mOsd;
@@ -147,7 +149,13 @@ public class LiveActivity extends PlaybackActivity implements GroupAdapter.OnCli
         setPlayerKernel();
         setDecode();
         mBinding.control.action.speed.setText(player().getSpeedText());
-        checkLive();
+        if (mPendingStartResult != null) {
+            Result result = mPendingStartResult;
+            mPendingStartResult = null;
+            mSession.play(result);
+        } else {
+            checkLive();
+        }
     }
 
     @Override
@@ -248,7 +256,11 @@ public class LiveActivity extends PlaybackActivity implements GroupAdapter.OnCli
     private void setViewModel() {
         mViewModel = new ViewModelProvider(this).get(LiveViewModel.class);
         mSession = new LiveSession(mViewModel, this);
-        mObserveUrl = result -> mSession.play(result);
+        // 服务未连接前到达的粘性 Result 暂存（Activity 重建时 ViewModel 存活值会同步重放），连接后补放
+        mObserveUrl = result -> {
+            if (service() == null) mPendingStartResult = result;
+            else mSession.play(result);
+        };
         mObserveEpg = mSession::onEpgResult;
         mViewModel.url().observeForever(mObserveUrl);
         mViewModel.epg().observeForever(mObserveEpg);
@@ -1046,6 +1058,7 @@ public class LiveActivity extends PlaybackActivity implements GroupAdapter.OnCli
     protected void onDestroy() {
         mClock.release();
         Source.get().exit();
+        mKeyDown.release();
         App.removeCallbacks(mR0, mR1, mR2, mR3, mR4);
         if (mOsd != null) mOsd.release();
         mViewModel.url().removeObserver(mObserveUrl);

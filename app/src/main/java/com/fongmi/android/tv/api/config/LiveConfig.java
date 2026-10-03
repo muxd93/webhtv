@@ -127,6 +127,7 @@ public class LiveConfig extends BaseConfig {
 
     /** 后台内容更新（探测重排/聚合刷新/删源联动）后的静默重载：不打断在播会话，成功后广播 liveUpdated 供其软刷新。 */
     public void reloadQuietly() {
+        if (sync) return;
         loadSilent(new Callback() {
             @Override
             public void success() {

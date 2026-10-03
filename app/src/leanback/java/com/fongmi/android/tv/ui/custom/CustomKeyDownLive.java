@@ -105,6 +105,12 @@ public class CustomKeyDownLive extends GestureDetector.SimpleOnGestureListener {
         holdTime = 0;
     }
 
+    /** 取消挂起的数字选台定时器：页面销毁后触发会经 restore/fetchLive 触碰已释放的播放器。 */
+    public void release() {
+        App.removeCallbacks(runnable);
+        text.setLength(0);
+    }
+
     public interface Listener {
 
         boolean dispatch(boolean check);

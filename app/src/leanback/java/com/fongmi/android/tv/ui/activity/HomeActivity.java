@@ -1,5 +1,6 @@
 package com.fongmi.android.tv.ui.activity;
 
+import android.animation.ValueAnimator;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.ActivityManager;
@@ -20,8 +21,6 @@ import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.leanback.widget.ArrayObjectAdapter;
-import androidx.leanback.widget.FocusHighlight;
-import androidx.leanback.widget.HorizontalGridView;
 import androidx.leanback.widget.ItemBridgeAdapter;
 import androidx.leanback.widget.ListRow;
 import androidx.leanback.widget.OnChildViewHolderSelectedListener;
@@ -82,6 +81,7 @@ import com.fongmi.android.tv.utils.Clock;
 import com.fongmi.android.tv.utils.CrashRestartMode;
 import com.fongmi.android.tv.utils.FileChooser;
 import com.fongmi.android.tv.utils.HistoryOpener;
+import com.fongmi.android.tv.utils.Task;
 import com.fongmi.android.tv.utils.ImgUtil;
 import com.fongmi.android.tv.utils.KeyUtil;
 import com.fongmi.android.tv.utils.Notify;
@@ -101,10 +101,15 @@ import com.google.gson.JsonObject;
 import org.greenrobot.eventbus.Subscribe;
 import org.greenrobot.eventbus.ThreadMode;
 
+import com.fongmi.android.tv.ui.custom.HomeRows;
+import com.fongmi.android.tv.ui.presenter.HomeEmptyPresenter;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 
 public class HomeActivity extends BaseActivity implements CustomTitleView.Listener, VodPresenter.OnClickListener, FuncPresenter.OnClickListener, HistoryPresenter.OnClickListener, KeepPresenter.OnClickListener, KeepMorePresenter.OnClickListener, TypeAdapter.OnClickListener, HomeWebController.Listener, SmbServerDialog.Callback {
@@ -113,7 +118,8 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
     private static final String TV_TOOLBAR_HIDDEN = "tv-toolbar-hidden";
     private static final String TV_OVERLAY = "tv-overlay";
     private static final String TV_FULL = "tv-full";
-    private static final int KEEP_ROW_LIMIT = 10;
+    /** 历史行与收藏行共用的行内条数上限，超出部分走"查看全部"尾卡 */
+    private static final int ROW_LIMIT = 10;
 
     private ActivityHomeBinding mBinding;
     private ArrayObjectAdapter mHistoryAdapter;
@@ -128,6 +134,8 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
     private Result mResult;
     private Result mHomeResult;
     private Clock mClock;
+    private HomeRows mRows;
+    private ValueAnimator mInsetAnimator;
     private String webChromeMode = TV_NORMAL;
     private String webDefaultChromeMode = TV_FULL;
     private boolean webToolbarVisible = true;
@@ -175,14 +183,31 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
         registerLaunchers();
         mResult = Result.empty();
         mHomeResult = Result.empty();
-        mClock = Clock.create(mBinding.clock);
-        mBinding.progressLayout.showProgress();
+        mClock = Clock.create(mBinding.clock).format("MM-dd EEE HH:mm:ss");
         setRecyclerView();
         setViewModel();
         setAdapter();
+        // 首屏先渲染本地数据（功能/历史/收藏 + 推荐加载行），配置加载完成后 showContent() 再刷新推荐
+        showLocalContent();
         runAfterFirstFrame(this::initAfterFirstFrame);
         if (Setting.isTtsFocus()) mTts = TtsSpeaker.create(this);
         SpiderDebug.log("startup", "home initView end cost=%sms", System.currentTimeMillis() - App.time());
+    }
+
+    /** 配置加载前先渲染本地数据，避免慢网络下首屏只有全屏加载态 */
+    private void showLocalContent() {
+        setTitle();
+        setLogo();
+        setFunc();
+        getHistory();
+        getKeepRow();
+        showRecommendLoading();
+        setFocus();
+    }
+
+    private void showRecommendLoading() {
+        clearRecommendRows();
+        mAdapter.add("progress");
     }
 
     private void initAfterFirstFrame() {
@@ -272,7 +297,15 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
     private void syncNativeContentInset() {
         int top = isToolbarVisible() ? toolbarHeight() : 0;
         if (mBinding.nativeContent.getPaddingTop() == top) return;
-        mBinding.nativeContent.setPadding(mBinding.nativeContent.getPaddingLeft(), top, mBinding.nativeContent.getPaddingRight(), mBinding.nativeContent.getPaddingBottom());
+        // 补间过渡，避免工具栏收起时内容瞬间上跳一个工具栏高度
+        if (mInsetAnimator != null) mInsetAnimator.cancel();
+        mInsetAnimator = ValueAnimator.ofInt(mBinding.nativeContent.getPaddingTop(), top);
+        mInsetAnimator.setDuration(150);
+        mInsetAnimator.addUpdateListener(animation -> {
+            int padding = (int) animation.getAnimatedValue();
+            mBinding.nativeContent.setPadding(mBinding.nativeContent.getPaddingLeft(), padding, mBinding.nativeContent.getPaddingRight(), mBinding.nativeContent.getPaddingBottom());
+        });
+        mInsetAnimator.start();
     }
 
     private void syncWebOverlayLayout() {
@@ -326,10 +359,11 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
         CustomSelector selector = new CustomSelector();
         selector.addPresenter(Integer.class, new HeaderPresenter());
         selector.addPresenter(String.class, new ProgressPresenter());
+        selector.addPresenter(HomeEmptyPresenter.Marker.class, new HomeEmptyPresenter());
         selector.addPresenter(Vod.class, new VodPresenter(this, Style.list()));
         selector.addPresenter(ListRow.class, new CustomRowPresenter(16), VodPresenter.class);
         selector.addPresenter(ListRow.class, new CustomRowPresenter(16), FuncPresenter.class);
-        selector.addPresenter(ListRow.class, new CustomRowPresenter(16, FocusHighlight.ZOOM_FACTOR_SMALL, HorizontalGridView.FOCUS_SCROLL_ALIGNED), HistoryPresenter.class);
+        selector.addPresenter(ListRow.class, new CustomRowPresenter(16), HistoryPresenter.class);
         selector.addPresenter(ListRow.class, new CustomRowPresenter(16), KeepPresenter.class);
         mBinding.recycler.setAdapter(new ItemBridgeAdapter(mAdapter = new ArrayObjectAdapter(selector)));
         mBinding.recycler.setVerticalSpacing(ResUtil.dp2px(16));
@@ -378,12 +412,31 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
     }
 
     private void setAdapter() {
-        mHistoryAdapter = new ArrayObjectAdapter(mPresenter = new HistoryPresenter(this));
-        initKeepAdapter();
+        // 分区标题不再常驻：历史/收藏区由 HomeRows 按"标题+行"原子增删，空数据时不残留孤儿标题
         mAdapter.add(new ListRow(mFuncAdapter = new ArrayObjectAdapter(new FuncPresenter(this))));
-        mAdapter.add(R.string.home_history);
-        mAdapter.add(R.string.home_keep_row);
         mAdapter.add(R.string.home_recommend);
+        mRows = new HomeRows(mAdapter, R.string.home_history, R.string.home_keep_row, R.string.home_recommend);
+        mHistoryAdapter = newHistoryAdapter();
+        initKeepAdapter();
+    }
+
+    /** 历史行适配器：行尾追加"查看全部"尾卡（Marker 路由），滚动策略与数据 Presenter 解耦 */
+    private ArrayObjectAdapter newHistoryAdapter() {
+        HistoryPresenter history = mPresenter = new HistoryPresenter(this);
+        KeepMorePresenter more = new KeepMorePresenter(() -> HistoryActivity.start(this));
+        return new ArrayObjectAdapter(new PresenterSelector() {
+            @NonNull
+            @Override
+            public Presenter getPresenter(@NonNull Object item) {
+                return item instanceof KeepMorePresenter.Marker ? more : history;
+            }
+
+            @NonNull
+            @Override
+            public Presenter[] getPresenters() {
+                return new Presenter[]{history, more};
+            }
+        });
     }
 
     private void initKeepAdapter() {
@@ -535,6 +588,7 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
             Class type = result.getTypes().get(0);
             SpiderDebug.log("home", "home list empty, auto open first category key=%s tid=%s", getHome().getKey(), type.getTypeId());
             loadingHomeCategory = true;
+            mAdapter.remove(HomeEmptyPresenter.Marker.INSTANCE);
             mAdapter.add("progress");
             mViewModel.categoryContent(getHome().getKey(), type.getTypeId(), "1", true, new java.util.HashMap<>());
             return;
@@ -543,6 +597,7 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
         Style style = result.getStyle(getHome().getStyle());
         if (style.isList()) mAdapter.addAll(mAdapter.size(), result.getList());
         else addGrid(result.getList(), style);
+        if (result.getList().isEmpty() && mAdapter.indexOf(HomeEmptyPresenter.Marker.INSTANCE) == -1) mAdapter.add(HomeEmptyPresenter.Marker.INSTANCE);
     }
 
     private void clearRecommendRows() {
@@ -579,15 +634,32 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
         getHistory(false);
     }
 
+    private int historyEpoch;
+
     private void getHistory(boolean renew) {
-        boolean aggregated = Setting.isHistoryAggregation();
-        List<History> items = aggregated ? History.getAll() : History.get();
-        boolean exist = hasRow(R.string.home_history);
-        if (renew) mHistoryAdapter = new ArrayObjectAdapter(mPresenter = new HistoryPresenter(this));
-        if (aggregated) mPresenter.setConfigNames(History.configNameMap());
-        if ((items.isEmpty() && exist) || (renew && exist)) mAdapter.removeItems(getHistoryIndex(), 1);
-        if ((!items.isEmpty() && !exist) || (renew && exist)) mAdapter.add(getHistoryIndex(), new ListRow(mHistoryAdapter));
-        mHistoryAdapter.setItems(items, new BaseDiffCallback<History>());
+        // X16 聚合读取（跨配置全表扫描）移入后台，避免 HISTORY 事件风暴下主线程 DB 卡顿
+        final int epoch = ++historyEpoch;
+        Task.submit(() -> {
+            boolean aggregated = Setting.isHistoryAggregation();
+            List<History> items = aggregated ? History.getAll() : History.get();
+            Map<Integer, String> configNames = aggregated ? History.configNameMap() : null;
+            App.post(() -> {
+                if (epoch != historyEpoch || isFinishing() || isDestroyed()) return;
+                if (items.isEmpty()) {
+                    mRows.remove(R.string.home_history);
+                    return;
+                }
+                if (renew) {
+                    mRows.remove(R.string.home_history);
+                    mHistoryAdapter = newHistoryAdapter();
+                }
+                if (configNames != null) mPresenter.setConfigNames(configNames);
+                mHistoryAdapter.clear();
+                mHistoryAdapter.addAll(0, items.subList(0, Math.min(items.size(), ROW_LIMIT)));
+                mHistoryAdapter.add(KeepMorePresenter.Marker.INSTANCE);
+                mRows.ensure(R.string.home_history, new ListRow(mHistoryAdapter));
+            });
+        });
     }
 
     private void getKeepRow() {
@@ -596,19 +668,18 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
 
     private void getKeepRow(boolean renew) {
         List<Keep> items = Keep.getVod();
-        if (renew) initKeepAdapter();
-        boolean exist = hasRow(R.string.home_keep_row);
-        if (exist && (renew || items.isEmpty())) mAdapter.removeItems(getKeepRowIndex(), 1);
-        if (!items.isEmpty() && (!exist || renew)) mAdapter.add(getKeepRowIndex(), new ListRow(mKeepAdapter));
-        if (items.isEmpty()) return;
+        if (items.isEmpty()) {
+            mRows.remove(R.string.home_keep_row);
+            return;
+        }
+        if (renew) {
+            mRows.remove(R.string.home_keep_row);
+            initKeepAdapter();
+        }
         mKeepAdapter.clear();
-        mKeepAdapter.addAll(0, items.subList(0, Math.min(items.size(), KEEP_ROW_LIMIT)));
+        mKeepAdapter.addAll(0, items.subList(0, Math.min(items.size(), ROW_LIMIT)));
         mKeepAdapter.add(KeepMorePresenter.Marker.INSTANCE);
-    }
-
-    private boolean hasRow(int header) {
-        int index = mAdapter.indexOf(header);
-        return index != -1 && index + 1 < mAdapter.size() && mAdapter.get(index + 1) instanceof ListRow;
+        mRows.ensure(R.string.home_keep_row, new ListRow(mKeepAdapter));
     }
 
     private void setHistoryDelete(boolean delete) {
@@ -617,19 +688,14 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
     }
 
     private void clearHistory() {
-        mAdapter.removeItems(getHistoryIndex(), 1);
-        if (Setting.isHistoryAggregation()) History.deleteAllAndSync();
-        else History.deleteAndSync(VodConfig.getCid());
+        mRows.remove(R.string.home_history);
         mPresenter.setDelete(false);
         mHistoryAdapter.clear();
-    }
-
-    private int getHistoryIndex() {
-        return mAdapter.indexOf(R.string.home_history) + 1;
-    }
-
-    private int getKeepRowIndex() {
-        return mAdapter.indexOf(R.string.home_keep_row) + 1;
+        Task.submit(() -> {
+            if (Setting.isHistoryAggregation()) History.deleteAllAndSync();
+            else History.deleteAndSync(VodConfig.getCid());
+            App.post(this::getHistory);
+        });
     }
 
     private int getRecommendIndex() {
@@ -734,6 +800,11 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
     }
 
     @Override
+    public void onItemFocus(Vod item) {
+        speakMine(item.getName());
+    }
+
+    @Override
     public void onItemClick(Func item) {
         if (item.getResId() == R.string.home_live) LiveActivity.start(this);
         else if (item.getResId() == R.string.home_keep) KeepActivity.start(this);
@@ -785,8 +856,9 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
     @Override
     public void onItemDelete(History item) {
         mHistoryAdapter.remove(item.deleteAndSync());
-        if (mHistoryAdapter.size() > 0) return;
-        mAdapter.removeItems(getHistoryIndex(), 1);
+        // 行内固定有一个"查看全部"尾卡，只剩尾卡即视为空区
+        if (mHistoryAdapter.size() > 1) return;
+        mRows.remove(R.string.home_history);
         mPresenter.setDelete(false);
     }
 
@@ -824,9 +896,17 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
 
     @Override
     public boolean onLongClick() {
-        if (mPresenter.isDelete()) clearHistory();
-        else setHistoryDelete(true);
+        if (mPresenter.isDelete()) confirmClearHistory();
+        else {
+            setHistoryDelete(true);
+            // 删除模式的退出/清空手势不可见，进入时提示一次
+            Notify.show(R.string.history_delete_hint);
+        }
         return true;
+    }
+
+    private void confirmClearHistory() {
+        new MaterialAlertDialogBuilder(this).setTitle(R.string.home_history).setMessage(R.string.dialog_clear_history).setNegativeButton(R.string.dialog_negative, null).setPositiveButton(R.string.dialog_positive, (dialog, which) -> clearHistory()).show();
     }
 
     @Override
@@ -986,7 +1066,7 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
             confirmExitHome();
         } else {
             mLastBackPressedTime = System.currentTimeMillis();
-            Notify.show("再按一次返回键退出");
+            Notify.show(getString(R.string.exit_press_again));
         }
     }
 

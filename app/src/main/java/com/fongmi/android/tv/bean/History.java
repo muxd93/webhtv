@@ -487,8 +487,9 @@ public class History implements Diffable<History> {
 
     @Override
     public boolean isSameContent(History other) {
-        return getVodName().equals(other.getVodName()) && getVodPic().equals(other.getVodPic()) && getWallPic().equals(other.getWallPic())
+        // 远端同步 payload 可缺字段（vodName/vodPic/wallPic 落库为 null），DiffUtil 主线程比较禁止 NPE
+        return Objects.equals(getVodName(), other.getVodName()) && Objects.equals(getVodPic(), other.getVodPic()) && Objects.equals(getWallPic(), other.getWallPic())
                 && getCreateTime() == other.getCreateTime() && getPosition() == other.getPosition()
-                && getDuration() == other.getDuration() && getVodRemarks().equals(other.getVodRemarks());
+                && getDuration() == other.getDuration() && Objects.equals(getVodRemarks(), other.getVodRemarks());
     }
 }

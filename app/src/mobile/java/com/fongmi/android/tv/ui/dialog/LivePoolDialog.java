@@ -79,7 +79,14 @@ public class LivePoolDialog extends BaseAlertDialog {
 
         @Override
         public void onRevive(LiveAggregator.QuarantineInfo item) {
-            apply(() -> LiveAggregator.revive(item.group, item.key));
+            // revive 读写大 state 文件，须在后台执行；完成后回主线程刷新列表并重聚合
+            Task.submit(() -> {
+                boolean revived = LiveAggregator.revive(item.group, item.key);
+                if (revived) App.post(() -> {
+                    loadData();
+                    reaggregate();
+                });
+            });
         }
     };
 
@@ -131,7 +138,7 @@ public class LivePoolDialog extends BaseAlertDialog {
             } catch (Throwable e) {
                 return;
             }
-            if (changed && LiveAggregator.isAggregate(LiveConfig.get().getConfig())) App.post(() -> LiveConfig.get().load());
+            if (changed && LiveAggregator.isAggregate(LiveConfig.get().getConfig())) App.post(() -> LiveConfig.get().reloadQuietly());
             App.post(this::loadData);
         });
     }

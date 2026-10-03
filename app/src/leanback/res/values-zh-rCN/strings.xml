@@ -57,4 +57,12 @@
     <string name="timer_60">1 小时</string>
     <string name="timer_delay">延长 5 分钟</string>
     <string name="timer_cancel">取消定时器</string>
+    <string name="exit_press_again">再按一次返回键退出</string>
+    <string name="dialog_clear_history">将清空当前显示的历史记录，确定继续吗？</string>
+    <string name="dialog_clear_keep">将清空全部视频收藏，确定继续吗？</string>
+    <string name="dialog_restore_confirm">恢复备份将清空并覆盖当前全部数据，确定继续吗？</string>
+    <string name="dialog_delete_backup">删除该备份文件？</string>
+    <string name="backup_progress">备份应用数据</string>
+    <string name="restore_progress">恢复应用数据</string>
+    <string name="history_delete_hint">删除模式：点击卡片删除，再次长按清空全部，按返回键退出</string>
 </resources>

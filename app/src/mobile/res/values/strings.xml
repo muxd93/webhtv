@@ -125,4 +125,8 @@
         <item>Standard</item>
     </string-array>
 
+    <string name="dialog_restore_confirm">Restoring will overwrite ALL current data. Continue?</string>
+    <string name="dialog_delete_backup">Delete this backup file?</string>
+    <string name="restore_progress">Restoring app data</string>
+    <string name="dialog_sync_overwrite">Overwrite sync will erase ALL local data of this type. Continue?</string>
 </resources>

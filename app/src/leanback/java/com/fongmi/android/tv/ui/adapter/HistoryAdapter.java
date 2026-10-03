@@ -7,14 +7,14 @@ import android.view.ViewGroup;
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
-import com.fongmi.android.tv.R;
+import com.fongmi.android.tv.Product;
 import com.fongmi.android.tv.api.config.VodConfig;
+import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.bean.History;
 import com.fongmi.android.tv.databinding.AdapterVodBinding;
-import com.fongmi.android.tv.setting.Setting;
 import com.fongmi.android.tv.utils.HistoryProgressFormatter;
 import com.fongmi.android.tv.utils.ImgUtil;
-import com.fongmi.android.tv.utils.Task;
+import com.fongmi.android.tv.utils.ResUtil;
 
 import java.util.Map;
 
@@ -22,13 +22,17 @@ public class HistoryAdapter extends BaseDiffAdapter<History, HistoryAdapter.View
 
     private final OnClickListener listener;
     private int width, height;
-    private boolean animate;
     private boolean delete;
     private Map<Integer, String> configNames = Map.of();
 
     public HistoryAdapter(OnClickListener listener) {
         this.listener = listener;
-        this.animate = true;
+        setLayoutSize();
+    }
+
+    /** 聚合模式下用于把跨配置条目的站点名替换为来源配置名。 */
+    public void setConfigNames(Map<Integer, String> names) {
+        this.configNames = names == null ? Map.of() : names;
     }
 
     public interface OnClickListener {
@@ -40,14 +44,11 @@ public class HistoryAdapter extends BaseDiffAdapter<History, HistoryAdapter.View
         boolean onLongClick();
     }
 
-    public void setSize(int[] size) {
-        this.width = size[0];
-        this.height = size[1];
-    }
-
-    /** 聚合模式下用于把跨配置条目的站点名替换为来源配置名。 */
-    public void setConfigNames(Map<Integer, String> names) {
-        this.configNames = names == null ? Map.of() : names;
+    private void setLayoutSize() {
+        int space = ResUtil.dp2px(48) + ResUtil.dp2px(16 * (Product.getColumn() - 1));
+        int base = ResUtil.getScreenWidth() - space;
+        width = base / Product.getColumn();
+        height = (int) (width / 0.75f);
     }
 
     public boolean isDelete() {
@@ -55,50 +56,8 @@ public class HistoryAdapter extends BaseDiffAdapter<History, HistoryAdapter.View
     }
 
     public void setDelete(boolean delete) {
-        this.animate = false;
         this.delete = delete;
         notifyItemRangeChanged(0, getItemCount());
-    }
-
-    @Override
-    public void clear() {
-        super.clear();
-        setDelete(false);
-        // DB 删除（聚合模式为跨配置全量+墓碑）移出主线程；列表 UI 部分保持主线程
-        Task.submit(() -> {
-            if (Setting.isHistoryAggregation()) History.deleteAllAndSync();
-            else History.deleteAndSync(VodConfig.getCid());
-        });
-    }
-
-    @NonNull
-    @Override
-    public ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-        ViewHolder holder = new ViewHolder(AdapterVodBinding.inflate(LayoutInflater.from(parent.getContext()), parent, false));
-        holder.binding.getRoot().getLayoutParams().width = width;
-        holder.binding.image.getLayoutParams().height = height;
-        return holder;
-    }
-
-    @Override
-    public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
-        History item = getItem(position);
-        boolean same = item.getVodName().equals(item.getVodRemarks());
-        holder.binding.name.setText(item.getVodName());
-        holder.binding.site.setText(siteText(item));
-        holder.binding.remark.setText(item.getVodRemarks());
-        holder.binding.site.setVisibility(item.getSiteVisible());
-        int duration = (int) Math.min(Integer.MAX_VALUE, Math.max(0, item.getDuration()));
-        int progress = (int) Math.min(Integer.MAX_VALUE, Math.max(0, item.getPosition()));
-        holder.binding.progress.setMax(duration > 0 ? duration : 1);
-        holder.binding.progress.setProgress(duration > 0 ? Math.min(progress, duration) : 0, animate);
-        holder.binding.delete.setVisibility(!delete ? View.GONE : View.VISIBLE);
-        holder.binding.remark.setVisibility(delete || same ? View.GONE : View.VISIBLE);
-        String watchedTime = HistoryProgressFormatter.format(item.getPosition(), item.getDuration());
-        holder.binding.historyProgress.setText(watchedTime.isEmpty() ? "" : holder.itemView.getContext().getString(R.string.history_watched_time, watchedTime));
-        holder.binding.historyProgress.setVisibility(delete || watchedTime.isEmpty() ? View.GONE : View.VISIBLE);
-        ImgUtil.load(item.getVodName(), item.getVodPic(), holder.binding.image);
-        setClickListener(holder.binding.getRoot(), item);
     }
 
     private String siteText(History item) {
@@ -114,13 +73,58 @@ public class HistoryAdapter extends BaseDiffAdapter<History, HistoryAdapter.View
         });
     }
 
+    @NonNull
+    @Override
+    public ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
+        ViewHolder holder = new ViewHolder(AdapterVodBinding.inflate(LayoutInflater.from(parent.getContext()), parent, false));
+        holder.binding.getRoot().getLayoutParams().width = width;
+        holder.binding.image.getLayoutParams().height = height;
+        return holder;
+    }
+
+    @Override
+    public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
+        History item = getItem(position);
+        setClickListener(holder.itemView, item);
+        holder.binding.name.setText(item.getVodName());
+        holder.binding.site.setText(siteText(item));
+        holder.binding.site.setVisibility(item.getSiteVisible());
+        holder.binding.delete.setVisibility(!delete ? View.GONE : View.VISIBLE);
+        boolean same = item.getVodName().equals(item.getVodRemarks());
+        holder.binding.remark.setText(item.getVodRemarks());
+        holder.binding.remark.setVisibility(delete || same ? View.GONE : View.VISIBLE);
+        String watchedTime = HistoryProgressFormatter.format(item.getPosition(), item.getDuration());
+        holder.binding.historyProgress.setText(watchedTime.isEmpty() ? "" : holder.itemView.getContext().getString(R.string.history_watched_time, watchedTime));
+        holder.binding.historyProgress.setVisibility(delete || watchedTime.isEmpty() ? View.GONE : View.VISIBLE);
+        boolean showBar = !delete && item.getDuration() > 0 && item.getPosition() > 0;
+        holder.binding.watchProgress.setVisibility(showBar ? View.VISIBLE : View.GONE);
+        if (showBar) holder.binding.watchProgress.setProgress((int) Math.min(100, item.getPosition() * 100 / item.getDuration()));
+        holder.itemView.setContentDescription(item.getVodName());
+        ImgUtil.load(item.getVodName(), item.getVodPic(), holder.binding.image);
+    }
+
     public class ViewHolder extends RecyclerView.ViewHolder {
 
         private final AdapterVodBinding binding;
 
-        ViewHolder(@NonNull AdapterVodBinding binding) {
+        public ViewHolder(@NonNull AdapterVodBinding binding) {
             super(binding.getRoot());
             this.binding = binding;
+            setFocusListener();
+        }
+
+        private void setFocusListener() {
+            itemView.setOnFocusChangeListener((v, hasFocus) -> {
+                if (hasFocus) {
+                    v.animate().scaleX(1.1f).scaleY(1.1f).setDuration(150).start();
+                    v.setTranslationZ(10f);
+                    v.setSelected(true);
+                } else {
+                    v.animate().scaleX(1f).scaleY(1f).setDuration(150).start();
+                    v.setTranslationZ(0f);
+                    v.setSelected(false);
+                }
+            });
         }
     }
 }

@@ -268,6 +268,9 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     private String mArtworkRequestOwner;
     private Vod mPendingDetailVod;
     private Result mPendingPlayerResult;
+    private boolean detailRequested;
+    private boolean mWaitingConfig;
+    private long configWaitStart;
     private int mAudioArtworkColor = Color.rgb(55, 45, 68);
     private final Map<String, String> mAudioQueueFlags = new HashMap<>();
     private final Map<String, String> mAudioQueueTitles = new HashMap<>();
@@ -1240,9 +1243,44 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     }
 
     private void checkId() {
+        if (detailRequested) return;
+        detailRequested = true;
         if (getId().startsWith("push://")) getIntent().putExtra("key", SiteApi.PUSH).putExtra("id", getId().substring(7));
         if (getId().isEmpty() || getId().startsWith("msearch:")) setEmpty(false);
-        else getDetail();
+        else ensureConfigThenGetDetail();
+    }
+
+    /**
+     * 配置（站点列表）未就绪时，KEEP/HISTORY 等依赖站点的播放会失败。
+     * 等待配置加载完成再拉详情，超时则走空结果，避免投屏/快捷方式冷启动直接拉起播放而黑屏。
+     * （与 leanback 同构的修复，消除单侧漂移。）
+     */
+    private void ensureConfigThenGetDetail() {
+        if (SiteApi.PUSH.equals(getKey()) || VodConfig.isReady()) {
+            getDetail();
+            return;
+        }
+        if (mWaitingConfig) return;
+        mWaitingConfig = true;
+        configWaitStart = System.currentTimeMillis();
+        SpiderDebug.log("video-flow", "config not ready, wait for VOD ready key=%s", getKey());
+        App.post(this::pollConfigReady, 300);
+    }
+
+    private void pollConfigReady() {
+        if (!mWaitingConfig) return;
+        if (VodConfig.isReady()) {
+            mWaitingConfig = false;
+            getDetail();
+            return;
+        }
+        if (System.currentTimeMillis() - configWaitStart > 15000) {
+            SpiderDebug.log("video-flow", "config wait timeout key=%s", getKey());
+            mWaitingConfig = false;
+            setEmpty(true);
+            return;
+        }
+        App.post(this::pollConfigReady, 300);
     }
 
     private void checkLand() {
@@ -1884,6 +1922,7 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     }
 
     private void onKeep() {
+        if (mHistory == null) return;
         Keep keep = Keep.find(getHistoryKey());
         Notify.show(keep != null ? R.string.keep_del : R.string.keep_add);
         if (keep != null) keep.delete();
@@ -1892,6 +1931,7 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     }
 
     private void checkPlay() {
+        if (service() == null) return;
         setR1Callback();
         debugPlaybackControl("checkPlay");
         if (player().isPlaying()) onPaused();
@@ -1904,6 +1944,7 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     }
 
     private void checkNext(boolean notify) {
+        if (service() == null) return;
         setR1Callback();
         Episode item = getAdjacentEpisode(1);
         if (SpiderDebug.isEnabled()) SpiderDebug.log("audio-auto-next", "fallback next notify=%s selected=%s name=%s adapter=%d", notify, item.isSelected(), item.getName(), mEpisodeAdapter.getItemCount());
@@ -1912,6 +1953,7 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     }
 
     private void checkPrev() {
+        if (service() == null) return;
         setR1Callback();
         Episode item = getAdjacentEpisode(-1);
         if (!item.isSelected()) onItemClick(item);
@@ -5956,10 +5998,10 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     public void onRefreshEvent(RefreshEvent event) {
         if (isRedirect()) return;
         if (event.getType() == RefreshEvent.Type.DETAIL) getDetail();
-        else if (event.getType() == RefreshEvent.Type.PLAYER) onRefresh();
+        else if (event.getType() == RefreshEvent.Type.PLAYER) { if (service() != null) onRefresh(); }
         else if (event.getType() == RefreshEvent.Type.VOD) updateVod(event.getVod());
-        else if (event.getType() == RefreshEvent.Type.SUBTITLE) player().setSub(Sub.from(event.getPath()));
-        else if (event.getType() == RefreshEvent.Type.DANMAKU) player().reloadDanmaku(Danmaku.from(event.getPath()));
+        else if (event.getType() == RefreshEvent.Type.SUBTITLE) { if (service() != null) player().setSub(Sub.from(event.getPath())); }
+        else if (event.getType() == RefreshEvent.Type.DANMAKU) { if (service() != null) player().reloadDanmaku(Danmaku.from(event.getPath())); }
     }
 
     @Subscribe(threadMode = ThreadMode.MAIN)
