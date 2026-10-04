@@ -124,7 +124,7 @@ public final class LightDialog {
         button.setInsetBottom(0);
         button.setCornerRadius(ResUtil.dp2px(6));
         button.setFocusable(true);
-        button.setFocusableInTouchMode(Util.isLeanback());
+        button.setFocusableInTouchMode(false);
         button.setTextColor(ContextCompat.getColorStateList(context, primary ? R.color.dialog_primary_button_text : R.color.dialog_outlined_button_text));
         button.setBackgroundTintList(ContextCompat.getColorStateList(context, primary ? R.color.dialog_primary_button_bg : R.color.dialog_outlined_button_bg));
         button.setStrokeColor(ContextCompat.getColorStateList(context, R.color.dialog_outlined_button_stroke));

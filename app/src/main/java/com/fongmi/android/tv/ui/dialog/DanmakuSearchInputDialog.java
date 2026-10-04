@@ -464,7 +464,7 @@ public final class DanmakuSearchInputDialog extends DialogFragment implements Ca
         button.setPadding(dp(10), 0, dp(10), 0);
         button.setCornerRadius(dp(8));
         button.setFocusable(true);
-        button.setFocusableInTouchMode(true);
+        button.setFocusableInTouchMode(false);
         if (primary) {
             button.setBackgroundTintList(buttonBackground("#C7DBFF", "#DCEAFF", "#EDF4FF", "#F3F6FA"));
             button.setTextColor(buttonText("#0B57D0", "#174EA6", "#8AA8D8"));
@@ -605,7 +605,7 @@ public final class DanmakuSearchInputDialog extends DialogFragment implements Ca
                 this.button.setTextSize(14);
                 this.button.setClickable(true);
                 this.button.setFocusable(true);
-                this.button.setFocusableInTouchMode(true);
+                this.button.setFocusableInTouchMode(false);
                 this.button.setOnClickListener(this);
             }
 

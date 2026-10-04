@@ -27,7 +27,6 @@
                 android:layout_gravity="center_vertical"
                 android:layout_marginEnd="12dp"
                 android:focusable="true"
-                android:focusableInTouchMode="true"
                 android:nextFocusDown="@id/keyboard"
                 android:src="@drawable/ic_search_mic" />
 
@@ -38,7 +37,6 @@
                 android:layout_gravity="center_vertical"
                 android:background="@null"
                 android:focusable="true"
-                android:focusableInTouchMode="true"
                 android:hint="@string/search_keyword"
                 android:imeOptions="actionDone"
                 android:inputType="textCapWords|textAutoCorrect|textAutoComplete"

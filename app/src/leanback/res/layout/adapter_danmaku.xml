@@ -8,7 +8,6 @@
     android:clickable="true"
     android:ellipsize="marquee"
     android:focusable="true"
-    android:focusableInTouchMode="true"
     android:singleLine="true"
     android:textColor="@color/selector_dialog_glass_chip_text"
     android:textSize="14sp"

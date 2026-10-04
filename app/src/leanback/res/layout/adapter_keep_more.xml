@@ -5,7 +5,6 @@
     android:layout_height="wrap_content"
     android:background="@drawable/shape_keep_more"
     android:focusable="true"
-    android:focusableInTouchMode="true"
     android:foreground="@drawable/selector_vod">
 
     <com.google.android.material.textview.MaterialTextView

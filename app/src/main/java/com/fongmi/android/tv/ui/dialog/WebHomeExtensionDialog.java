@@ -393,7 +393,7 @@ public class WebHomeExtensionDialog extends BaseAlertDialog {
         boolean rowEnabled = model.enabled();
         root.setBackground(rowBackground(!rowEnabled));
         root.setFocusable(true);
-        root.setFocusableInTouchMode(true);
+        root.setFocusableInTouchMode(false);
         LinearLayoutCompat.LayoutParams rootParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         rootParams.topMargin = dp(8);
         root.setLayoutParams(rootParams);

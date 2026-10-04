@@ -12,6 +12,7 @@ import androidx.annotation.Nullable;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.fongmi.android.tv.R;
+import com.fongmi.android.tv.utils.Util;
 
 public class CustomRecyclerView extends RecyclerView {
 
@@ -103,6 +104,7 @@ public class CustomRecyclerView extends RecyclerView {
     @Override
     public void scrollToPosition(int position) {
         super.scrollToPosition(position);
+        if (Util.isTouchscreen(getContext())) return;
         postDelayed(() -> focus(position), 50);
     }
 

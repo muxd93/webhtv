@@ -250,7 +250,7 @@ public final class UpdateSettingsDialog {
 
     private static void tvFocusable(View view) {
         view.setFocusable(true);
-        view.setFocusableInTouchMode(true);
+        view.setFocusableInTouchMode(view instanceof android.widget.EditText);
     }
 
     private static final class State {

@@ -205,7 +205,7 @@ public class ControlDialog extends BaseBottomSheetDialog implements ParseAdapter
     private void setRemoteFocusable(View view) {
         if (view == null) return;
         view.setFocusable(true);
-        view.setFocusableInTouchMode(true);
+        view.setFocusableInTouchMode(false);
     }
 
     private void focusInitialControl() {

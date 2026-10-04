@@ -284,7 +284,7 @@ public final class ChoiceDialog extends DialogFragment {
         boolean enabled = itemEnabled(position);
         button.setEnabled(enabled);
         button.setFocusable(enabled);
-        button.setFocusableInTouchMode(enabled && Util.isLeanback());
+        button.setFocusableInTouchMode(false);
     }
 
     private void styleItem(MaterialButton button, int position) {
@@ -392,7 +392,7 @@ public final class ChoiceDialog extends DialogFragment {
         button.setInsetBottom(0);
         button.setCornerRadius(dp(6));
         button.setFocusable(true);
-        button.setFocusableInTouchMode(Util.isLeanback());
+        button.setFocusableInTouchMode(false);
         button.setTextColor(ContextCompat.getColorStateList(requireContext(), primary ? R.color.dialog_primary_button_text : R.color.dialog_outlined_button_text));
         button.setBackgroundTintList(ContextCompat.getColorStateList(requireContext(), primary ? R.color.dialog_primary_button_bg : R.color.dialog_outlined_button_bg));
         button.setStrokeColor(ContextCompat.getColorStateList(requireContext(), R.color.dialog_outlined_button_stroke));

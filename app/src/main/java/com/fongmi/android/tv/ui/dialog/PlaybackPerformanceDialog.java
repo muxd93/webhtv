@@ -291,7 +291,7 @@ public final class PlaybackPerformanceDialog extends DialogFragment {
         button.setInsetTop(0);
         button.setInsetBottom(0);
         button.setFocusable(true);
-        button.setFocusableInTouchMode(Util.isLeanback());
+        button.setFocusableInTouchMode(false);
         button.setCornerRadius(dp(6));
         button.setTextColor(ColorStateList.valueOf(Color.parseColor("#174EA6")));
         button.setBackgroundTintList(ColorStateList.valueOf(Color.WHITE));
@@ -317,7 +317,7 @@ public final class PlaybackPerformanceDialog extends DialogFragment {
         button.setInsetTop(0);
         button.setInsetBottom(0);
         button.setFocusable(true);
-        button.setFocusableInTouchMode(Util.isLeanback());
+        button.setFocusableInTouchMode(false);
         button.setBackgroundTintList(ContextCompat.getColorStateList(requireContext(), R.color.dialog_outlined_button_bg));
         button.setTextColor(Color.parseColor("#5F6368"));
         button.setOnClickListener(listener);
@@ -390,7 +390,7 @@ public final class PlaybackPerformanceDialog extends DialogFragment {
         for (int i = 0; i < tabStrip.getChildCount(); i++) {
             View tab = tabStrip.getChildAt(i);
             tab.setFocusable(true);
-            tab.setFocusableInTouchMode(true);
+            tab.setFocusableInTouchMode(false);
             tab.setBackgroundResource(R.drawable.selector_mpv_tab_focus);
         }
     }
@@ -825,7 +825,7 @@ public final class PlaybackPerformanceDialog extends DialogFragment {
                 ? "#8AB4F8" : "#C4C7C5")));
         button.setStrokeWidth(dp(1));
         button.setFocusable(true);
-        button.setFocusableInTouchMode(Util.isLeanback());
+        button.setFocusableInTouchMode(false);
         button.setEnabled(action != null);
         button.setOnFocusChangeListener((view, hasFocus) ->
                 styleRow(button, action != null, overridden, hasFocus));

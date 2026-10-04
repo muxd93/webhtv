@@ -157,7 +157,7 @@ public class MpvConfigDialog extends BaseAlertDialog implements MpvConfigProfile
 
     private static void tvFocusable(View view) {
         view.setFocusable(true);
-        view.setFocusableInTouchMode(true);
+        view.setFocusableInTouchMode(view instanceof android.widget.EditText);
     }
 
     private String[] targets() {
@@ -247,7 +247,7 @@ public class MpvConfigDialog extends BaseAlertDialog implements MpvConfigProfile
         item.setBackgroundResource(value.resourceId);
         item.setClickable(true);
         item.setFocusable(true);
-        item.setFocusableInTouchMode(Util.isLeanback());
+        item.setFocusableInTouchMode(false);
         item.setOnClickListener(view -> action.run());
         item.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ResUtil.dp2px(48)));
         return item;

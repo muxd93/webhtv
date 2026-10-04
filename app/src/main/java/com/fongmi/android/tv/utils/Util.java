@@ -5,6 +5,8 @@ import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.content.res.Configuration;
 import android.os.Build;
 import android.os.IBinder;
 import android.provider.Settings;
@@ -183,6 +185,13 @@ public class Util {
 
     public static boolean isMobile() {
         return "mobile".equals(BuildConfig.FLAVOR_mode);
+    }
+
+    public static boolean isTouchscreen(Context context) {
+        if (context == null) return false;
+        PackageManager pm = context.getPackageManager();
+        if (pm == null || !pm.hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN)) return false;
+        return context.getResources().getConfiguration().touchscreen != Configuration.TOUCHSCREEN_NOTOUCH;
     }
 
     public static boolean isFullscreen(Activity activity) {

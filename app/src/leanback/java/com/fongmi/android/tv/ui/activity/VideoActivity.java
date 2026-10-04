@@ -952,7 +952,7 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
                 return true;
             });
             view.setFocusable(true);
-            view.setFocusableInTouchMode(true);
+            view.setFocusableInTouchMode(false);
             LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ResUtil.dp2px(40));
             params.setMargins(ResUtil.dp2px(4), ResUtil.dp2px(2), ResUtil.dp2px(4), ResUtil.dp2px(2));
             mCustomPortraitButtonRow.addView(view, params);

@@ -901,7 +901,7 @@ public final class PanNetworkDiagnosticDialog extends DialogFragment implements 
         button.setInsetRight(0);
         button.setCornerRadius(dp(9));
         button.setFocusable(true);
-        button.setFocusableInTouchMode(Util.isLeanback());
+        button.setFocusableInTouchMode(false);
         button.setTextColor(ColorStateList.valueOf(primary ? Color.WHITE : BLUE_DARK));
         button.setBackgroundTintList(ColorStateList.valueOf(primary ? BLUE : Color.WHITE));
         button.setStrokeColor(ColorStateList.valueOf(primary ? BLUE : Color.rgb(138, 180, 248)));

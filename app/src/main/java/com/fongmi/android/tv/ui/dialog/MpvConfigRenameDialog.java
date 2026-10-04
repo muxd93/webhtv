@@ -67,7 +67,7 @@ public class MpvConfigRenameDialog extends BaseAlertDialog {
 
     private static void tvFocusable(android.view.View view) {
         view.setFocusable(true);
-        view.setFocusableInTouchMode(true);
+        view.setFocusableInTouchMode(view instanceof android.widget.EditText);
     }
 
     @Override

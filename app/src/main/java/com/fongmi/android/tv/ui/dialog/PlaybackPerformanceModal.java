@@ -186,7 +186,7 @@ final class PlaybackPerformanceModal {
         button.setInsetBottom(0);
         button.setCornerRadius(dp(context, 6));
         button.setFocusable(true);
-        button.setFocusableInTouchMode(Util.isLeanback());
+        button.setFocusableInTouchMode(false);
         styleListButton(button, selected, false);
         button.setOnFocusChangeListener((view, focused) ->
                 styleListButton(button, selected, focused));
@@ -250,7 +250,7 @@ final class PlaybackPerformanceModal {
         button.setInsetTop(0);
         button.setInsetBottom(0);
         button.setFocusable(true);
-        button.setFocusableInTouchMode(Util.isLeanback());
+        button.setFocusableInTouchMode(false);
         button.setCornerRadius(dp(context, 6));
         styleActionButton(button, primary, false);
         button.setOnFocusChangeListener((view, focused) ->
@@ -291,7 +291,7 @@ final class PlaybackPerformanceModal {
         button.setInsetTop(0);
         button.setInsetBottom(0);
         button.setFocusable(true);
-        button.setFocusableInTouchMode(Util.isLeanback());
+        button.setFocusableInTouchMode(false);
         button.setCornerRadius(dp(context, 6));
         styleCloseButton(button, false);
         button.setOnFocusChangeListener((view, focused) ->

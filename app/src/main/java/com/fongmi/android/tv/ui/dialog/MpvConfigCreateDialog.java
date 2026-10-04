@@ -443,7 +443,7 @@ public class MpvConfigCreateDialog extends BaseAlertDialog {
 
     private static void tvFocusable(View view) {
         view.setFocusable(true);
-        view.setFocusableInTouchMode(true);
+        view.setFocusableInTouchMode(view instanceof android.widget.EditText);
     }
 
     private String name() {

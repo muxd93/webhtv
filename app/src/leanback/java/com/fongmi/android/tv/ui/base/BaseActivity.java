@@ -6,6 +6,9 @@ import android.content.Context;
 import android.content.res.Configuration;
 import android.content.res.Resources;
 import android.os.Bundle;
+import android.os.SystemClock;
+import android.util.DisplayMetrics;
+import android.util.Log;
 import android.view.View;
 import android.view.ViewGroup;
 
@@ -16,6 +19,7 @@ import androidx.fragment.app.FragmentActivity;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.viewbinding.ViewBinding;
 
+import com.fongmi.android.tv.BuildConfig;
 import com.fongmi.android.tv.Updater;
 import com.fongmi.android.tv.event.RefreshEvent;
 import com.fongmi.android.tv.server.process.ApkUrlPush;
@@ -120,13 +124,28 @@ public abstract class BaseActivity extends AppCompatActivity {
         });
     }
 
+    private static float loggedDensity = -1f;
+    private static long loggedAt;
+
     private Resources hackResources(Resources resources) {
         try {
             AutoSizeCompat.autoConvertDensityOfGlobal(resources);
+            logDensity(resources);
             return resources;
         } catch (Exception ignored) {
             return resources;
         }
+    }
+
+    private void logDensity(Resources resources) {
+        if (!BuildConfig.DEBUG) return;
+        DisplayMetrics metrics = resources.getDisplayMetrics();
+        long now = SystemClock.elapsedRealtime();
+        if (metrics.density == loggedDensity || now - loggedAt < 1000) return;
+        loggedDensity = metrics.density;
+        loggedAt = now;
+        Configuration config = resources.getConfiguration();
+        Log.i("AutoSizeDiag", "density=" + metrics.density + " widthPx=" + metrics.widthPixels + " heightPx=" + metrics.heightPixels + " swDp=" + config.screenWidthDp + " orient=" + config.orientation);
     }
 
     @Subscribe(threadMode = ThreadMode.MAIN)
@@ -134,9 +153,13 @@ public abstract class BaseActivity extends AppCompatActivity {
         if (o instanceof RefreshEvent event && event.getType() == RefreshEvent.Type.LANGUAGE) recreate();
     }
 
+    // AutoSizeCompat 用进程启动时捕获的静态屏宽（AutoSizeConfig.getScreenWidth）计算密度并缓存，
+    // 平板冷启动时横竖屏时序不定导致初始比例每次启动随机，触屏设备直接走系统密度。
     @Override
     public Resources getResources() {
-        return hackResources(super.getResources());
+        Resources resources = super.getResources();
+        if (Util.isTouchscreen(this)) return resources;
+        return hackResources(resources);
     }
 
     @Override

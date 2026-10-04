@@ -132,6 +132,7 @@ public class SearchActivity extends BaseActivity implements WordAdapter.OnClickL
                 getWord(s.toString());
             }
         });
+        if (Util.isTouchscreen(this)) mBinding.keyword.setOnClickListener(v -> Util.showKeyboard(mBinding.keyword));
         mBinding.mic.setOnClickListener(v -> mBinding.mic.start());
         mBinding.mic.setListener(this, new CustomTextListener() {
             @Override

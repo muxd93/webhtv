@@ -159,7 +159,7 @@ public final class CodecCapabilityDialog {
         button.setPadding(ResUtil.dp2px(4), 0, ResUtil.dp2px(4), 0);
         button.setCornerRadius(ResUtil.dp2px(6));
         button.setFocusable(true);
-        button.setFocusableInTouchMode(Util.isLeanback());
+        button.setFocusableInTouchMode(false);
         button.setOnFocusChangeListener((view, hasFocus) -> styleTab(button, button.isSelected()));
         button.setOnClickListener(listener);
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1);
@@ -294,7 +294,7 @@ public final class CodecCapabilityDialog {
         item.setPadding(ResUtil.dp2px(12), ResUtil.dp2px(8), ResUtil.dp2px(12), ResUtil.dp2px(8));
         item.setCornerRadius(ResUtil.dp2px(6));
         item.setFocusable(true);
-        item.setFocusableInTouchMode(Util.isLeanback());
+        item.setFocusableInTouchMode(false);
         item.setOnFocusChangeListener((view, hasFocus) -> styleItem(item, selected, matched, risk, hasFocus));
         item.setOnKeyListener((view, keyCode, event) -> onScrollKey(keyCode, event));
         item.setOnClickListener(view -> copyText(text));

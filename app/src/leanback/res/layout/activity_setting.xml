@@ -26,7 +26,6 @@
                 android:layout_weight="1"
                 android:background="@drawable/selector_item"
                 android:focusable="true"
-                android:focusableInTouchMode="true"
                 android:orientation="horizontal">
 
                 <com.google.android.material.textview.MaterialTextView
@@ -60,7 +59,6 @@
                 android:layout_marginEnd="16dp"
                 android:background="@drawable/selector_item"
                 android:focusable="true"
-                android:focusableInTouchMode="true"
                 android:padding="8dp"
                 android:src="@drawable/ic_setting_home" />
 
@@ -70,7 +68,6 @@
                 android:layout_height="wrap_content"
                 android:background="@drawable/selector_item"
                 android:focusable="true"
-                android:focusableInTouchMode="true"
                 android:padding="8dp"
                 android:src="@drawable/ic_setting_history" />
 
@@ -91,7 +88,6 @@
                 android:layout_weight="1"
                 android:background="@drawable/selector_item"
                 android:focusable="true"
-                android:focusableInTouchMode="true"
                 android:orientation="horizontal">
 
                 <com.google.android.material.textview.MaterialTextView
@@ -125,7 +121,6 @@
                 android:layout_marginEnd="16dp"
                 android:background="@drawable/selector_item"
                 android:focusable="true"
-                android:focusableInTouchMode="true"
                 android:padding="8dp"
                 android:src="@drawable/ic_setting_home" />
 
@@ -136,7 +131,6 @@
                 android:layout_marginEnd="16dp"
                 android:background="@drawable/selector_item"
                 android:focusable="true"
-                android:focusableInTouchMode="true"
                 android:padding="8dp"
                 android:src="@drawable/ic_setting_history" />
 
@@ -146,7 +140,6 @@
                 android:layout_height="wrap_content"
                 android:background="@drawable/selector_item"
                 android:focusable="true"
-                android:focusableInTouchMode="true"
                 android:padding="8dp"
                 android:src="@drawable/ic_setting_refresh" />
 
@@ -167,7 +160,6 @@
                 android:layout_weight="1"
                 android:background="@drawable/selector_item"
                 android:focusable="true"
-                android:focusableInTouchMode="true"
                 android:orientation="horizontal">
 
                 <com.google.android.material.textview.MaterialTextView
@@ -201,7 +193,6 @@
                 android:layout_marginEnd="16dp"
                 android:background="@drawable/selector_item"
                 android:focusable="true"
-                android:focusableInTouchMode="true"
                 android:padding="8dp"
                 android:src="@drawable/ic_setting_home" />
 
@@ -211,7 +202,6 @@
                 android:layout_height="wrap_content"
                 android:background="@drawable/selector_item"
                 android:focusable="true"
-                android:focusableInTouchMode="true"
                 android:padding="8dp"
                 android:src="@drawable/ic_setting_refresh" />
 
@@ -231,7 +221,6 @@
                 android:layout_weight="1"
                 android:background="@drawable/selector_item"
                 android:focusable="true"
-                android:focusableInTouchMode="true"
                 android:orientation="horizontal">
 
                 <com.google.android.material.textview.MaterialTextView
@@ -251,7 +240,6 @@
                 android:layout_weight="1"
                 android:background="@drawable/selector_item"
                 android:focusable="true"
-                android:focusableInTouchMode="true"
                 android:orientation="horizontal">
 
                 <com.google.android.material.textview.MaterialTextView
@@ -270,7 +258,6 @@
                 android:layout_weight="1"
                 android:background="@drawable/selector_item"
                 android:focusable="true"
-                android:focusableInTouchMode="true"
                 android:orientation="horizontal">
 
                 <com.google.android.material.textview.MaterialTextView
@@ -290,7 +277,6 @@
             android:layout_marginTop="16dp"
             android:background="@drawable/selector_item"
             android:focusable="true"
-            android:focusableInTouchMode="true"
             android:orientation="horizontal">
 
             <com.google.android.material.textview.MaterialTextView
@@ -329,7 +315,6 @@
                 android:layout_weight="1"
                 android:background="@drawable/selector_item"
                 android:focusable="true"
-                android:focusableInTouchMode="true"
                 android:orientation="horizontal">
 
                 <com.google.android.material.textview.MaterialTextView
@@ -360,7 +345,6 @@
                 android:layout_weight="1"
                 android:background="@drawable/selector_item"
                 android:focusable="true"
-                android:focusableInTouchMode="true"
                 android:orientation="horizontal">
 
                 <com.google.android.material.textview.MaterialTextView
@@ -390,7 +374,6 @@
                 android:layout_weight="1"
                 android:background="@drawable/selector_item"
                 android:focusable="true"
-                android:focusableInTouchMode="true"
                 android:nextFocusDown="@id/backup"
                 android:orientation="horizontal">
 
@@ -431,7 +414,6 @@
                 android:layout_weight="1"
                 android:background="@drawable/selector_item"
                 android:focusable="true"
-                android:focusableInTouchMode="true"
                 android:orientation="horizontal">
 
                 <com.google.android.material.textview.MaterialTextView
@@ -461,7 +443,6 @@
                 android:layout_weight="1"
                 android:background="@drawable/selector_item"
                 android:focusable="true"
-                android:focusableInTouchMode="true"
                 android:orientation="horizontal">
 
                 <com.google.android.material.textview.MaterialTextView
@@ -500,7 +481,6 @@
                 android:layout_weight="1"
                 android:background="@drawable/selector_item"
                 android:focusable="true"
-                android:focusableInTouchMode="true"
                 android:orientation="horizontal">
 
                 <com.google.android.material.textview.MaterialTextView
@@ -530,7 +510,6 @@
                 android:layout_weight="1"
                 android:background="@drawable/selector_item"
                 android:focusable="true"
-                android:focusableInTouchMode="true"
                 android:orientation="horizontal">
 
                 <com.google.android.material.textview.MaterialTextView
@@ -569,7 +548,6 @@
                 android:layout_weight="1"
                 android:background="@drawable/selector_item"
                 android:focusable="true"
-                android:focusableInTouchMode="true"
                 android:orientation="horizontal">
 
                 <com.google.android.material.textview.MaterialTextView
@@ -608,7 +586,6 @@
                 android:layout_weight="1"
                 android:background="@drawable/selector_item"
                 android:focusable="true"
-                android:focusableInTouchMode="true"
                 android:orientation="horizontal">
 
                 <com.google.android.material.textview.MaterialTextView
@@ -638,7 +615,6 @@
                 android:layout_weight="1"
                 android:background="@drawable/selector_item"
                 android:focusable="true"
-                android:focusableInTouchMode="true"
                 android:orientation="horizontal">
 
                 <com.google.android.material.textview.MaterialTextView
@@ -677,7 +653,6 @@
                 android:layout_weight="1"
                 android:background="@drawable/selector_item"
                 android:focusable="true"
-                android:focusableInTouchMode="true"
                 android:orientation="horizontal">
 
                 <com.google.android.material.textview.MaterialTextView
@@ -696,7 +671,6 @@
                 android:layout_weight="1"
                 android:background="@drawable/selector_item"
                 android:focusable="true"
-                android:focusableInTouchMode="true"
                 android:orientation="horizontal">
 
                 <com.google.android.material.textview.MaterialTextView
@@ -723,7 +697,6 @@
                 android:layout_weight="1"
                 android:background="@drawable/selector_item"
                 android:focusable="true"
-                android:focusableInTouchMode="true"
                 android:orientation="horizontal">
 
                 <com.google.android.material.textview.MaterialTextView
@@ -752,7 +725,6 @@
                 android:layout_weight="1"
                 android:background="@drawable/selector_item"
                 android:focusable="true"
-                android:focusableInTouchMode="true"
                 android:orientation="horizontal">
 
                 <com.google.android.material.textview.MaterialTextView

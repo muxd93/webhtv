@@ -5,7 +5,6 @@
     android:layout_margin="6dp"
     android:background="@drawable/selector_item"
     android:focusable="true"
-    android:focusableInTouchMode="true"
     android:orientation="vertical"
     android:padding="8dp">
 

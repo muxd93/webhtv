@@ -31,7 +31,6 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:focusable="true"
-            android:focusableInTouchMode="true"
             android:text="@string/danmaku_reset"
             android:textColor="@color/white" />
 
@@ -75,7 +74,6 @@
             android:layout_height="wrap_content"
             android:layout_marginHorizontal="12dp"
             android:focusable="true"
-            android:focusableInTouchMode="true"
             android:stepSize="100"
             android:valueFrom="-10000"
             android:valueTo="10000"
@@ -121,7 +119,6 @@
             android:layout_height="wrap_content"
             android:layout_marginHorizontal="12dp"
             android:focusable="true"
-            android:focusableInTouchMode="true"
             android:stepSize="100"
             android:valueFrom="-10000"
             android:valueTo="10000"

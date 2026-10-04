@@ -103,7 +103,7 @@ public class MpvCustomButtonDialog extends DialogFragment {
         row.setMinimumHeight(ResUtil.dp2px(72));
         row.setPadding(ResUtil.dp2px(6), ResUtil.dp2px(6), ResUtil.dp2px(6), ResUtil.dp2px(6));
         row.setFocusable(true);
-        row.setFocusableInTouchMode(Util.isLeanback());
+        row.setFocusableInTouchMode(false);
         if (item != null) row.setBackgroundResource(R.drawable.selector_mpv_profile_card);
 
         TextView badge = text(requireContext(), slot, 12, false);

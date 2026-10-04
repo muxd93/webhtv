@@ -186,7 +186,7 @@ public final class CspWarmupDialog {
         button.setPadding(dp(context, 10), 0, dp(context, 10), 0);
         button.setCornerRadius(dp(context, 6));
         button.setFocusable(true);
-        button.setFocusableInTouchMode(Util.isLeanback());
+        button.setFocusableInTouchMode(false);
         styleTopSwitch(button);
         return button;
     }
@@ -215,7 +215,7 @@ public final class CspWarmupDialog {
         button.setPadding(dp(context, 8), 0, dp(context, 8), 0);
         button.setCornerRadius(dp(context, 6));
         button.setFocusable(true);
-        button.setFocusableInTouchMode(Util.isLeanback());
+        button.setFocusableInTouchMode(false);
         styleModeButton(button, selected);
         return button;
     }

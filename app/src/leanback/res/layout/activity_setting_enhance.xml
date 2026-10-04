@@ -63,7 +63,6 @@
             android:layout_marginTop="16dp"
             android:background="@drawable/selector_item"
             android:focusable="true"
-            android:focusableInTouchMode="true"
             android:orientation="horizontal">
 
             <com.google.android.material.textview.MaterialTextView
@@ -92,7 +91,6 @@
             android:layout_marginTop="16dp"
             android:background="@drawable/selector_item"
             android:focusable="true"
-            android:focusableInTouchMode="true"
             android:orientation="horizontal">
 
             <com.google.android.material.textview.MaterialTextView
@@ -121,7 +119,6 @@
             android:layout_marginTop="16dp"
             android:background="@drawable/selector_item"
             android:focusable="true"
-            android:focusableInTouchMode="true"
             android:orientation="horizontal">
 
             <com.google.android.material.textview.MaterialTextView
@@ -150,7 +147,6 @@
             android:layout_marginTop="16dp"
             android:background="@drawable/selector_item"
             android:focusable="true"
-            android:focusableInTouchMode="true"
             android:orientation="horizontal">
 
             <com.google.android.material.textview.MaterialTextView
@@ -179,7 +175,6 @@
             android:layout_marginTop="16dp"
             android:background="@drawable/selector_item"
             android:focusable="true"
-            android:focusableInTouchMode="true"
             android:orientation="horizontal">
 
             <com.google.android.material.textview.MaterialTextView
@@ -208,7 +203,6 @@
             android:layout_marginTop="16dp"
             android:background="@drawable/selector_item"
             android:focusable="true"
-            android:focusableInTouchMode="true"
             android:orientation="horizontal">
 
             <com.google.android.material.textview.MaterialTextView
@@ -239,7 +233,6 @@
             android:layout_marginTop="16dp"
             android:background="@drawable/selector_item"
             android:focusable="true"
-            android:focusableInTouchMode="true"
             android:orientation="horizontal">
 
             <com.google.android.material.textview.MaterialTextView
@@ -270,7 +263,6 @@
             android:layout_marginTop="16dp"
             android:background="@drawable/selector_item"
             android:focusable="true"
-            android:focusableInTouchMode="true"
             android:orientation="horizontal">
 
             <com.google.android.material.textview.MaterialTextView
@@ -299,7 +291,6 @@
             android:layout_marginTop="16dp"
             android:background="@drawable/selector_item"
             android:focusable="true"
-            android:focusableInTouchMode="true"
             android:orientation="horizontal">
 
             <com.google.android.material.textview.MaterialTextView
@@ -328,7 +319,6 @@
             android:layout_marginTop="16dp"
             android:background="@drawable/selector_item"
             android:focusable="true"
-            android:focusableInTouchMode="true"
             android:orientation="horizontal"
             android:visibility="gone">
 
@@ -360,7 +350,6 @@
             android:layout_marginTop="16dp"
             android:background="@drawable/selector_item"
             android:focusable="true"
-            android:focusableInTouchMode="true"
             android:orientation="horizontal">
 
             <com.google.android.material.textview.MaterialTextView
@@ -391,7 +380,6 @@
             android:layout_marginTop="16dp"
             android:background="@drawable/selector_item"
             android:focusable="true"
-            android:focusableInTouchMode="true"
             android:orientation="horizontal">
 
             <com.google.android.material.textview.MaterialTextView
@@ -420,7 +408,6 @@
             android:layout_marginTop="16dp"
             android:background="@drawable/selector_item"
             android:focusable="true"
-            android:focusableInTouchMode="true"
             android:orientation="horizontal">
 
             <com.google.android.material.textview.MaterialTextView
@@ -449,7 +436,6 @@
             android:layout_marginTop="16dp"
             android:background="@drawable/selector_item"
             android:focusable="true"
-            android:focusableInTouchMode="true"
             android:orientation="horizontal">
 
             <com.google.android.material.textview.MaterialTextView
@@ -478,7 +464,6 @@
             android:layout_marginTop="16dp"
             android:background="@drawable/selector_item"
             android:focusable="true"
-            android:focusableInTouchMode="true"
             android:orientation="horizontal">
 
             <com.google.android.material.textview.MaterialTextView
@@ -507,7 +492,6 @@
             android:layout_marginTop="16dp"
             android:background="@drawable/selector_item"
             android:focusable="true"
-            android:focusableInTouchMode="true"
             android:orientation="horizontal">
 
             <com.google.android.material.textview.MaterialTextView
@@ -536,7 +520,6 @@
             android:layout_marginTop="16dp"
             android:background="@drawable/selector_item"
             android:focusable="true"
-            android:focusableInTouchMode="true"
             android:orientation="horizontal">
 
             <com.google.android.material.textview.MaterialTextView
@@ -565,7 +548,6 @@
             android:layout_marginTop="16dp"
             android:background="@drawable/selector_item"
             android:focusable="true"
-            android:focusableInTouchMode="true"
             android:orientation="horizontal">
 
             <com.google.android.material.textview.MaterialTextView
@@ -596,7 +578,6 @@
             android:layout_marginTop="16dp"
             android:background="@drawable/selector_item"
             android:focusable="true"
-            android:focusableInTouchMode="true"
             android:orientation="horizontal">
 
             <com.google.android.material.textview.MaterialTextView
