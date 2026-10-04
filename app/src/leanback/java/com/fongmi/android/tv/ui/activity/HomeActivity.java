@@ -67,6 +67,7 @@ import com.fongmi.android.tv.ui.custom.CustomRowPresenter;
 import com.fongmi.android.tv.ui.custom.CustomSelector;
 import com.fongmi.android.tv.ui.custom.CustomTitleView;
 import com.fongmi.android.tv.ui.dialog.AppListDialog;
+import com.fongmi.android.tv.ui.dialog.LinkDialog;
 import com.fongmi.android.tv.ui.dialog.SmbServerDialog;
 import com.fongmi.android.tv.ui.dialog.SiteDialog;
 import com.fongmi.android.tv.ui.presenter.FuncPresenter;
@@ -627,6 +628,7 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
         items.add(Func.create(R.string.home_smb));
         items.add(Func.create(R.string.home_app));
         items.add(Func.create(R.string.home_file));
+        items.add(Func.create(R.string.home_link));
         mFuncAdapter.setItems(items, new BaseDiffCallback<Func>());
     }
 
@@ -814,6 +816,7 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
         else if (item.getResId() == R.string.home_smb) onSmbEntry();
         else if (item.getResId() == R.string.home_app) AppListDialog.show(this);
         else if (item.getResId() == R.string.home_file) startActivity(new Intent(this, FileActivity.class).putExtra("play_mode", true));
+        else if (item.getResId() == R.string.home_link) LinkDialog.show(this);
     }
 
     @Override

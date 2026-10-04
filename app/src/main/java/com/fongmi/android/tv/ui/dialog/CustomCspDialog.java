@@ -187,7 +187,7 @@ public class CustomCspDialog extends BaseAlertDialog {
         binding.recycler.setLayoutManager(new LinearLayoutManager(requireContext()));
         binding.recycler.setItemAnimator(null);
         binding.recycler.setAdapter(adapter);
-        if (Util.isMobile()) attachSortTouchHelper();
+        if (Util.isTouchscreen(requireContext())) attachSortTouchHelper();
         binding.modeGroup.check(R.id.uiMode);
         syncJsonFromForm(false);
         showTextMode(false);
@@ -308,13 +308,13 @@ public class CustomCspDialog extends BaseAlertDialog {
 
     private void updateModeVisibility() {
         boolean listMode = !textMode && !editMode;
-        boolean mobileSort = Util.isMobile() && listMode;
+        boolean touchSort = Util.isTouchscreen(requireContext()) && listMode;
         binding.recycler.setVisibility(listMode ? View.VISIBLE : View.GONE);
         binding.jsonLayout.setVisibility(textMode && !editMode ? View.VISIBLE : View.GONE);
         binding.editPanel.setVisibility(editMode ? View.VISIBLE : View.GONE);
         binding.add.setVisibility(listMode && !sortMode ? View.VISIBLE : View.GONE);
         binding.recognize.setVisibility(!editMode && !sortMode ? View.VISIBLE : View.GONE);
-        binding.sort.setVisibility(mobileSort ? View.VISIBLE : View.GONE);
+        binding.sort.setVisibility(touchSort ? View.VISIBLE : View.GONE);
         binding.sort.setText(sortMode ? R.string.setting_custom_csp_sort_done : R.string.setting_custom_csp_sort);
         binding.enabled.setVisibility(editMode || sortMode ? View.GONE : View.VISIBLE);
         binding.reverse.setVisibility(editMode || sortMode ? View.GONE : View.VISIBLE);
@@ -324,7 +324,7 @@ public class CustomCspDialog extends BaseAlertDialog {
     }
 
     private void setSortMode(boolean sort) {
-        if (sort && (!Util.isMobile() || textMode || editMode)) return;
+        if (sort && (!Util.isTouchscreen(requireContext()) || textMode || editMode)) return;
         if (sortMode == sort) {
             updateModeVisibility();
             return;

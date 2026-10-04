@@ -72,6 +72,12 @@
             tools:text="來源 1"
             tools:visibility="visible" />
 
+        <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/epg"
+            style="@style/Control"
+            android:layout_marginEnd="8dp"
+            android:text="@string/live_program_guide" />
+
         <com.fongmi.android.tv.ui.custom.CustomUpDownView
             android:id="@+id/text"
             style="@style/Control"

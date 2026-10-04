@@ -65,4 +65,5 @@
     <string name="backup_progress">备份应用数据</string>
     <string name="restore_progress">恢复应用数据</string>
     <string name="history_delete_hint">删除模式：点击卡片删除，再次长按清空全部，按返回键退出</string>
+    <string name="detail_episode">选集</string>
 </resources>

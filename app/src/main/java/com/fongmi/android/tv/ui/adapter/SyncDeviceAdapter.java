@@ -15,9 +15,15 @@ import com.fongmi.android.tv.databinding.AdapterSyncDeviceBinding;
 public class SyncDeviceAdapter extends BaseDiffAdapter<Device, SyncDeviceAdapter.ViewHolder> {
 
     private final OnClickListener listener;
+    private OnLongClickListener longListener;
 
     public SyncDeviceAdapter(OnClickListener listener) {
         this.listener = listener;
+    }
+
+    public SyncDeviceAdapter longListener(OnLongClickListener listener) {
+        this.longListener = listener;
+        return this;
     }
 
     @NonNull
@@ -41,11 +47,17 @@ public class SyncDeviceAdapter extends BaseDiffAdapter<Device, SyncDeviceAdapter
             return true;
         });
         holder.binding.getRoot().setOnClickListener(v -> listener.onItemClick(item));
+        holder.binding.getRoot().setOnLongClickListener(v -> longListener != null && longListener.onLongClick(item));
     }
 
     public interface OnClickListener {
 
         void onItemClick(Device item);
+    }
+
+    public interface OnLongClickListener {
+
+        boolean onLongClick(Device item);
     }
 
     public static class ViewHolder extends RecyclerView.ViewHolder {

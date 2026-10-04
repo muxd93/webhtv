@@ -113,8 +113,8 @@ public final class DanmakuSearchInputDialog extends DialogFragment implements Ca
         dialog.setCanceledOnTouchOutside(true);
         dialog.setOnShowListener(d -> {
             bindEvents();
-            if (Util.isLeanback()) search.requestFocus();
-            else Util.showKeyboard(input);
+            if (Util.isTouchscreen(requireContext())) Util.showKeyboard(input);
+            else search.requestFocus();
         });
         return dialog;
     }

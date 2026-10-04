@@ -55,7 +55,7 @@ app/src/main/assets 内置局域网页面和解析页
 常用手机端 arm64 release 打包：
 
 ```bash
-bash gradlew assembleMobileArm64_v8aRelease
+bash gradlew assembleLeanbackArm64_v8aRelease
 ```
 
 当前项目常见 APK 输出路径：

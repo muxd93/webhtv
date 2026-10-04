@@ -93,7 +93,7 @@ public class SettingClipboardOverlay {
     }
 
     public static SettingClipboardOverlay attach(DialogFragment fragment, View root) {
-        if (!Util.isMobile()) return null;
+        if (!Util.isTouchscreen(root.getContext())) return null;
         Activity activity = fragment.getActivity();
         if (activity == null || !(activity.getWindow().getDecorView() instanceof ViewGroup)) return null;
         SettingClipboardOverlay overlay = new SettingClipboardOverlay(activity, fragment, root, (ViewGroup) activity.getWindow().getDecorView());

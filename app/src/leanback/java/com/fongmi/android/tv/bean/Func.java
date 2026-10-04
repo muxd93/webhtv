@@ -42,6 +42,7 @@ public class Func implements Diffable<Func> {
         else if (resId == R.string.home_smb) this.drawable = R.drawable.ic_home_smb;
         else if (resId == R.string.home_app) this.drawable = R.drawable.ic_home_app;
         else if (resId == R.string.home_file) this.drawable = R.drawable.ic_home_file;
+        else if (resId == R.string.home_link) this.drawable = R.drawable.ic_link;
     }
 
     @Override

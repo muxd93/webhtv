@@ -17,6 +17,7 @@ import com.fongmi.android.tv.databinding.ActivityHistoryBinding;
 import com.fongmi.android.tv.event.RefreshEvent;
 import com.fongmi.android.tv.setting.Setting;
 import com.fongmi.android.tv.ui.adapter.HistoryAdapter;
+import com.fongmi.android.tv.ui.dialog.SyncDialog;
 import com.fongmi.android.tv.ui.base.BaseActivity;
 import com.fongmi.android.tv.ui.custom.SpaceItemDecoration;
 import com.fongmi.android.tv.utils.HistoryOpener;
@@ -53,6 +54,7 @@ public class HistoryActivity extends BaseActivity implements HistoryAdapter.OnCl
 
     private void setEvent() {
         mBinding.clear.setOnClickListener(v -> clearHistory());
+        mBinding.sync.setOnClickListener(v -> SyncDialog.create().history().show(this));
     }
 
     private void setRecyclerView() {

@@ -187,11 +187,19 @@ public class Util {
         return "mobile".equals(BuildConfig.FLAVOR_mode);
     }
 
+    private static volatile Boolean touchscreen;
+
     public static boolean isTouchscreen(Context context) {
+        if (touchscreen != null) return touchscreen;
         if (context == null) return false;
         PackageManager pm = context.getPackageManager();
         if (pm == null || !pm.hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN)) return false;
-        return context.getResources().getConfiguration().touchscreen != Configuration.TOUCHSCREEN_NOTOUCH;
+        // 必须经 ApplicationContext 读配置：Activity 可覆写 getResources()（AutoSize 触屏旁路），
+        // 此处若用 context.getResources() 会与 BaseActivity.getResources() 互相递归（StackOverflow，crash.log 2026-10-04）
+        Context app = context.getApplicationContext();
+        boolean value = (app != null ? app : context).getResources().getConfiguration().touchscreen != Configuration.TOUCHSCREEN_NOTOUCH;
+        touchscreen = value;
+        return value;
     }
 
     public static boolean isFullscreen(Activity activity) {

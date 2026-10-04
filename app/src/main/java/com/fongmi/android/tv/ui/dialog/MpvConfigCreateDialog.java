@@ -138,7 +138,7 @@ public class MpvConfigCreateDialog extends BaseAlertDialog {
             return true;
         });
         binding.name.setOnEditorActionListener((view, actionId, event) -> {
-            if (!Util.isLeanback()) return false;
+            if (Util.isTouchscreen(requireContext())) return false;
             binding.textOption.requestFocus();
             return true;
         });

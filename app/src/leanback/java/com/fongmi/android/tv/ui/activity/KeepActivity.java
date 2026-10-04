@@ -17,6 +17,7 @@ import com.fongmi.android.tv.databinding.ActivityKeepBinding;
 import com.fongmi.android.tv.event.RefreshEvent;
 import com.fongmi.android.tv.impl.Callback;
 import com.fongmi.android.tv.ui.adapter.KeepAdapter;
+import com.fongmi.android.tv.ui.dialog.SyncDialog;
 import com.fongmi.android.tv.ui.base.BaseActivity;
 import com.fongmi.android.tv.ui.custom.SpaceItemDecoration;
 import com.fongmi.android.tv.utils.Notify;
@@ -57,6 +58,7 @@ public class KeepActivity extends BaseActivity implements KeepAdapter.OnClickLis
     private void setEvent() {
         mBinding.clear.setOnClickListener(v -> clearKeep());
         mBinding.search.setOnClickListener(v -> SearchActivity.start(this));
+        mBinding.sync.setOnClickListener(v -> SyncDialog.create().keep().show(this));
     }
 
     private void getKeep() {

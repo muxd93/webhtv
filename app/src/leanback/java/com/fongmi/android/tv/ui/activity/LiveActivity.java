@@ -52,6 +52,7 @@ import com.fongmi.android.tv.player.PlayerManager;
 import com.fongmi.android.tv.player.Source;
 import com.fongmi.android.tv.service.PlaybackService;
 import com.fongmi.android.tv.setting.LiveSetting;
+import com.fongmi.android.tv.setting.LiveEpgSetting;
 import com.fongmi.android.tv.setting.PlayerSetting;
 import com.fongmi.android.tv.ui.adapter.ChannelAdapter;
 import com.fongmi.android.tv.ui.adapter.EpgDataAdapter;
@@ -62,6 +63,9 @@ import com.fongmi.android.tv.ui.custom.CustomSeekView;
 import com.fongmi.android.tv.ui.custom.PlayerOsdController;
 import com.fongmi.android.tv.ui.dialog.HistoryDialog;
 import com.fongmi.android.tv.ui.dialog.LiveDialog;
+import com.fongmi.android.tv.ui.dialog.LiveEpgDialog;
+import com.fongmi.android.tv.ui.dialog.LiveLineDialog;
+import com.fongmi.android.tv.ui.dialog.LiveProgramDialog;
 import com.fongmi.android.tv.ui.dialog.PassDialog;
 import com.fongmi.android.tv.ui.dialog.PlayerKernelDialog;
 import com.fongmi.android.tv.ui.dialog.SubtitleDialog;
@@ -77,7 +81,7 @@ import org.greenrobot.eventbus.ThreadMode;
 
 import java.util.List;
 
-public class LiveActivity extends PlaybackActivity implements GroupAdapter.OnClickListener, ChannelAdapter.OnClickListener, EpgDataAdapter.OnClickListener, CustomKeyDownLive.Listener, CustomLiveListView.Callback, TrackDialog.Listener, PassListener, ConfigListener, LiveListener, LiveSession.Listener {
+public class LiveActivity extends PlaybackActivity implements GroupAdapter.OnClickListener, ChannelAdapter.OnClickListener, EpgDataAdapter.OnClickListener, CustomKeyDownLive.Listener, CustomLiveListView.Callback, TrackDialog.Listener, PassListener, ConfigListener, LiveListener, LiveEpgDialog.Listener, LiveSession.Listener {
 
     private ActivityLiveBinding mBinding;
     private ChannelAdapter mChannelAdapter;
@@ -92,6 +96,7 @@ public class LiveActivity extends PlaybackActivity implements GroupAdapter.OnCli
     private PlayerOsdController mOsd;
     private LiveSession mSession;
     private View mOldView;
+    private boolean pendingShowProgram;
     private Runnable mR0;
     private Runnable mR1;
     private Runnable mR2;
@@ -200,6 +205,9 @@ public class LiveActivity extends PlaybackActivity implements GroupAdapter.OnCli
         mBinding.control.action.text.setDownListener(this::onSubtitleClick);
         mBinding.control.action.source.setOnClickListener(view -> onLiveSource());
         mBinding.control.action.line.setOnClickListener(view -> onLine());
+        mBinding.control.action.line.setOnLongClickListener(view -> onLineLong());
+        mBinding.control.action.epg.setOnClickListener(view -> onLiveProgram());
+        mBinding.control.action.epg.setOnLongClickListener(view -> onLiveEpgSource());
         mBinding.control.action.scale.setOnClickListener(view -> onScale());
         mBinding.control.action.speed.setOnClickListener(view -> onSpeed());
         mBinding.control.action.config.setOnClickListener(view -> onConfig());
@@ -261,7 +269,15 @@ public class LiveActivity extends PlaybackActivity implements GroupAdapter.OnCli
             if (service() == null) mPendingStartResult = result;
             else mSession.play(result);
         };
-        mObserveEpg = mSession::onEpgResult;
+        mObserveEpg = epg -> {
+            mSession.onEpgResult(epg);
+            if (pendingShowProgram) {
+                Channel channel = mSession.currentChannel();
+                if (channel == null || !channel.getTvgId().equals(epg.getKey())) return;
+                pendingShowProgram = false;
+                showLiveProgram();
+            }
+        };
         mViewModel.url().observeForever(mObserveUrl);
         mViewModel.epg().observeForever(mObserveEpg);
         mViewModel.message().observe(this, this::showParseError);
@@ -367,6 +383,59 @@ public class LiveActivity extends PlaybackActivity implements GroupAdapter.OnCli
 
     private void onLine() {
         mSession.nextLine(false);
+    }
+
+    private void setLine(int position) {
+        mSession.setLine(position);
+    }
+
+    private boolean onLineLong() {
+        Channel channel = mSession.currentChannel();
+        if (channel == null) return true;
+        LiveLineDialog.create().channel(channel).listener(this::setLine).show(this);
+        hideControl();
+        return true;
+    }
+
+    private void onLiveProgram() {
+        Channel channel = mSession.currentChannel();
+        if (channel == null) return;
+        if (!channel.getDataList().isEmpty()) {
+            showLiveProgram();
+            return;
+        }
+        pendingShowProgram = true;
+        mViewModel.getEpg(channel);
+        Notify.show(R.string.live_program_empty);
+    }
+
+    private void showLiveProgram() {
+        Channel channel = mSession.currentChannel();
+        if (channel == null || channel.getDataList().isEmpty()) {
+            Notify.show(R.string.live_program_empty);
+            return;
+        }
+        LiveProgramDialog.create().channel(channel).zoneId(mViewModel.getZoneId()).listener(this::onItemClick).show(this);
+        hideControl();
+        hideInfo();
+    }
+
+    private boolean onLiveEpgSource() {
+        LiveEpgDialog.create().show(this);
+        hideControl();
+        return true;
+    }
+
+    @Override
+    public void onLiveEpgSelected(String url) {
+        Channel channel = mSession.currentChannel();
+        if (channel == null) return;
+        LiveEpgSetting.apply(getHome());
+        if (LiveEpgSetting.isGlobalXmlUrl(LiveEpgSetting.getUrl()) || (LiveEpgSetting.getUrl().isEmpty() && !getHome().getEpgXml().isEmpty())) {
+            mViewModel.parseXml(getHome());
+        } else {
+            mSession.getEpg();
+        }
     }
 
     private void onScale() {

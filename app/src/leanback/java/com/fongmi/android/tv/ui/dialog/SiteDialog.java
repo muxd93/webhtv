@@ -9,6 +9,7 @@ import android.view.ViewGroup;
 import android.view.ViewTreeObserver;
 import android.view.Window;
 import android.view.WindowManager;
+import android.view.inputmethod.EditorInfo;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -29,6 +30,7 @@ import com.fongmi.android.tv.ui.adapter.SiteAdapter;
 import com.fongmi.android.tv.ui.custom.SpaceItemDecoration;
 import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.ResUtil;
+import com.fongmi.android.tv.utils.Util;
 import com.github.catvod.crawler.SpiderDebug;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
@@ -142,9 +144,10 @@ public class SiteDialog extends BaseAlertDialog implements SiteAdapter.OnClickLi
         long start = System.currentTimeMillis();
         setRootWidth();
         setRecyclerHeight(INITIAL_BATCH);
-        binding.searchBar.setVisibility(View.GONE);
-        binding.keyword.setVisibility(View.GONE);
-        binding.actionGap.setVisibility(View.GONE);
+        boolean touch = Util.isTouchscreen(getDialogActivity());
+        binding.searchBar.setVisibility(touch ? View.VISIBLE : View.GONE);
+        binding.keyword.setVisibility(touch ? View.VISIBLE : View.GONE);
+        binding.actionGap.setVisibility(touch && action ? View.VISIBLE : View.GONE);
         binding.action.setVisibility(action ? View.VISIBLE : View.GONE);
         binding.search.setVisibility(action ? View.VISIBLE : View.GONE);
         binding.change.setVisibility(action ? View.VISIBLE : View.GONE);
@@ -185,6 +188,10 @@ public class SiteDialog extends BaseAlertDialog implements SiteAdapter.OnClickLi
 
     @Override
     protected void initEvent() {
+        binding.keyword.setOnEditorActionListener((textView, actionId, event) -> {
+            if (actionId == EditorInfo.IME_ACTION_DONE) Util.hideKeyboard(binding.keyword);
+            return false;
+        });
         binding.config.setOnClickListener(v -> {
             FragmentActivity activity = getDialogActivity();
             dismiss();

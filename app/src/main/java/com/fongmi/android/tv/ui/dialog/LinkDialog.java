@@ -29,6 +29,10 @@ public class LinkDialog extends BaseAlertDialog {
         new LinkDialog().show(fragment.getChildFragmentManager(), null);
     }
 
+    public static void show(androidx.fragment.app.FragmentActivity activity) {
+        new LinkDialog().show(activity.getSupportFragmentManager(), null);
+    }
+
     @Override
     protected ViewBinding getBinding() {
         return binding = DialogLinkBinding.inflate(getLayoutInflater());

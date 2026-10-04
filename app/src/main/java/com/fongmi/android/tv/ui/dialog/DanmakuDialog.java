@@ -98,7 +98,7 @@ public final class DanmakuDialog extends BaseBottomSheetDialog implements Danmak
     }
 
     private boolean shouldUseInputDialog(FragmentActivity activity) {
-        return Util.isMobile() && (!(activity instanceof Host) || !((Host) activity).isDanmakuFullscreen());
+        return Util.isTouchscreen(activity) && (!(activity instanceof Host) || !((Host) activity).isDanmakuFullscreen());
     }
 
     private void onChoose(View view) {

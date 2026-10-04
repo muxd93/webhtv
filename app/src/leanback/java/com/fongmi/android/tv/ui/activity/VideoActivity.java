@@ -90,6 +90,7 @@ import com.fongmi.android.tv.model.SearchProgress;
 import com.fongmi.android.tv.playback.PlaybackEventCollector;
 import com.fongmi.android.tv.player.PlayerHelper;
 import com.fongmi.android.tv.player.PlayerManager;
+import com.fongmi.android.tv.player.engine.PlayerEngine;
 import com.fongmi.android.tv.player.diagnostic.PanEndpointParser;
 import com.fongmi.android.tv.player.karaoke.KaraokeController;
 import com.fongmi.android.tv.player.karaoke.KaraokePitchTrackGenerator;
@@ -128,8 +129,10 @@ import com.fongmi.android.tv.ui.custom.KaraokeResultView;
 import com.fongmi.android.tv.ui.custom.PlayerOsdController;
 import com.fongmi.android.tv.ui.dialog.CodecCapabilityDialog;
 import com.fongmi.android.tv.ui.dialog.CastDialog;
+import com.fongmi.android.tv.ui.dialog.InfoDialog;
 import com.fongmi.android.tv.ui.dialog.ContentDialog;
 import com.fongmi.android.tv.ui.dialog.ControlDialog;
+import com.fongmi.android.tv.ui.dialog.EpisodeGridDialog;
 import com.fongmi.android.tv.ui.dialog.DanmakuDialog;
 import com.fongmi.android.tv.ui.dialog.EpisodeListDialog;
 import com.fongmi.android.tv.ui.dialog.PanNetworkDiagnosticDialog;
@@ -170,7 +173,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 
-public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.Listener, TrackDialog.Listener, ControlDialog.Listener, ArrayAdapter.OnClickListener, FlagAdapter.OnClickListener, EpisodeAdapter.OnClickListener, QualityAdapter.OnClickListener, QuickAdapter.OnClickListener, ParseAdapter.OnClickListener, CastDialog.Listener, Clock.Callback {
+public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.Listener, TrackDialog.Listener, ControlDialog.Listener, ArrayAdapter.OnClickListener, FlagAdapter.OnClickListener, EpisodeAdapter.OnClickListener, QualityAdapter.OnClickListener, QuickAdapter.OnClickListener, ParseAdapter.OnClickListener, CastDialog.Listener, InfoDialog.Listener, Clock.Callback {
 
     private static final long LYRICS_OFFSET_MIN_MS = -5000L;
     private static final long LYRICS_OFFSET_MAX_MS = 5000L;
@@ -299,6 +302,7 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
     private long mInitialPlaybackPosition = C.TIME_UNSET;
     private boolean pendingLutImport;
     private boolean playerKernelSwitchRefreshing;
+    private boolean decodeSwitchRefreshing;
     private MpvPlayer mDiscMenuPlayer;
     private MpvPlayer mCustomButtonPlayer;
     private final Runnable mCustomButtonStateListener = this::updateCustomButtonStates;
@@ -699,6 +703,7 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
         mBinding.control.action.next.setOnClickListener(view -> checkNext());
         mBinding.control.action.prev.setOnClickListener(view -> checkPrev());
         mBinding.control.action.episodes.setOnClickListener(view -> onEpisodes());
+        mBinding.control.action.episodes.setOnLongClickListener(view -> onEpisodesGrid());
         mBinding.control.action.discMenu.setOnClickListener(view -> {
             hideControl();
             openDiscMenu();
@@ -716,6 +721,7 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
         mBinding.control.action.player.setOnClickListener(view -> onPlayerKernel());
         mBinding.control.action.player.setOnLongClickListener(view -> onChooseLong());
         mBinding.control.action.decode.setOnClickListener(view -> onDecode());
+        mBinding.control.action.info.setOnClickListener(view -> onInfo());
         mBinding.control.action.playParams.setOnClickListener(view -> onPlayParams());
         mBinding.control.action.panDiagnostic.setOnClickListener(view -> onPanDiagnostic());
         mBinding.control.action.codecCapability.setOnClickListener(view -> onCodecCapability());
@@ -1048,6 +1054,16 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
 
     private void setDecode() {
         mBinding.control.action.decode.setText(player().getDecodeText());
+    }
+
+    private void setDecodeSwitchPending(boolean pending) {
+        mBinding.control.action.decode.setEnabled(!pending);
+        mBinding.control.action.decode.setAlpha(pending ? 0.65f : 1.0f);
+    }
+
+    private void setNextDecodeText() {
+        int next = player().isHardDecode() ? PlayerEngine.SOFT : PlayerEngine.HARD;
+        mBinding.control.action.decode.setText(ResUtil.getStringArray(R.array.select_decode)[next]);
     }
 
     private void setPlayerKernel() {
@@ -1710,6 +1726,7 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
 
     private void focusLyricsSearchTarget(EditText input, View focusTarget) {
         if (input == null || focusTarget == null) return;
+        if (Util.isTouchscreen(this)) return;
         input.clearFocus();
         Util.hideKeyboard(input);
         focusTarget.requestFocus();
@@ -2546,6 +2563,14 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
         if (mFlagAdapter.getItemCount() == 0 || mEpisodeAdapter.getItemCount() < 2) return;
         hideControl();
         EpisodeListDialog.create().flags(mFlagAdapter.getItems()).show(this);
+    }
+
+    private boolean onEpisodesGrid() {
+        if (getFlag() == null || getFlag().getEpisodes().isEmpty()) return true;
+        boolean reverse = mHistory != null && mHistory.isRevSort();
+        hideControl();
+        EpisodeGridDialog.create().reverse(reverse).episodes(getFlag().getEpisodes()).show(this);
+        return true;
     }
 
     private void onRepeat() {
@@ -3461,9 +3486,56 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
     }
 
     private void onDecode() {
+        if (refreshAndSwitchDecode()) return;
         mClock.setCallback(null);
         clearLyrics();
         player().toggleDecode();
+        setR1Callback();
+        setDecode();
+    }
+
+    private boolean refreshAndSwitchDecode() {
+        if (decodeSwitchRefreshing) return true;
+        Flag currentFlag = getFlag();
+        Episode currentEpisode = getEpisode();
+        if (currentFlag == null || currentEpisode == null || TextUtils.isEmpty(currentFlag.getFlag()) || TextUtils.isEmpty(currentEpisode.getUrl())) return false;
+        long position = Math.max(0, player().getPosition());
+        float speed = player().getSpeed();
+        boolean repeat = player().isRepeatOne();
+        String key = getKey();
+        String flag = currentFlag.getFlag();
+        String episode = currentEpisode.getUrl();
+        MediaMetadata metadata = buildMetadata();
+        decodeSwitchRefreshing = true;
+        setNextDecodeText();
+        setDecodeSwitchPending(true);
+        mClock.setCallback(null);
+        SpiderDebug.log("video-flow", "switch decode refresh start key=%s flag=%s episode=%s", key, flag, episode);
+        Task.execute(() -> {
+            try {
+                Result result = SiteApi.playerContent(key, flag, episode);
+                App.post(() -> switchDecodeWithResult(result, position, speed, repeat, metadata));
+            } catch (Throwable e) {
+                App.post(() -> {
+                    decodeSwitchRefreshing = false;
+                    setDecodeSwitchPending(false);
+                    setDecode();
+                    Notify.show(e.getMessage());
+                });
+            }
+        });
+        return true;
+    }
+
+    private void switchDecodeWithResult(Result result, long position, float speed, boolean repeat, MediaMetadata metadata) {
+        decodeSwitchRefreshing = false;
+        if (result == null || result.hasMsg() || result.getRealUrl().isEmpty()) {
+            player().toggleDecode();
+        } else {
+            player().switchDecode(result, getHistoryKey(), metadata, isUseParse(), position, speed, repeat);
+        }
+        setR1Callback();
+        setDecodeSwitchPending(false);
         setDecode();
     }
 
@@ -6375,6 +6447,10 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
     public void onShare(CharSequence title) {
         PlayerHelper.share(this, player().getUrl(), player().getHeaders(), title);
         setRedirect(true);
+    }
+
+    private void onInfo() {
+        InfoDialog.create().title(mBinding.name.getText()).headers(player().getHeaders()).url(player().getUrl()).show(this);
     }
 
     @Override

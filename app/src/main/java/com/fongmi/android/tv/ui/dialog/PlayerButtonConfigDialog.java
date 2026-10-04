@@ -85,7 +85,7 @@ public class PlayerButtonConfigDialog extends BaseAlertDialog {
         binding.recycler.setLayoutManager(new LinearLayoutManager(requireContext()));
         binding.recycler.setItemAnimator(null);
         binding.recycler.setAdapter(adapter);
-        if (Util.isMobile()) attachTouchHelper();
+        if (Util.isTouchscreen(requireContext())) attachTouchHelper();
         adapter.reload();
         setSummary();
     }

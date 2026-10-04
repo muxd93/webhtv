@@ -63,7 +63,7 @@ public class FileChooser {
         intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, allowMultiple);
         intent.putExtra("android.content.extra.SHOW_ADVANCED", true);
         List<ResolveInfo> resolveInfos = App.get().getPackageManager().queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY);
-        if (Util.isLeanback() || resolveInfos.isEmpty() || resolveInfos.get(0).activityInfo.packageName.contains("frameworkpackagestubs")) {
+        if (!Util.isTouchscreen(App.get()) || resolveInfos.isEmpty() || resolveInfos.get(0).activityInfo.packageName.contains("frameworkpackagestubs")) {
             launcher.launch(new Intent(App.get(), FileActivity.class));
         } else {
             launcher.launch(Intent.createChooser(intent, ""));

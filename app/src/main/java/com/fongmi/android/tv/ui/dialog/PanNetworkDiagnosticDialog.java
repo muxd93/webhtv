@@ -351,10 +351,11 @@ public final class PanNetworkDiagnosticDialog extends DialogFragment implements 
         chip.setText(String.valueOf(value));
         chip.setCheckable(true);
         chip.setChecked(checked);
-        chip.setEnsureMinTouchTargetSize(!Util.isLeanback());
-        chip.setMinHeight(dp(Util.isLeanback() ? 40 : 48));
-        chip.setMinimumHeight(dp(Util.isLeanback() ? 40 : 48));
-        chip.setTextSize(Util.isLeanback() ? 13 : 14);
+        boolean touch = Util.isTouchscreen(requireContext());
+        chip.setEnsureMinTouchTargetSize(touch);
+        chip.setMinHeight(dp(touch ? 48 : 40));
+        chip.setMinimumHeight(dp(touch ? 48 : 40));
+        chip.setTextSize(touch ? 14 : 13);
         chip.setTextColor(new ColorStateList(new int[][]{new int[]{android.R.attr.state_checked}, new int[]{}}, new int[]{Color.WHITE, BLUE_DARK}));
         chip.setChipBackgroundColor(new ColorStateList(new int[][]{new int[]{android.R.attr.state_checked}, new int[]{}}, new int[]{BLUE, Color.WHITE}));
         chip.setChipStrokeColor(ColorStateList.valueOf(Color.rgb(138, 180, 248)));

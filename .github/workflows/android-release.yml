@@ -90,7 +90,7 @@ jobs:
         run: |
           chmod +x ./gradlew
           ./gradlew \
-            :app:testMobileArm64_v8aDebugUnitTest \
+            :app:testLeanbackArm64_v8aDebugUnitTest \
             --tests 'com.fongmi.android.tv.player.danmaku.*' \
             --no-daemon
 
@@ -181,7 +181,6 @@ jobs:
           chmod +x ./gradlew
           rm -rf Release/apk
           ./gradlew \
-            :app:assembleMobileArm64_v8aRelease \
             :app:assembleLeanbackArm64_v8aRelease \
             :app:assembleLeanbackArm64_v8aDebug \
             --no-daemon

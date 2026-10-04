@@ -26,7 +26,7 @@ app/src/armeabi_v7a/assets/mpv-libs/armeabi-v7a/
 因此普通用户 clone 后直接执行 Gradle 即可，不需要运行本文的 native 脚本：
 
 ```bash
-bash gradlew :app:assembleMobileArm64_v8aDebug
+bash gradlew :app:assembleLeanbackArm64_v8aDebug
 ```
 
 只有升级 MPV、FFmpeg、libplacebo、NDK，或需要重新生成原生库时，维护者才手动运行：
@@ -129,7 +129,7 @@ git clone https://github.com/fish2018/webhtv.git
 cd webhtv
 printf 'sdk.dir=%s\n' "$ANDROID_HOME" > local.properties
 scripts/build_mpv_native.sh --abi arm64-v8a --install
-bash gradlew :app:assembleMobileArm64_v8aRelease -PfastRelease=true
+bash gradlew :app:assembleLeanbackArm64_v8aRelease -PfastRelease=true
 ```
 
 `--install` 会更新八个 MPV/FFmpeg 库和匹配 NDK 的 `libc++_shared.so`，但保留仓库已有的 `libplayer.so`。
@@ -306,7 +306,7 @@ P2-2 在现有 `mpv-dovi-profile7-hdr10-base-layer.patch` 内完成 Profile 7 HD
 至少构建一个快速 Release：
 
 ```bash
-bash gradlew :app:assembleMobileArm64_v8aRelease -PfastRelease=true
+bash gradlew :app:assembleLeanbackArm64_v8aRelease -PfastRelease=true
 ```
 
 设备回归范围：

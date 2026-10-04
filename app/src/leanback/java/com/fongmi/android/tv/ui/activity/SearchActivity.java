@@ -115,6 +115,7 @@ public class SearchActivity extends BaseActivity implements WordAdapter.OnClickL
     @Override
     protected void initView(Bundle savedInstanceState) {
         CustomKeyboard.init(this, mBinding);
+        if (Util.isTouchscreen(this)) mBinding.keyboard.setVisibility(View.GONE);
         setRecyclerView();
         checkKeyword();
         onSearch();

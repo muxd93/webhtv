@@ -27,7 +27,7 @@ import com.fongmi.android.tv.databinding.DialogDeviceBinding;
 import com.fongmi.android.tv.impl.Callback;
 import com.fongmi.android.tv.setting.Setting;
 import com.fongmi.android.tv.ui.activity.ScanActivity;
-import com.fongmi.android.tv.ui.adapter.DeviceAdapter;
+import com.fongmi.android.tv.ui.adapter.SyncDeviceAdapter;
 import com.fongmi.android.tv.ui.custom.SpaceItemDecoration;
 import com.fongmi.android.tv.utils.Notify;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
@@ -43,14 +43,14 @@ import okhttp3.FormBody;
 import okhttp3.OkHttpClient;
 import okhttp3.Response;
 
-public class SyncDialog extends BaseBottomSheetDialog implements DeviceAdapter.OnClickListener, ScanTask.Listener {
+public class SyncDialog extends BaseBottomSheetDialog implements SyncDeviceAdapter.OnClickListener, SyncDeviceAdapter.OnLongClickListener, ScanTask.Listener {
 
     private final FormBody.Builder body;
     private final OkHttpClient client;
     private final TypedArray mode;
 
     private DialogDeviceBinding binding;
-    private DeviceAdapter adapter;
+    private SyncDeviceAdapter adapter;
     private ScanTask scanTask;
     private String type;
 
@@ -111,7 +111,7 @@ public class SyncDialog extends BaseBottomSheetDialog implements DeviceAdapter.O
 
     private void setRecyclerView() {
         binding.recycler.setHasFixedSize(false);
-        binding.recycler.setAdapter(adapter = new DeviceAdapter(this));
+        binding.recycler.setAdapter(adapter = new SyncDeviceAdapter(this).longListener(this));
         binding.recycler.addItemDecoration(new SpaceItemDecoration(1, 16));
     }
 

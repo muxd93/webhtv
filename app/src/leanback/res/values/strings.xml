@@ -65,4 +65,5 @@
     <string name="backup_progress">Backing up app data</string>
     <string name="restore_progress">Restoring app data</string>
     <string name="history_delete_hint">Delete mode: click a card to delete, long-press again to clear all, back to exit</string>
+    <string name="detail_episode">Episode</string>
 </resources>

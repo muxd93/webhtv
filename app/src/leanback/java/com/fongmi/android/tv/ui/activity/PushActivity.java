@@ -12,6 +12,8 @@ import androidx.viewbinding.ViewBinding;
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.databinding.ActivityPushBinding;
 import com.fongmi.android.tv.server.Server;
+import com.fongmi.android.tv.ui.dialog.ApkPushDialog;
+import com.fongmi.android.tv.ui.dialog.PushPlayDialog;
 import com.fongmi.android.tv.ui.base.BaseActivity;
 import com.fongmi.android.tv.utils.QRCode;
 import com.fongmi.android.tv.utils.ResUtil;
@@ -51,11 +53,21 @@ public class PushActivity extends BaseActivity {
     protected void initEvent() {
         mBinding.code.setOnClickListener(this::onCode);
         mBinding.clip.setOnClickListener(this::onClip);
+        mBinding.pushPlay.setOnClickListener(this::onPushPlay);
+        mBinding.apkPush.setOnClickListener(this::onApkPush);
     }
 
     private void onClip(View view) {
         CharSequence text = Util.getClipText();
         if (!TextUtils.isEmpty(text)) VideoActivity.start(this, Sniffer.getUrl(text.toString()));
+    }
+
+    private void onPushPlay(View view) {
+        PushPlayDialog.create().show(this);
+    }
+
+    private void onApkPush(View view) {
+        ApkPushDialog.create().show(this);
     }
 
     private void onCode(View view) {
