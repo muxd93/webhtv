@@ -1091,7 +1091,7 @@ public class LiveActivity extends PlaybackActivity implements CustomKeyDown.List
         mEpgDataAdapter.addAll(epg.getList());
         if (hasTitle) mBinding.control.title.setText(getString(R.string.detail_title, channel.getShow(), data.getTitle()));
         mBinding.widget.name.setMaxEms(hasTitle ? 12 : 48);
-        mBinding.widget.play.setText(data.format());
+        mBinding.widget.play.setText(mSession.isCatchup() ? data.format() : epg.nowNext());
         setLiveProgram(epg);
         setWidth(epg);
         setMetadata();
@@ -1431,7 +1431,7 @@ public class LiveActivity extends PlaybackActivity implements CustomKeyDown.List
 
     @Override
     public void setPass(String pass) {
-        mSession.unlock(pass);
+        if (!mSession.unlock(pass)) Notify.show(R.string.error_live_pass);
     }
 
     @Override

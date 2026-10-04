@@ -14,6 +14,7 @@ import com.fongmi.android.tv.bean.Result;
 import com.fongmi.android.tv.impl.Callback;
 import com.fongmi.android.tv.model.LiveViewModel;
 import com.fongmi.android.tv.setting.LiveSetting;
+import com.fongmi.android.tv.utils.Task;
 
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -82,6 +83,8 @@ public class LiveSession {
     private String pendingReloadMsg;
     private boolean rendered;
     private boolean playbackCatchup;
+    private long zapTune;
+    private boolean zapLogged;
 
     public LiveSession(LiveViewModel viewModel, Listener listener) {
         this.viewModel = viewModel;
@@ -122,7 +125,7 @@ public class LiveSession {
     public void start(boolean empty) {
         if (!empty) {
             LiveConfig.get().refreshIfStale();
-            LiveAggregator.refreshIfStale();
+            Task.submit(LineHealth::init);
             load();
             return;
         }
@@ -141,8 +144,6 @@ public class LiveSession {
 
     public void setConfig(Config config) {
         Config current = LiveConfig.get().getConfig();
-        // 会话手动换源：非「聚合」即记手动优先，自动聚合不再抢切（LIVE6）
-        LiveAggregator.onManualSelect(config);
         LiveConfig.load(config, new Callback() {
             @Override
             public void start() {
@@ -164,8 +165,6 @@ public class LiveSession {
     }
 
     public void switchLive(Live item) {
-        // 配置内手动换 live 同样记手动优先，自动聚合不抢切（选回聚合则恢复自动）
-        LiveAggregator.onManualSelect(LiveConfig.get().getConfig());
         // 点当前已渲染的源不再清树重载打断播放
         if (item.isSelected() && rendered) return;
         if (item.isSelected()) item.getGroups().clear();
@@ -184,6 +183,9 @@ public class LiveSession {
         playbackKey = null;
         clearPendingReload();
         playbackCatchup = false;
+        zapTune = 0;
+        zapLogged = false;
+        ZapPrewarm.cancel();
         listener.onGroupsChanged();
     }
 
@@ -213,7 +215,7 @@ public class LiveSession {
     }
 
     /**
-     * 后台内容更新（探测重排/聚合刷新/删源联动）后的会话软刷新：换到新树并尽量
+     * 后台重解析结果（重进直播页/换配置后的再解析）到达时的会话软刷新：换到新树并尽量
      * 对位当前台，不触碰播放器。找不到原台时保留旧引用继续播，列表反映新树。
      */
     public void softReload() {
@@ -263,6 +265,8 @@ public class LiveSession {
         if (live == null || rendered || live.getGroups().isEmpty()) return;
         rendered = true;
         viewModel.parseXml(live);
+        // 被动健康沉底：渲染前对全部频道重排（线路与名称同步、选中线路保位），只沉底不删除
+        for (Group item : live.getGroups()) for (Channel channel : item.getChannel()) LineHealth.reorder(channel);
         groups.clear();
         hides.clear();
         for (Group item : live.getGroups()) (item.isHidden() ? hides : groups).add(item);
@@ -324,7 +328,20 @@ public class LiveSession {
         }
         channel = item.group(group);
         viewModel.getEpg(channel);
+        zapTune = System.currentTimeMillis();
+        zapLogged = false;
+        ZapMetric.tune(channel.getName(), channel.getUrls().size());
+        ZapPrewarm.schedule(this::nextPrewarmTarget);
         listener.onChannelTuned(channel, syncUi);
+    }
+
+    /** 预热目标：组内下一频道（组尾不跨组预热，方向未知避免无谓流量）。 */
+    @Nullable
+    private Channel nextPrewarmTarget() {
+        if (group == null) return null;
+        List<Channel> channels = group.getChannel();
+        int next = group.getPosition() + 1;
+        return next < channels.size() ? channels.get(next) : null;
     }
 
     public void syncToTuned() {
@@ -443,7 +460,21 @@ public class LiveSession {
         }
         clearPendingReload();
         playbackKey = realUrl;
+        if (!playbackCatchup) LineHealth.success(currentLine());
+        if (zapTune > 0 && !zapLogged) {
+            zapLogged = true;
+            ZapMetric.resolved(System.currentTimeMillis() - zapTune, channel == null ? "" : channel.getName());
+        }
         listener.onPlaybackStart(result);
+    }
+
+    /** 当前选中线路的原始 URL（健康记分键，与渲染重排使用同一形态）。 */
+    @Nullable
+    private String currentLine() {
+        if (channel == null) return null;
+        List<String> urls = channel.getUrls();
+        int index = channel.getIndex();
+        return index >= 0 && index < urls.size() ? urls.get(index) : null;
     }
 
     private boolean isSameReload(String realUrl) {
@@ -457,7 +488,9 @@ public class LiveSession {
 
     private void handleSameReload(String msg) {
         if (channel != null && !channel.isOnly()) {
+            boolean sunk = !playbackCatchup && LineHealth.failure(currentLine());
             nextLine(true);
+            if (sunk) LineHealth.reorder(channel);
         } else {
             onPlaybackError(msg);
         }
@@ -468,6 +501,7 @@ public class LiveSession {
             onPlaybackError(msg);
             return;
         }
+        if (!playbackCatchup) LineHealth.failure(currentLine());
         pendingReloadUrl = playbackKey != null ? playbackKey : fallbackUrl;
         pendingReloadMsg = msg;
         listener.onPlaybackStopping();
@@ -475,8 +509,11 @@ public class LiveSession {
     }
 
     public void onPlaybackError(String msg) {
+        boolean sunk = !playbackCatchup && LineHealth.failure(currentLine());
         listener.onPlaybackFailed(msg);
         startFlow();
+        // 沉底即时生效：换线落点已定，立刻重排本频道（后续换台/线路列表直接反映）
+        if (sunk && channel != null) LineHealth.reorder(channel);
     }
 
     private void startFlow() {
@@ -526,7 +563,8 @@ public class LiveSession {
         Keep.delete(item.getName());
     }
 
-    public void unlock(String pass) {
+    /** 解锁匹配 pass 的隐藏组（pass=null 时解锁全部）；无匹配返回 false，调用方应给反馈避免静默。 */
+    public boolean unlock(String pass) {
         Group first = null;
         Iterator<Group> iterator = hides.iterator();
         while (iterator.hasNext()) {
@@ -536,8 +574,9 @@ public class LiveSession {
             if (first == null) first = item;
             iterator.remove();
         }
-        if (first == null) return;
+        if (first == null) return false;
         listener.onGroupsChanged();
         listener.onUnlocked(first);
+        return true;
     }
 }

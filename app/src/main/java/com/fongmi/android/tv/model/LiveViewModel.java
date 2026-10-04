@@ -84,8 +84,9 @@ public class LiveViewModel extends ViewModel {
                 setTimeZone(item);
                 return item;
             } finally {
-                // 解析结束（含失败/取消）即发布完整分组树，主线程此后可安全遍历
-                parsing = null;
+                // 解析结束（含失败/取消）即发布完整分组树；仅当仍是本任务的对象才清空，
+                // 防止后启动解析任务的 finally 误清新标志导致 isParsing 失真、主线程遍历半成品树
+                if (parsing == item) parsing = null;
             }
         }, live::postValue, error -> {
             if (error instanceof ExtractException) {

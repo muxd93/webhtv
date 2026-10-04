@@ -14,9 +14,7 @@ import com.fongmi.android.tv.bean.Live;
 import com.fongmi.android.tv.bean.Rule;
 import com.fongmi.android.tv.db.AppDatabase;
 import com.fongmi.android.tv.event.ConfigEvent;
-import com.fongmi.android.tv.event.RefreshEvent;
 import com.fongmi.android.tv.impl.Callback;
-import com.fongmi.android.tv.live.LiveAggregator;
 import com.fongmi.android.tv.setting.CustomCspSetting;
 import com.fongmi.android.tv.setting.LiveSetting;
 import com.fongmi.android.tv.utils.UrlUtil;
@@ -110,7 +108,7 @@ public class LiveConfig extends BaseConfig {
 
     @Override
     protected String fetchTsPrefix() {
-        // 与 LiveAggregator.parse 写入的键保持一致，池内源切换为普通配置时时间戳依然有效
+        // 直播配置的拉取时间戳命名空间（ConfigCache 缓存优先策略共用）
         return "live_fetch_ts_";
     }
 
@@ -123,17 +121,6 @@ public class LiveConfig extends BaseConfig {
     protected void postEvent() {
         super.postEvent();
         ConfigEvent.live();
-    }
-
-    /** 后台内容更新（探测重排/聚合刷新/删源联动）后的静默重载：不打断在播会话，成功后广播 liveUpdated 供其软刷新。 */
-    public void reloadQuietly() {
-        if (sync) return;
-        loadSilent(new Callback() {
-            @Override
-            public void success() {
-                RefreshEvent.liveUpdated();
-            }
-        });
     }
 
     @Override
@@ -193,15 +180,10 @@ public class LiveConfig extends BaseConfig {
     private void parseDepot(Config config, JsonObject object) throws Throwable {
         List<Depot> items = Depot.arrayFrom(object.getAsJsonArray("urls").toString());
         if (items.isEmpty()) throw new Exception("Depot urls is empty");
+        // 多仓：全部展开进配置列表，默认加载第一个，用户可随时切换
         List<Config> configs = new ArrayList<>();
         for (Depot item : items) configs.add(Config.find(item, LIVE));
-        if (configs.size() > 1) {
-            // 多仓：全量展开进源池，聚合落盘后加载聚合配置；池未变且未超龄时直接复用现有聚合文件
-            if (LiveAggregator.savePool(configs) || LiveAggregator.isStale()) LiveAggregator.aggregate(true);
-            load(this.config = LiveAggregator.ensureConfig());
-        } else {
-            load(this.config = configs.get(0));
-        }
+        load(this.config = configs.get(0));
         Config.delete(config.getUrl());
     }
 
@@ -240,13 +222,6 @@ public class LiveConfig extends BaseConfig {
 
     public void setKeep(Channel channel) {
         if (home != null && !channel.getGroup().isHidden()) home.keep(channel).save();
-    }
-
-    /** 配置删除后的联动清理：直播源出池重聚合；点播配置移除其带入（from 匹配）的池源，由删除流程显式调用。 */
-    public void onSourceDeleted(int type, String url) {
-        if (TextUtils.isEmpty(url)) return;
-        if (type == LIVE) LiveAggregator.onSourceDeleted(url);
-        else if (type == VOD) LiveAggregator.onVodConfigDeleted(url);
     }
 
     public void applyKeepsToGroups(List<Group> items) {

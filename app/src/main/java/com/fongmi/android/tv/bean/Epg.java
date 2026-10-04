@@ -102,6 +102,20 @@ public class Epg {
         return -1;
     }
 
+    /** OSD now/next 文本：真实在播节目 + 下一档（基于时间线，不受节目单浏览选择影响；无下一档/无 EPG 时退化）。 */
+    public String nowNext() {
+        int inRange = getInRange();
+        if (inRange < 0) return getEpgData().format();
+        EpgData data = getList().get(inRange);
+        if (data.getTitle().isEmpty()) return "";
+        int next = inRange + 1;
+        if (next >= getList().size()) return data.format();
+        EpgData nextData = getList().get(next);
+        if (nextData.getTitle().isEmpty()) return data.format();
+        String nextText = nextData.getStart().isEmpty() ? nextData.getTitle() : nextData.getStart() + " " + nextData.getTitle();
+        return data.format() + " → " + nextText;
+    }
+
     private long parseEpgTime(String source, ZoneId zoneId) {
         try {
             var fmt = source.length() > 16 ? Formatters.EPG_DT_LONG : Formatters.EPG_DT_SHORT;

@@ -192,7 +192,6 @@ public abstract class BaseConfigDialog extends BaseAlertDialog {
             if (!edit) return null;
             if (!TextUtils.isEmpty(origin)) {
                 Config.delete(origin, type);
-                LiveConfig.get().onSourceDeleted(type, origin);
             }
             return getStoredConfig();
         } else if (edit) {

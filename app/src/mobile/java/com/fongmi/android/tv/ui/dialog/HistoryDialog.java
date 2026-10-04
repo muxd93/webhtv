@@ -117,7 +117,6 @@ public class HistoryDialog extends BaseAlertDialog implements ConfigAdapter.OnCl
                 .setNegativeButton(R.string.dialog_negative, null)
                 .setPositiveButton(R.string.dialog_positive, (dialog, which) -> {
                     if (adapter.remove(item) == 0) dismiss();
-                    LiveConfig.get().onSourceDeleted(item.getType(), item.getUrl());
                 })
                 .show();
     }

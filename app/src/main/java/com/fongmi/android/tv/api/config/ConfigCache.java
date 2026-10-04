@@ -47,7 +47,10 @@ public final class ConfigCache {
         File temp = null;
         try {
             File file = file(url);
-            temp = new File(dir(), file.getName() + ".tmp");
+            File base = dir();
+            cleanupStaleTemp(base);
+            // 唯一临时名：同 URL 并发写（聚合器并发拉取与配置加载同时回写缓存）不互踩
+            temp = new File(base, file.getName() + "." + Thread.currentThread().getId() + ".tmp");
             try (FileOutputStream out = new FileOutputStream(temp)) {
                 out.write(json.getBytes(StandardCharsets.UTF_8));
             }
@@ -55,6 +58,12 @@ public final class ConfigCache {
         } catch (Throwable e) {
             if (temp != null) temp.delete();
         }
+    }
+
+    /** 清理历史崩溃遗留的孤儿临时文件（1 小时以上，避开在途写入）。 */
+    private static void cleanupStaleTemp(File dir) {
+        File[] stale = dir.listFiles((d, name) -> name.endsWith(".tmp") && System.currentTimeMillis() - new File(d, name).lastModified() > 3600_000L);
+        if (stale != null) for (File item : stale) item.delete();
     }
 
     public static void delete(String url) {
