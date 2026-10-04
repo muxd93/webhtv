@@ -49,10 +49,10 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * 多仓聚合：把源池内各订阅源（txt/m3u）的频道按归一名合并成一份直播数据，
+ * 多仓聚合：把源池内各订阅源（txt/m3u/分组 JSON/嵌套配置对象）的频道按归一名合并成一份直播数据，
  * 落盘 filesDir/live/aggregate.json 并注册为 file:// 直播配置（type=1）。
- * 源池定义与每源状态存 aggregate.meta.json；lines 记录播放 url → 来源名，供溯源与 LIVE5 探测使用。
- * 加载走现有 JSON lives 配置路径，本类只在导入与超龄刷新时生成文件。
+ * 源池定义存 aggregate.meta.json；随仓入池的源同步建 type=1 Config 行（pool() 以配置行为准）。
+ * 可用性不做预探测：依赖播放期自动换线（LIVE7 删除 LiveProbe/隔离区/state 文件）。
  */
 public class LiveAggregator {
 
@@ -64,58 +64,11 @@ public class LiveAggregator {
     private static final String KEY_MANUAL = "live_manual";
     private static final long FETCH_TIMEOUT = 20000;
     private static final Gson GSON = new Gson();
-    // 全死频道隔离阈值：连续 2 轮全部线路失效才移出聚合文件（可自动复活）
-    private static final int STREAK_LIMIT = 2;
+    /** 聚合全程串行化：入口多（随仓/刷新/源池 UI/删源联动），防止并发互覆 meta 与产物。 */
+    private static final Object LOCK = new Object();
     // 频道名归一时剔除的分隔符；刻意保留 +（CCTV5+）
     private static final String SEPARATORS = "-—–_·•.。:：,，、;；!！?？（）()[]【】「」『』《》<>｜|/／\\";
     private static final String[] THEMES = {"体育", "竞技", "赛事", "电影", "影院", "剧场", "纪录", "纪实", "少儿", "卡通", "动漫", "动画", "教育", "新闻", "资讯", "音乐", "财经", "生活", "科技", "文艺", "都市", "法治", "法制", "港澳", "国际", "海外", "戏曲", "旅游", "汽车", "购物", "广播", "电台"};
-
-    // ---------- 探测策略（纯函数，供单测） ----------
-
-    /** 线路排序：可用(延迟升序) → 未探测(原序) → 失效(原序)，稳定排序。返回 order[i] = 原索引。 */
-    static int[] orderIndices(List<String> urls, JsonObject probe) {
-        List<Integer> order = new ArrayList<>();
-        for (int i = 0; i < urls.size(); i++) order.add(i);
-        order.sort((x, y) -> {
-            int[] a = score(urls.get(x), x, probe);
-            int[] b = score(urls.get(y), y, probe);
-            return a[0] != b[0] ? a[0] - b[0] : a[1] != b[1] ? Long.compare(a[1], b[1]) : x - y;
-        });
-        int[] result = new int[urls.size()];
-        for (int i = 0; i < order.size(); i++) result[i] = order.get(i);
-        return result;
-    }
-
-    /** 线路排序（仅 URL 视角，供单测）；需同步重排线路名时用 orderIndices + Channel.orderLines。 */
-    static List<String> orderUrls(List<String> urls, JsonObject probe) {
-        List<String> result = new ArrayList<>(urls.size());
-        for (int index : orderIndices(urls, probe)) result.add(urls.get(index));
-        return result;
-    }
-
-    /** [桶, 次键]：0=可用(次键延迟)，1=未探测/不可探测(次键原序)，2=失效(次键原序)。 */
-    static int[] score(String url, int index, JsonObject probe) {
-        if (!url.startsWith("http") || probe == null || !probe.has(url)) return new int[]{1, index};
-        JsonObject state = probe.getAsJsonObject(url);
-        boolean ok = state.has("ok") && state.get("ok").getAsBoolean();
-        long latency = state.has("latency") ? state.get("latency").getAsLong() : index;
-        return ok ? new int[]{0, (int) Math.min(latency, Integer.MAX_VALUE)} : new int[]{2, index};
-    }
-
-    /** 隔离判定：频道全部线路可探测、全部失效且连续失败达到阈值；混入不可探测协议即不隔离。 */
-    static boolean allDead(List<String> urls, JsonObject probe, int limit) {
-        if (urls.isEmpty()) return false;
-        for (String url : urls) {
-            if (!url.startsWith("http")) return false;
-            if (probe == null || !probe.has(url)) return false;
-            JsonObject state = probe.getAsJsonObject(url);
-            if (state.has("ok") && state.get("ok").getAsBoolean()) return false;
-            int streak = state.has("streak") ? state.get("streak").getAsInt() : 0;
-            if (streak < limit) return false;
-        }
-        return true;
-    }
-
 
     // ---------- 归一化（纯函数，无 Android 依赖，供单测） ----------
 
@@ -200,11 +153,6 @@ public class LiveAggregator {
         return new File(dir(), "aggregate.meta.json");
     }
 
-    /** 探测状态与 lines 溯源映射：与 meta 分文件，保证 UI 常读的 meta 恒为小文件。 */
-    private static File stateFile() {
-        return new File(dir(), "aggregate.state.json");
-    }
-
     /** 用新一批订阅源覆盖源池定义（仅 URL 列表变化时落盘重置状态）。返回池定义是否变化。 */
     public static boolean savePool(List<Config> configs) {
         List<String> urls = new ArrayList<>();
@@ -231,7 +179,7 @@ public class LiveAggregator {
             item.addProperty("url", config.getUrl());
             item.addProperty("name", config.getName());
             item.addProperty("order", order++);
-            // 复用既有源状态（探测/启停/时间戳），避免重复导入重置一切
+            // 复用既有源状态（启停/时间戳），避免重复导入重置一切
             item.addProperty("ok", prev != null && prev.has("ok") ? prev.get("ok").getAsBoolean() : true);
             item.addProperty("ts", prev != null && prev.has("ts") ? prev.get("ts").getAsLong() : 0);
             if (prev != null && prev.has("chan")) item.addProperty("chan", prev.get("chan").getAsInt());
@@ -266,6 +214,12 @@ public class LiveAggregator {
 
     /** notify=true 用于导入等用户显式等待的路径（Toast 反馈进度）；后台静默刷新传 false。 */
     public static boolean aggregate(boolean notify) {
+        synchronized (LOCK) {
+            return aggregateLocked(notify);
+        }
+    }
+
+    private static boolean aggregateLocked(boolean notify) {
         List<Config> pool = pool();
         if (pool.isEmpty()) return false;
         // 清理历史崩溃遗留的孤儿临时文件（1 小时以上，避开在途写入）
@@ -274,16 +228,12 @@ public class LiveAggregator {
         if (notify) App.post(() -> Notify.show(ResUtil.getString(R.string.live_agg_start, pool.size())));
         JsonObject meta = readMeta();
         JsonArray sources = meta.getAsJsonArray("sources");
-        JsonObject state = readState();
-        JsonObject lines = state.has("lines") ? state.getAsJsonObject("lines") : new JsonObject();
-        JsonObject probe = state.has("probe") ? state.getAsJsonObject("probe") : new JsonObject();
-        Set<String> quarantine = quarantineKeys(meta);
-        List<Live> parsed = fetchPool(pool, sources, lines);
+        List<Live> parsed = fetchPool(pool, sources);
         if (parsed.isEmpty()) {
             if (notify) App.post(() -> Notify.show(R.string.live_agg_failed));
             return false;
         }
-        Live merged = merge(parsed, probe, quarantine);
+        Live merged = merge(parsed);
         int channelCount = 0, lineCount = 0;
         for (Group group : merged.getGroups())
             for (Channel channel : group.getChannel()) {
@@ -296,7 +246,6 @@ public class LiveAggregator {
         }
         String json = toJson(merged);
         String previous = file().exists() ? Path.read(file()) : "";
-        state.add("lines", lines);
         JsonObject agg = new JsonObject();
         agg.addProperty("ts", System.currentTimeMillis());
         agg.addProperty("channels", channelCount);
@@ -311,10 +260,7 @@ public class LiveAggregator {
             writeMeta(meta);
             changed = true;
         }
-        writeState(state);
         Prefers.put(KEY_AGG_TS, System.currentTimeMillis());
-        // 新线路增量探测不阻塞加载流程
-        Task.submit(LiveProbe::startMissing);
         return changed;
     }
 
@@ -358,9 +304,9 @@ public class LiveAggregator {
         // 随仓入池的源携带 lives 条目的 epg，参与合并 union
         if (state.has("epg")) live.setEpg(state.get("epg").getAsString());
         try {
-            // 订阅源内容为分组数组 JSON（{"name","channel":[…]}）时直接解析；txt/m3u 交 LiveParser；
-            // 完整配置对象（含 lives/spider）不支持，按失败源跳过
+            // 分组数组 JSON 直接解析；txt/m3u 交 LiveParser；完整配置对象按 lives[].url 展开解析
             if (Json.isArray(content)) live.getGroups().addAll(Group.arrayFrom(content));
+            else if (Json.isObj(content)) expandConfigSource(live, content);
             else LiveParser.text(live, content);
         } catch (Throwable e) {
             return null;
@@ -368,8 +314,37 @@ public class LiveAggregator {
         return live.getGroups().isEmpty() ? null : live;
     }
 
+    /**
+     * 池源为完整配置对象（本地包主配置/点播配置）时按 lives[].url 展开拉取解析（深度 1，不再递归）；
+     * spider 型子源（无 url）跳过。子源解析失败静默略过，不影响其他子源。
+     */
+    private static void expandConfigSource(Live live, String content) throws Exception {
+        JsonObject object = Json.parse(content).getAsJsonObject();
+        if (!object.has("lives")) return;
+        String spider = Json.safeString(object, "spider");
+        for (JsonElement e : Json.safeListElement(object, "lives")) {
+            Live child = Live.objectFrom(e, spider);
+            String url = child.getUrl();
+            if (child.isEmpty() || TextUtils.isEmpty(url)) continue;
+            String text = null;
+            try {
+                text = OkHttp.string(UrlUtil.convert(url), child.getHeaders(), FETCH_TIMEOUT);
+            } catch (Throwable ignored) {
+            }
+            if (TextUtils.isEmpty(text)) continue;
+            Live parsed = new Live(child.getName(), url);
+            try {
+                if (Json.isArray(text)) parsed.getGroups().addAll(Group.arrayFrom(text));
+                else LiveParser.text(parsed, text);
+            } catch (Throwable ignored) {
+                continue;
+            }
+            live.getGroups().addAll(parsed.getGroups());
+        }
+    }
+
     /** 并发拉取解析各源（结果按池序返回，失败源跳过）；单源 20s 超时语义不变，总耗时从各源之和降为最慢单源。 */
-    private static List<Live> fetchPool(List<Config> pool, JsonArray sources, JsonObject lines) {
+    private static List<Live> fetchPool(List<Config> pool, JsonArray sources) {
         ExecutorService exec = Executors.newFixedThreadPool(Math.min(6, Math.max(1, pool.size())));
         Map<Integer, Live> results = new ConcurrentHashMap<>();
         CountDownLatch latch = new CountDownLatch(pool.size());
@@ -402,12 +377,7 @@ public class LiveAggregator {
         List<Live> parsed = new ArrayList<>();
         for (int i = 0; i < pool.size(); i++) {
             Live live = results.get(i);
-            if (live == null) continue;
-            // JsonObject 非线程安全，lines 溯源映射在并发结束后单线程合并
-            for (Group group : live.getGroups())
-                for (Channel channel : group.getChannel())
-                    for (String url : channel.getUrls()) lines.addProperty(url, live.getName());
-            parsed.add(live);
+            if (live != null) parsed.add(live);
         }
         return parsed;
     }
@@ -442,11 +412,10 @@ public class LiveAggregator {
         return false;
     }
 
-    /** 清空聚合产物：文件、旁车 meta/state 与对应配置缓存一并移除（仅池被删空时使用）。 */
+    /** 清空聚合产物：文件、旁车 meta 与对应配置缓存一并移除（仅池被删空时使用）。 */
     public static void reset() {
         file().delete();
         metaFile().delete();
-        stateFile().delete();
         ConfigCache.delete(url());
         Prefers.put(KEY_AGG_TS, 0);
     }
@@ -469,19 +438,6 @@ public class LiveAggregator {
             this.ts = ts;
             this.enabled = enabled;
             this.channels = channels;
-        }
-    }
-
-    public static class QuarantineInfo {
-
-        public final String group;
-        public final String name;
-        public final String key;
-
-        QuarantineInfo(String group, String name, String key) {
-            this.group = group;
-            this.name = name;
-            this.key = key;
         }
     }
 
@@ -576,7 +532,7 @@ public class LiveAggregator {
         writeMeta(meta);
     }
 
-    // ---------- 随仓自动聚合（LIVE6） ----------
+    // ---------- 随仓自动聚合（LIVE6/LIVE7） ----------
 
     /** 池条目构造（纯函数，供单测）：prev 存在时复用状态字段；from/ua/header/epg 仅非空写入。 */
     static JsonObject poolItem(String url, String name, String from, String ua, Map<String, String> header, String epg, int order, JsonObject prev) {
@@ -612,6 +568,7 @@ public class LiveAggregator {
     /**
      * 点播配置 lives 自动入池（LIVE6 核心）：带 url 的直播源按 url 去重入池，
      * 带 from=点播配置 来源标记并保留 ua/header/epg 参数；spider 型（无 url）不参与。
+     * LIVE7 修复：入池同步建 type=1 Config 行——pool() 只认配置行，缺行会导致随仓源永远不参与聚合。
      * 有新增才后台聚合并按策略自动启用；重复解析/来回切换无副作用。
      */
     public static void integrateFromVod(List<Live> lives, String from) {
@@ -628,6 +585,10 @@ public class LiveAggregator {
                     if (TextUtils.isEmpty(url) || !url.startsWith("http") || existing.contains(url)) continue;
                     existing.add(url);
                     sources.add(poolItem(url, live.getName(), from, live.getUa(), live.getHeader(), live.getEpg(), sources.size(), null));
+                    if (AppDatabase.get().getConfigDao().find(url, 1) == null) {
+                        String name = TextUtils.isEmpty(live.getName()) ? UrlUtil.getName(url) : live.getName();
+                        Config.find(url, name, 1);
+                    }
                     changed = true;
                 }
                 if (!changed) return;
@@ -696,63 +657,9 @@ public class LiveAggregator {
         });
     }
 
-    /** 隔离区快照（UI 展示用）。 */
-    public static List<QuarantineInfo> quarantineList() {
-        List<QuarantineInfo> items = new ArrayList<>();
-        JsonObject meta = readMeta();
-        if (!meta.has("quarantine")) return items;
-        for (JsonElement e : meta.getAsJsonArray("quarantine")) {
-            JsonObject item = e.getAsJsonObject();
-            String key = item.has("key") ? item.get("key").getAsString() : "";
-            if (key.isEmpty()) continue;
-            String name = key;
-            if (item.has("channel")) {
-                try {
-                    Channel channel = App.gson().fromJson(item.getAsJsonObject("channel"), Channel.class);
-                    if (channel != null && !channel.getName().isEmpty()) name = channel.getName();
-                } catch (Throwable ignored) {
-                }
-            }
-            items.add(new QuarantineInfo(item.has("group") ? item.get("group").getAsString() : "", name, key));
-        }
-        return items;
-    }
-
-    /** 手动复活：按 组+归一键 移出隔离区，并重置其 http 线路探测 streak（防旧失败轮次立即再隔离）。 */
-    public static boolean revive(String group, String key) {
-        JsonObject meta = readMeta();
-        if (!meta.has("quarantine")) return false;
-        JsonArray kept = new JsonArray();
-        JsonObject target = null;
-        for (JsonElement e : meta.getAsJsonArray("quarantine")) {
-            JsonObject item = e.getAsJsonObject();
-            String itemKey = item.has("key") ? item.get("key").getAsString() : "";
-            String itemGroup = item.has("group") ? item.get("group").getAsString() : "";
-            if (target == null && key.equals(itemKey) && group.equals(itemGroup)) target = item;
-            else kept.add(e);
-        }
-        if (target == null) return false;
-        meta.add("quarantine", kept);
-        JsonObject state = readState();
-        JsonObject probe = state.has("probe") ? state.getAsJsonObject("probe") : null;
-        if (probe != null && target.has("channel")) {
-            try {
-                Channel channel = App.gson().fromJson(target.getAsJsonObject("channel"), Channel.class);
-                if (channel != null) for (String url : channel.getUrls()) {
-                    if (!url.startsWith("http") || !probe.has(url)) continue;
-                    probe.getAsJsonObject(url).addProperty("streak", 0);
-                }
-            } catch (Throwable ignored) {
-            }
-        }
-        writeMeta(meta);
-        writeState(state);
-        return true;
-    }
-
     // ---------- 合并与排序 ----------
 
-    private static Live merge(List<Live> parsed, JsonObject probe, Set<String> quarantine) {
+    private static Live merge(List<Live> parsed) {
         Live merged = new Live(NAME, url());
         Map<String, Group> groupMap = new LinkedHashMap<>();
         Map<Group, Map<String, Channel>> chanMap = new LinkedHashMap<>();
@@ -779,17 +686,13 @@ public class LiveAggregator {
                     if (channel.getUrls().isEmpty()) continue;
                     String key = normalizeChannel(channel.getName());
                     if (key.isEmpty()) continue;
-                    // 隔离区频道不参与合并，防止重聚合复活
-                    if (quarantine.contains(canonical + "\u0001" + key)) continue;
                     Channel exist = chans.get(key);
                     if (exist == null) {
                         chans.put(key, channel);
                         continue;
                     }
                     exist.mergeLines(channel);
-                    if (exist.getTvgId().isEmpty()) exist.setTvgId(channel.getTvgId());
-                    if (exist.getTvgName().isEmpty()) exist.setTvgName(channel.getTvgName());
-                    if (exist.getLogo().isEmpty()) exist.setLogo(channel.getLogo());
+                    fillIfEmpty(exist, channel);
                 }
             }
         }
@@ -799,7 +702,6 @@ public class LiveAggregator {
         for (Group group : ordered) {
             List<Channel> chans = new ArrayList<>(chanMap.get(group).values());
             chans.sort(Comparator.comparingInt((Channel c) -> num(c.getNumber())).thenComparing(Channel::getName));
-            for (Channel channel : chans) channel.orderLines(orderIndices(channel.getUrls(), probe));
             group.setChannel(chans);
             group.setPosition(0);
             merged.getGroups().add(group);
@@ -809,13 +711,30 @@ public class LiveAggregator {
         return merged;
     }
 
-    /** 显式台号先到先得，重复与缺失者按最终顺序补连续编号，保证全树唯一。 */
+    /** 同名频道合并时按「有则补」回填播放/节目属性，避免来自需 UA/DRM 源的线路聚合后失效。 */
+    private static void fillIfEmpty(Channel target, Channel other) {
+        if (target.getTvgId().isEmpty()) target.setTvgId(other.getTvgId());
+        if (target.getTvgName().isEmpty()) target.setTvgName(other.getTvgName());
+        if (target.getLogo().isEmpty()) target.setLogo(other.getLogo());
+        if (target.getEpg().isEmpty()) target.setEpg(other.getEpg());
+        if (target.getUa().isEmpty()) target.setUa(other.getUa());
+        if (target.getOrigin().isEmpty()) target.setOrigin(other.getOrigin());
+        if (target.getReferer().isEmpty()) target.setReferer(other.getReferer());
+        if (target.getClick().isEmpty()) target.setClick(other.getClick());
+        if (target.getHeader().isEmpty() && !other.getHeader().isEmpty()) target.setHeader(new HashMap<>(other.getHeader()));
+        if (target.getFormat() == null) target.setFormat(other.getFormat());
+        if (target.getParse() == 0) target.setParse(other.getParse());
+        if (target.getDrm() == null) target.setDrm(other.getDrm());
+        if (target.getCatchup().isEmpty()) target.setCatchup(other.getCatchup());
+    }
+
+    /** 显式台号先到先得（统一 %03d，兼容数字选台的 %03d 查找），重复与缺失者按最终顺序补连续编号。 */
     private static void renumber(List<Group> ordered) {
         Set<Integer> used = new HashSet<>();
         for (Group group : ordered)
             for (Channel channel : group.getChannel()) {
                 int n = num(channel.getNumber());
-                if (n > 0 && !used.contains(n)) used.add(n);
+                if (n > 0 && used.add(n)) channel.setNumber(n);
                 else channel.setNumber("");
             }
         int next = 1;
@@ -823,7 +742,7 @@ public class LiveAggregator {
             for (Channel channel : group.getChannel()) {
                 if (!channel.getNumber().isEmpty()) continue;
                 while (used.contains(next)) next++;
-                channel.setNumber(String.valueOf(next));
+                channel.setNumber(next);
                 used.add(next);
             }
     }
@@ -879,25 +798,6 @@ public class LiveAggregator {
         write(metaFile(), meta.toString());
     }
 
-    /** lines/probe 大状态文件；仅后台路径读写。首次读取时从旧 meta 一次性迁移，避免全量重探测。 */
-    static JsonObject readState() {
-        JsonObject state = readJson(stateFile());
-        if (state.has("migrated")) return state;
-        JsonObject meta = readMeta();
-        if (meta.has("lines")) state.add("lines", meta.get("lines"));
-        if (meta.has("probe")) state.add("probe", meta.get("probe"));
-        state.addProperty("migrated", true);
-        writeState(state);
-        meta.remove("lines");
-        meta.remove("probe");
-        writeMeta(meta);
-        return state;
-    }
-
-    static void writeState(JsonObject state) {
-        write(stateFile(), state.toString());
-    }
-
     // ---------- 刷新入口 ----------
 
     /** 自动刷新阈值（小时，Setting.stale 控制，0 = 关闭自动刷新；0 使手动聚合强制全量重拉）。 */
@@ -931,179 +831,5 @@ public class LiveAggregator {
         if (!file().exists()) return true;
         long ts = Prefers.getLong(KEY_AGG_TS);
         return ts <= 0 || System.currentTimeMillis() - ts >= staleMs();
-    }
-
-    // ---------- 探测结果应用（LIVE5） ----------
-
-    static JsonObject probeMap() {
-        JsonObject state = readState();
-        return state.has("probe") ? state.getAsJsonObject("probe") : new JsonObject();
-    }
-
-    static Set<String> quarantineKeys(JsonObject meta) {
-        Set<String> keys = new HashSet<>();
-        if (!meta.has("quarantine")) return keys;
-        for (JsonElement e : meta.getAsJsonArray("quarantine")) {
-            JsonObject item = e.getAsJsonObject();
-            if (item.has("group") && item.has("key")) keys.add(item.get("group").getAsString() + "\u0001" + item.get("key").getAsString());
-        }
-        return keys;
-    }
-
-    /** 聚合文件中的全部频道（探测采集用；文件缺失/损坏返回空）。 */
-    static List<Channel> fileChannels() {
-        List<Channel> channels = new ArrayList<>();
-        try {
-            for (Group group : parseFile().getGroups()) channels.addAll(group.getChannel());
-        } catch (Throwable ignored) {
-        }
-        return channels;
-    }
-
-    /** 隔离区频道（复活探测用）。 */
-    static List<Channel> quarantined() {
-        List<Channel> channels = new ArrayList<>();
-        JsonObject meta = readMeta();
-        if (!meta.has("quarantine")) return channels;
-        for (JsonElement e : meta.getAsJsonArray("quarantine")) {
-            try {
-                channels.add(App.gson().fromJson(e.getAsJsonObject().getAsJsonObject("channel"), Channel.class));
-            } catch (Throwable ignored) {
-            }
-        }
-        return channels;
-    }
-
-    /** 轮末应用探测结果：更新 probe、重排线路、执行隔离/复活；文件有变才写盘。返回文件是否变化。 */
-    static boolean applyProbe(Map<String, LiveProbe.Result> results) {
-        JsonObject meta = readMeta();
-        JsonObject state = readState();
-        JsonObject probe = state.has("probe") ? state.getAsJsonObject("probe") : new JsonObject();
-        long now = System.currentTimeMillis();
-        for (Map.Entry<String, LiveProbe.Result> e : results.entrySet()) {
-            JsonObject entry = probe.has(e.getKey()) ? probe.getAsJsonObject(e.getKey()) : new JsonObject();
-            LiveProbe.Result result = e.getValue();
-            if (result.ok) {
-                entry.addProperty("ok", true);
-                entry.addProperty("latency", result.latency);
-                entry.addProperty("streak", 0);
-            } else {
-                entry.addProperty("ok", false);
-                entry.addProperty("streak", (entry.has("streak") ? entry.get("streak").getAsInt() : 0) + 1);
-            }
-            entry.addProperty("ts", now);
-            probe.add(e.getKey(), entry);
-        }
-        // 清理已不在文件与隔离区的历史探测项
-        Set<String> alive = new HashSet<>();
-        for (Channel channel : fileChannels()) alive.addAll(channel.getUrls());
-        for (Channel channel : quarantined()) alive.addAll(channel.getUrls());
-        JsonObject pruned = new JsonObject();
-        for (String url : probe.keySet()) if (alive.contains(url)) pruned.add(url, probe.get(url));
-        state.add("probe", pruned);
-        writeState(state);
-        boolean changed = rewrite(meta, pruned);
-        writeMeta(meta);
-        return changed;
-    }
-
-    /** 按探测状态重写聚合文件：线路重排 + 全死频道隔离 + 复活回插。 */
-    private static boolean rewrite(JsonObject meta, JsonObject probe) {
-        if (!file().exists()) return false;
-        Live live;
-        try {
-            live = parseFile();
-        } catch (Throwable e) {
-            return false;
-        }
-        boolean changed = false;
-        JsonArray quarantine = meta.has("quarantine") ? meta.getAsJsonArray("quarantine") : new JsonArray();
-        // 复活：隔离区任一线路可用即回插原归一组
-        List<JsonObject> released = new ArrayList<>();
-        for (JsonElement e : quarantine) {
-            JsonObject entry = e.getAsJsonObject();
-            if (!revived(entry, probe)) continue;
-            released.add(entry);
-            insert(entry, live);
-            changed = true;
-        }
-        if (!released.isEmpty()) {
-            JsonArray remaining = new JsonArray();
-            for (JsonElement e : quarantine) if (!released.contains(e.getAsJsonObject())) remaining.add(e);
-            meta.add("quarantine", remaining);
-            quarantine = remaining;
-        }
-        // 重排 + 隔离
-        List<Group> empty = new ArrayList<>();
-        for (Group group : live.getGroups()) {
-            List<Channel> keep = new ArrayList<>();
-            for (Channel channel : group.getChannel()) {
-                int[] order = orderIndices(channel.getUrls(), probe);
-                boolean reordered = false;
-                for (int i = 0; i < order.length; i++) if (order[i] != i) { reordered = true; break; }
-                if (reordered) {
-                    channel.orderLines(order);
-                    changed = true;
-                }
-                if (allDead(channel.getUrls(), probe, STREAK_LIMIT)) {
-                    quarantine.add(quarantineEntry(group, channel));
-                    changed = true;
-                } else {
-                    keep.add(channel);
-                }
-            }
-            if (keep.size() != group.getChannel().size()) {
-                changed = true;
-                if (keep.isEmpty()) empty.add(group);
-                else group.setChannel(keep);
-            }
-        }
-        live.getGroups().removeAll(empty);
-        if (changed) write(file(), toJson(live));
-        return changed;
-    }
-
-    private static boolean revived(JsonObject entry, JsonObject probe) {
-        if (!entry.has("channel")) return false;
-        for (JsonElement e : entry.getAsJsonObject("channel").getAsJsonArray("urls")) {
-            String url = e.getAsString();
-            if (url.startsWith("http") && probe.has(url)) {
-                JsonObject state = probe.getAsJsonObject(url);
-                if (state.has("ok") && state.get("ok").getAsBoolean()) return true;
-            }
-        }
-        return false;
-    }
-
-    private static void insert(JsonObject entry, Live live) {
-        Channel channel = App.gson().fromJson(entry.getAsJsonObject("channel"), Channel.class);
-        String groupName = entry.get("group").getAsString();
-        Group target = null;
-        for (Group group : live.getGroups()) if (group.getName().equals(groupName)) target = group;
-        if (target == null) {
-            // 先建占位组再改名，避开构造器对 "_" 的密码拆分
-            target = new Group("-");
-            target.setName(groupName);
-            if (entry.has("pass")) target.setPass(entry.get("pass").getAsString());
-            live.getGroups().add(target);
-        }
-        channel.setGroup(target);
-        target.getChannel().add(channel);
-    }
-
-    private static JsonObject quarantineEntry(Group group, Channel channel) {
-        JsonObject entry = new JsonObject();
-        entry.addProperty("group", group.getName());
-        if (group.getPass() != null) entry.addProperty("pass", group.getPass());
-        entry.addProperty("key", normalizeChannel(channel.getName()));
-        channel.setGroup(null);
-        entry.add("channel", App.gson().toJsonTree(channel));
-        return entry;
-    }
-
-    private static Live parseFile() throws Exception {
-        String json = Path.read(file());
-        JsonObject root = Json.parse(json).getAsJsonObject();
-        return Live.objectFrom(root.getAsJsonArray("lives").get(0), "");
     }
 }

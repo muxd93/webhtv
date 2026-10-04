@@ -1442,7 +1442,11 @@ public class LiveActivity extends PlaybackActivity implements CustomKeyDown.List
     @Subscribe(threadMode = ThreadMode.MAIN)
     public void onRefreshEvent(RefreshEvent event) {
         switch (event.getType()) {
-            case LIVE -> mSession.switchLive(getHome());
+            // 配置未换时软刷新对位当前台，避免整页重载打断播放
+            case LIVE -> {
+                if (mSession.isRendered()) mSession.softReload();
+                else mSession.switchLive(getHome());
+            }
             case LIVE_UPDATE -> mSession.softReload();
             case PLAYER -> mSession.fetchLive();
         }

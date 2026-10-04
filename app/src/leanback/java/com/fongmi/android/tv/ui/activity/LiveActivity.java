@@ -43,7 +43,6 @@ import com.fongmi.android.tv.impl.ConfigListener;
 import com.fongmi.android.tv.impl.CustomTarget;
 import com.fongmi.android.tv.impl.LiveListener;
 import com.fongmi.android.tv.impl.PassListener;
-import com.fongmi.android.tv.live.LiveProbe;
 import com.fongmi.android.tv.live.LiveSession;
 import com.fongmi.android.tv.live.LiveWidthCache;
 import com.fongmi.android.tv.model.LiveViewModel;
@@ -213,7 +212,6 @@ public class LiveActivity extends PlaybackActivity implements GroupAdapter.OnCli
         mBinding.control.action.config.setOnClickListener(view -> onConfig());
         mBinding.control.action.action.setOnClickListener(view -> onAction());
         mBinding.control.action.invert.setOnClickListener(view -> onInvert());
-        mBinding.control.action.detect.setOnClickListener(view -> LiveProbe.toggle());
         mBinding.control.action.across.setOnClickListener(view -> onAcross());
         mBinding.control.action.change.setOnClickListener(view -> onChange());
         mBinding.control.action.player.setOnClickListener(view -> onPlayerKernel());
@@ -958,8 +956,10 @@ public class LiveActivity extends PlaybackActivity implements GroupAdapter.OnCli
     @Subscribe(threadMode = ThreadMode.MAIN)
     public void onRefreshEvent(RefreshEvent event) {
         switch (event.getType()) {
+            // 配置未换时软刷新对位当前台，避免整页重载打断播放
             case LIVE:
-                mSession.switchLive(getHome());
+                if (mSession.isRendered()) mSession.softReload();
+                else mSession.switchLive(getHome());
                 break;
             case LIVE_UPDATE:
                 mSession.softReload();

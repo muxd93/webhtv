@@ -1117,13 +1117,6 @@
     <string name="dialog_select_title">選擇章節</string>
     <string name="dialog_config_hint">請輸入配置…</string>
     <string name="live_preset">推薦源</string>
-    <string name="live_detect">檢測</string>
-    <string name="live_probe_start">開始檢測 %1$d 條線路，再次點擊可取消</string>
-    <string name="live_probe_progress">檢測中 %1$d/%2$d…</string>
-    <string name="live_probe_done">檢測完成：可用 %1$d，失效 %2$d</string>
-    <string name="live_probe_partial">檢測已取消：完成 %1$d 條，可用 %2$d</string>
-    <string name="live_probe_cancel">已取消檢測</string>
-    <string name="live_probe_unsupported">僅聚合直播源支援檢測</string>
     <string name="live_agg_start">正在聚合 %1$d 個直播源…</string>
     <string name="live_agg_done">聚合完成：%1$d 個頻道，%2$d 條線路</string>
     <string name="live_agg_failed">聚合失敗：所有訂閱源均不可用</string>
@@ -1141,7 +1134,6 @@
     <string name="pool_src_off">已停用</string>
     <string name="pool_never">未拉取</string>
     <string name="pool_channels">%1$d 個頻道</string>
-    <string name="pool_quarantine">已隔離頻道（全部線路失效，自動復測中）</string>
     <string name="pool_revive">復活</string>
     <string name="pool_input_hint">輸入訂閱地址…</string>
     <string name="pool_input_name">名稱（可選）</string>

@@ -164,6 +164,10 @@ public class LiveSession {
     }
 
     public void switchLive(Live item) {
+        // 配置内手动换 live 同样记手动优先，自动聚合不抢切（选回聚合则恢复自动）
+        LiveAggregator.onManualSelect(LiveConfig.get().getConfig());
+        // 点当前已渲染的源不再清树重载打断播放
+        if (item.isSelected() && rendered) return;
         if (item.isSelected()) item.getGroups().clear();
         LiveConfig.get().setHome(item);
         listener.onLiveSwitched();
@@ -266,17 +270,42 @@ public class LiveSession {
         restore(LiveConfig.get().findKeepPosition(groups));
     }
 
+    public boolean isRendered() {
+        return rendered;
+    }
+
+    /** 收藏恢复：keep 位置失效时兜底到第一个有频道的真实分组，保证进页自动播（单分组/收藏首组等场景）。 */
     private void restore(int[] position) {
-        if (position[0] == -1) return;
-        if (groups.size() == 1 || position[0] >= groups.size()) return;
+        int[] target = valid(position) ? position : fallbackPosition();
+        if (target == null) return;
+        group = groups.get(target[0]);
+        group.setPosition(target[1]);
+        listener.onGroupSelected(group);
+        tune(group.current(), true);
+    }
+
+    public void restoreByNumber(String number) {
+        int[] position = LiveConfig.get().findByChannelNumber(number, groups);
+        if (!valid(position)) return;
         group = groups.get(position[0]);
         group.setPosition(position[1]);
         listener.onGroupSelected(group);
         tune(group.current(), true);
     }
 
-    public void restoreByNumber(String number) {
-        restore(LiveConfig.get().findByChannelNumber(number, groups));
+    private boolean valid(int[] position) {
+        if (position == null || position[0] < 0 || position[0] >= groups.size()) return false;
+        Group target = groups.get(position[0]);
+        return position[1] >= 0 && position[1] < target.getChannel().size();
+    }
+
+    private int[] fallbackPosition() {
+        for (int i = 0; i < groups.size(); i++) {
+            Group item = groups.get(i);
+            if (item.isKeep() || item.getChannel().isEmpty()) continue;
+            return new int[]{i, 0};
+        }
+        return null;
     }
 
     public void selectGroup(Group item) {

@@ -296,9 +296,16 @@ public class Live {
         this.selected = item.equals(this);
     }
 
+    /** 首个含 {模板} 的 EPG 地址；聚合合并的多值串只取一个可用地址，避免整串被当 URL 拉取失败。 */
     public String getEpgApi() {
-        for (String url : getEpg().split(",")) if (url.contains("{")) return url;
-        return getEpg();
+        String fallback = "";
+        for (String item : getEpg().split(",")) {
+            String url = item.trim();
+            if (url.isEmpty()) continue;
+            if (url.contains("{")) return url;
+            if (fallback.isEmpty()) fallback = url;
+        }
+        return fallback;
     }
 
     public List<String> getEpgXml() {

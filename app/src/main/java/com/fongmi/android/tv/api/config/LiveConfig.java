@@ -250,6 +250,8 @@ public class LiveConfig extends BaseConfig {
     }
 
     public void applyKeepsToGroups(List<Group> items) {
+        // 收藏频道只能并入首位的收藏组；来源自带「收藏」组时 parse 走早退路径，不会进入这里
+        if (items.isEmpty() || !items.get(0).isKeep()) return;
         Set<String> key = Keep.getLive().stream().map(Keep::getKey).collect(Collectors.toSet());
         items.stream().filter(group -> !group.isKeep())
                 .flatMap(group -> group.getChannel().stream())

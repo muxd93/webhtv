@@ -20,7 +20,6 @@ import androidx.viewbinding.ViewBinding;
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.databinding.ActivityLiveBinding;
 import com.fongmi.android.tv.databinding.DialogLiveControlBinding;
-import com.fongmi.android.tv.live.LiveProbe;
 import com.fongmi.android.tv.setting.LiveSetting;
 import com.fongmi.android.tv.utils.ResUtil;
 import com.google.android.material.bottomsheet.BottomSheetBehavior;
@@ -102,7 +101,6 @@ public class LiveControlDialog extends BaseBottomSheetDialog {
             listener().onLiveEpgPanel();
             dismiss();
         });
-        binding.detect.setOnClickListener(v -> LiveProbe.toggle());
         binding.cast.setOnClickListener(v -> listener().onLiveCastPanel());
         binding.pip.setOnClickListener(v -> {
             listener().onLivePiPPanel();

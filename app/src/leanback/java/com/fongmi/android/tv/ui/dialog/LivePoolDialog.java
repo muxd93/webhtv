@@ -20,13 +20,11 @@ import com.fongmi.android.tv.api.config.LiveConfig;
 import com.fongmi.android.tv.bean.Config;
 import com.fongmi.android.tv.databinding.DialogPoolBinding;
 import com.fongmi.android.tv.live.LiveAggregator;
-import com.fongmi.android.tv.live.LiveProbe;
 import com.fongmi.android.tv.ui.adapter.PoolAdapter;
 import com.fongmi.android.tv.ui.custom.SpaceItemDecoration;
 import com.fongmi.android.tv.utils.ResUtil;
 import com.fongmi.android.tv.utils.Task;
 import com.fongmi.android.tv.utils.UrlUtil;
-import com.github.catvod.utils.Json;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.gson.JsonObject;
 
@@ -82,18 +80,6 @@ public class LivePoolDialog extends BaseAlertDialog {
         public void onRemove(LiveAggregator.SourceInfo item) {
             apply(() -> LiveAggregator.removeSource(item.url));
         }
-
-        @Override
-        public void onRevive(LiveAggregator.QuarantineInfo item) {
-            // revive 读写大 state 文件，须在后台执行；完成后回主线程刷新列表并重聚合
-            Task.submit(() -> {
-                boolean revived = LiveAggregator.revive(item.group, item.key);
-                if (revived) App.post(() -> {
-                    loadData();
-                    reaggregate();
-                });
-            });
-        }
     };
 
     protected void initView() {
@@ -111,14 +97,13 @@ public class LivePoolDialog extends BaseAlertDialog {
     protected void initEvent() {
         binding.add.setOnClickListener(this::onAdd);
         binding.update.setOnClickListener(v -> reaggregate());
-        binding.detect.setOnClickListener(v -> LiveProbe.toggle());
     }
 
     private void loadData() {
         JsonObject agg = LiveAggregator.aggInfo();
         if (agg == null) binding.status.setText(R.string.pool_none);
         else binding.status.setText(getString(R.string.pool_last_agg, time(agg), safeInt(agg, "channels"), safeInt(agg, "lines")));
-        adapter.setItems(LiveAggregator.poolStatus(), LiveAggregator.quarantineList());
+        adapter.setItems(LiveAggregator.poolStatus());
         binding.recycler.setVisibility(adapter.getItemCount() == 0 ? View.GONE : View.VISIBLE);
     }
 
@@ -178,32 +163,9 @@ public class LivePoolDialog extends BaseAlertDialog {
         }).show();
     }
 
-    private final LiveProbe.ProgressListener probeListener = new LiveProbe.ProgressListener() {
-
-        @Override
-        public void onProgress(int done, int total) {
-            if (binding == null) return;
-            binding.progress.setVisibility(View.VISIBLE);
-            binding.progress.setText(getString(R.string.live_probe_progress, done, total));
-        }
-
-        @Override
-        public void onFinished(int results, int ok) {
-            if (binding == null) return;
-            binding.progress.setVisibility(View.GONE);
-        }
-    };
-
     @Override
     public void onStart() {
         super.onStart();
         setWidth(0.55f);
-        LiveProbe.setProgressListener(probeListener);
-    }
-
-    @Override
-    public void onStop() {
-        super.onStop();
-        LiveProbe.setProgressListener(null);
     }
 }
