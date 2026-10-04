@@ -1,19 +1,27 @@
 package com.fongmi.android.tv.update;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 
 public final class GithubProxy {
 
     public static final String DIRECT = "direct";
     public static final String CUSTOM = "custom";
+    public static final String DEFAULT = "gh_ddlc";
     public static final String MODE_FULL_URL = "full_url";
     public static final String MODE_STRIP_SCHEME = "strip_scheme";
 
+    // Preset order is both the UI order and the download fallback order; verify a source
+    // against a real release asset from the CN network before adding or reordering it.
     private static final Preset[] PRESETS = {
             new Preset(DIRECT, "GitHub", "", MODE_FULL_URL),
-            new Preset("github_chenc", "github.chenc.dev", "https://github.chenc.dev", MODE_STRIP_SCHEME),
+            new Preset(DEFAULT, "gh.ddlc.top", "https://gh.ddlc.top", MODE_FULL_URL),
             new Preset("gh_acmsz", "gh.acmsz.top", "https://gh.acmsz.top", MODE_FULL_URL),
+            new Preset("gh_proxy_com", "gh-proxy.com", "https://gh-proxy.com", MODE_FULL_URL),
             new Preset("ghfast", "ghfast.top", "https://ghfast.top", MODE_FULL_URL),
+            new Preset("ghproxy_net", "ghproxy.net", "https://ghproxy.net", MODE_FULL_URL),
+            new Preset("github_chenc", "github.chenc.dev", "https://github.chenc.dev", MODE_STRIP_SCHEME),
             new Preset("gh_monlor", "gh.monlor.com", "https://gh.monlor.com", MODE_FULL_URL),
             new Preset(CUSTOM, "Custom", "", MODE_FULL_URL),
     };
@@ -23,6 +31,16 @@ public final class GithubProxy {
 
     public static Preset[] presets() {
         return Arrays.copyOf(PRESETS, PRESETS.length);
+    }
+
+    public static List<Config> fallbacks(String selectedId) {
+        List<Config> list = new ArrayList<>();
+        for (Preset preset : PRESETS) {
+            if (preset.id.equals(selectedId) || DIRECT.equals(preset.id) || CUSTOM.equals(preset.id)) continue;
+            list.add(new Config(preset.id, preset.baseUrl, preset.mode));
+        }
+        list.add(new Config(DIRECT, "", MODE_FULL_URL));
+        return list;
     }
 
     public static Preset find(String id) {

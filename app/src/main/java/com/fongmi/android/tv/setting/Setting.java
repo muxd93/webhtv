@@ -711,7 +711,7 @@ public class Setting {
     }
 
     public static String getUpdateGithubProxy() {
-        return GithubProxy.find(Prefers.getString("update_github_proxy", GithubProxy.DIRECT)).id;
+        return GithubProxy.find(Prefers.getString("update_github_proxy", GithubProxy.DEFAULT)).id;
     }
 
     public static void putUpdateGithubProxy(String proxy) {

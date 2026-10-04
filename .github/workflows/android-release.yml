@@ -172,7 +172,7 @@ jobs:
           } > local.properties
           echo "Release signing configured"
 
-      - name: Build four release APKs
+      - name: Build release APKs
         env:
           WEBHTV_RELEASE_TAG: ${{ steps.meta.outputs.tag }}
           WEBHTV_APK_SUFFIX: ${{ steps.meta.outputs.apk_suffix }}
@@ -182,17 +182,31 @@ jobs:
           rm -rf Release/apk
           ./gradlew \
             :app:assembleMobileArm64_v8aRelease \
-            :app:assembleMobileArmeabi_v7aRelease \
             :app:assembleLeanbackArm64_v8aRelease \
-            :app:assembleLeanbackArmeabi_v7aRelease \
+            :app:assembleLeanbackArm64_v8aDebug \
             --no-daemon
 
       - name: Collect artifacts
+        env:
+          RELEASE_TAG: ${{ steps.meta.outputs.tag }}
         run: |
-          rm -rf dist
-          mkdir -p dist
-          cp Release/apk/*.apk dist/
-          ls -lh dist/
+          rm -rf dist dist-extra
+          mkdir -p dist dist-extra
+          for apk in Release/apk/*.apk; do
+            base="$(basename "$apk" .apk)"
+            mode="$(printf '%s' "$base" | cut -d- -f1)"
+            case "$mode" in
+              leanback) role="tv" ;;
+              mobile)   role="mobile" ;;
+              *) echo "::error title=Unknown APK flavor::$apk" && exit 1 ;;
+            esac
+            if [ "${base%-debug}" != "$base" ]; then
+              cp "$apk" "dist-extra/WebHTV-${RELEASE_TAG#v}-${role}-debug.apk"
+            else
+              cp "$apk" "dist/WebHTV-${RELEASE_TAG#v}-${role}.apk"
+            fi
+          done
+          ls -lh dist/ dist-extra/
 
       - name: Set up ORAS
         id: oras
@@ -252,6 +266,7 @@ jobs:
       - name: Generate update manifests
         env:
           RELEASE_NOTES: ${{ steps.release_notes.outputs.notes }}
+          RELEASE_CHANNEL: ${{ steps.meta.outputs.channel }}
           GITHUB_RELEASE_DOWNLOAD_BASE: https://github.com/${{ github.repository }}/releases/download/${{ steps.meta.outputs.tag }}
           OCI_PUBLISH_OUTCOME: ${{ steps.oci.outcome }}
         run: |
@@ -262,38 +277,47 @@ jobs:
           import os
 
           tag = "${{ steps.meta.outputs.tag }}"
+          channel = os.environ["RELEASE_CHANNEL"]
           notes = os.environ.get("RELEASE_NOTES", "").strip()
           release_download_base = os.environ["GITHUB_RELEASE_DOWNLOAD_BASE"]
+          role_to_mode = {"tv": "leanback", "mobile": "mobile"}
+          beta_suffix = "-beta" if channel == "beta" else ""
           oci = {}
           oci_metadata = "build/oci-metadata.json"
           if os.environ.get("OCI_PUBLISH_OUTCOME") == "success" and os.path.isfile(oci_metadata):
               with open(oci_metadata, encoding="utf-8") as fh:
                   oci = json.load(fh)
-          for apk in glob.glob("dist/*.apk"):
-              base = os.path.splitext(os.path.basename(apk))[0]
+          for apk in sorted(glob.glob("dist/*.apk")):
+              filename = os.path.basename(apk)
+              stem = os.path.splitext(filename)[0]
+              role = stem.rsplit("-", 1)[-1]
+              if role not in role_to_mode:
+                  raise SystemExit(f"Cannot resolve flavor from APK filename: {filename}")
+              mode = role_to_mode[role]
               with open(apk, "rb") as fh:
                   content = fh.read()
               data = {
                   "name": tag,
                   "versionName": "${{ steps.meta.outputs.version_name }}",
                   "desc": f"{tag} - ${{ steps.meta.outputs.short_sha }}",
-                  "channel": "${{ steps.meta.outputs.channel }}",
+                  "channel": channel,
                   "code": int("${{ steps.meta.outputs.version_code }}"),
-                  "apk": f"{release_download_base}/{base}.apk",
+                  "apk": f"{release_download_base}/{filename}",
                   "size": len(content),
                   "sha256": hashlib.sha256(content).hexdigest(),
                   "downloads": {
-                      "github": {"url": f"{release_download_base}/{base}.apk"},
+                      "github": {"url": f"{release_download_base}/{filename}"},
                   },
               }
-              if base in oci:
-                  descriptor = oci[base]
+              if stem in oci:
+                  descriptor = oci[stem]
                   if descriptor.get("size") != len(content) or descriptor.get("layerDigest") != "sha256:" + data["sha256"]:
-                      raise SystemExit(f"OCI descriptor does not match {base}.apk")
+                      raise SystemExit(f"OCI descriptor does not match {filename}")
                   data["downloads"]["oci"] = descriptor
               if notes:
                   data["notes"] = notes
-              with open(f"dist/{base}.json", "w", encoding="utf-8") as fh:
+              manifest_name = f"{mode}-arm64_v8a{beta_suffix}.json"
+              with open(f"dist/{manifest_name}", "w", encoding="utf-8") as fh:
                   json.dump(data, fh, ensure_ascii=False, indent=2)
                   fh.write("\n")
           PY
@@ -314,7 +338,7 @@ jobs:
             --title "${{ steps.meta.outputs.title }}" \
             --notes "$NOTES" \
             $PRERELEASE_FLAG \
-            dist/*.apk dist/*.json
+            dist/*.apk dist/*.json dist-extra/*.apk
 
       - name: Sync to CNB
         if: ${{ inputs.sync_cnb }}
@@ -332,6 +356,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: webhtv-${{ steps.meta.outputs.tag }}
-          path: dist/*
+          path: |
+            dist/*
+            dist-extra/*
           if-no-files-found: error
           retention-days: 30

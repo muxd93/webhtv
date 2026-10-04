@@ -112,6 +112,9 @@ android {
             signingConfig = hasReleaseSigning ? signingConfigs.release : signingConfigs.debug
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro', 'proguard-rules-media.pro'
         }
+        debug {
+            if (hasReleaseSigning) signingConfig = signingConfigs.release
+        }
     }
 
     configurations.configureEach {
@@ -156,6 +159,14 @@ androidComponents {
         def abi = flavors['abi'] ?: 'abi'
         variant.outputs.each { output ->
             output.outputFileName.set("${mode}-${abi}${apkSuffix}.apk")
+        }
+    }
+    onVariants(selector().withBuildType('debug')) { variant ->
+        def flavors = variant.productFlavors.collectEntries { [(it.first): it.second] }
+        def mode = flavors['mode'] ?: 'mode'
+        def abi = flavors['abi'] ?: 'abi'
+        variant.outputs.each { output ->
+            output.outputFileName.set("${mode}-${abi}-debug.apk")
         }
     }
 }

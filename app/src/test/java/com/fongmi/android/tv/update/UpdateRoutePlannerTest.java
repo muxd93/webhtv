@@ -57,6 +57,22 @@ public class UpdateRoutePlannerTest {
     }
 
     @Test
+    public void acceleratedProxyBuildsFallbackChainEndingWithDirect() {
+        GithubProxy.Config selected = GithubProxy.resolve("gh_acmsz", "", "");
+        List<UpdateTarget> routes = UpdateRoutePlanner.plan(
+                UpdateSource.GITHUB,
+                "https://github.com/fish2018/webhtv/releases/download/v1/app.apk",
+                null,
+                selected,
+                "https://dockerproxy.net");
+        assertEquals(1 + GithubProxy.fallbacks("gh_acmsz").size(), routes.size());
+        assertEquals(UpdateTarget.Kind.GITHUB, routes.get(0).kind);
+        assertEquals(UpdateTarget.Kind.GITHUB, routes.get(routes.size() - 1).kind);
+        assertEquals("https://gh.acmsz.top/https://github.com/fish2018/webhtv/releases/download/v1/app.apk", routes.get(0).url);
+        assertEquals("https://github.com/fish2018/webhtv/releases/download/v1/app.apk", routes.get(routes.size() - 1).url);
+    }
+
+    @Test
     public void missingOciMetadataFallsBackToGithub() {
         List<UpdateTarget> routes = UpdateRoutePlanner.plan(
                 UpdateSource.OCI,
