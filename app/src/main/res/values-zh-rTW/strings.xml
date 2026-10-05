@@ -1558,12 +1558,8 @@
     <string name="player_audio_badge_queue">佇列</string>
     <string name="player_audio_repeat">循環</string>
 
-    <!-- Elder Mode -->
     <string name="folder_recursive">連播包含子資料夾</string>
     <string name="smb">SMB共享</string>
-    <string name="elder_choose_cover">選擇封面</string>
-    <string name="elder_cover_local">本地圖片</string>
-    <string name="elder_pic_from_url">封面從網址</string>
     <string name="smb_host">伺服器位址</string>
     <string name="smb_name">名稱</string>
     <string name="smb_share_name">共享名</string>

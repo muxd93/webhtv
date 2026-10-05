@@ -68,8 +68,7 @@ public class Migrations {
     public static final Migration MIGRATION_37_38 = new Migration(37, 38) {
         @Override
         public void migrate(@NonNull SupportSQLiteDatabase database) {
-            // ElderCard/SmbServer 的唯一建表点；SQL 与 Room 实体推导 schema 逐字一致（无 DEFAULT 子句），否则启动校验会失败
-            database.execSQL("CREATE TABLE IF NOT EXISTS ElderCard (`id` TEXT NOT NULL, `type` TEXT, `name` TEXT, `pic` TEXT, `coverType` INTEGER NOT NULL, `coverValue` TEXT, `sortOrder` INTEGER NOT NULL, `refKey` TEXT, `cid` INTEGER NOT NULL, `siteKey` TEXT, `createTime` INTEGER NOT NULL, `is_dir` INTEGER NOT NULL, PRIMARY KEY(`id`))");
+            // SmbServer 的唯一建表点；SQL 与 Room 实体推导 schema 逐字一致（无 DEFAULT 子句），否则启动校验会失败
             database.execSQL("CREATE TABLE IF NOT EXISTS SmbServer (`id` TEXT NOT NULL, `name` TEXT, `host` TEXT, `port` INTEGER NOT NULL, `shareName` TEXT, `username` TEXT, `password` TEXT, `createTime` INTEGER NOT NULL, PRIMARY KEY(`id`))");
             // 多仓活仓（DEPOT1）：仓根标记 + 子源父子关联。版本 38 未发布，新列直接并入本迁移（无 38→39 过渡）
             database.execSQL("ALTER TABLE Config ADD COLUMN depot INTEGER NOT NULL DEFAULT 0");

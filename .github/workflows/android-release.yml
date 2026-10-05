@@ -86,18 +86,23 @@ jobs:
         run: |
           sdkmanager "platform-tools" "platforms;android-37.0" "build-tools;37.0.0"
 
-      - name: Run WebSocket danmaku tests
+      - name: Run WebSocket danmaku tests (leanback)
         run: |
           chmod +x ./gradlew
-          ./gradlew \
-            :app:testLeanbackArm64_v8aDebugUnitTest \
-            --tests 'com.fongmi.android.tv.player.danmaku.*' \
-            --no-daemon
+          ./gradlew :app:testLeanbackArm64_v8aDebugUnitTest --tests 'com.fongmi.android.tv.player.danmaku.*' --no-daemon
+
+      - name: Run WebSocket danmaku tests (mobile)
+        run: |
+          chmod +x ./gradlew
+          ./gradlew :app:testMobileArm64_v8aDebugUnitTest --tests 'com.fongmi.android.tv.player.danmaku.*' --no-daemon
 
       - name: Resolve release tag
         id: meta
         run: |
           VERSION_NAME="$(sed -n 's/^[[:space:]]*versionName[[:space:]]*"\([^"]*\)".*/\1/p' app/build.gradle | head -1)"
+          # versionCode 用 yyMMddHH（8 位）：人读即知日期与小时（如 26093014 = 2026-09-30 14 时），
+          # 与上游 FongMi 同源方案一致，最大约 99M 远低于 21 亿上限。
+          # 同小时内二次发布会复用同一 code（开发期可接受；真实产物仍以 WebHTV-<tag> 文件名 + OCI tag 唯一区分）。
           VERSION_CODE="$(date +%y%m%d%H)"
           if [ "$VERSION_CODE" -le 112 ]; then
             echo "::error title=Invalid version code::$VERSION_CODE is not greater than the baseline 112"
@@ -183,6 +188,8 @@ jobs:
           ./gradlew \
             :app:assembleLeanbackArm64_v8aRelease \
             :app:assembleLeanbackArm64_v8aDebug \
+            :app:assembleMobileArm64_v8aRelease \
+            :app:assembleMobileArm64_v8aDebug \
             --no-daemon
 
       - name: Collect artifacts
@@ -237,19 +244,62 @@ jobs:
         id: release_notes
         env:
           RELEASE_NOTES_RAW: ${{ inputs.release_notes }}
+          CHANNEL: ${{ steps.meta.outputs.channel }}
         run: |
           python3 - <<'PY'
-          import os
+          import os, subprocess, re
 
-          raw = os.environ.get("RELEASE_NOTES_RAW", "").strip()
-          notes = (
-              raw
-              .replace("\\r\\n", "\n")
-              .replace("\\n", "\n")
-              .replace("\\t", "\t")
-              .replace('\\"', '"')
-              .replace("\\'", "'")
-          )
+          raw = (os.environ.get("RELEASE_NOTES_RAW", "").strip()
+                 .replace("\\r\\n", "\n").replace("\\n", "\n")
+                 .replace("\\t", "\t").replace('\\"', '"').replace("\\'", "'"))
+
+          if raw:
+              # 手动填写优先，保持覆盖能力
+              notes = raw
+          else:
+              # 按同渠道上一个发布标签为基线，自动生成更新记录
+              channel = os.environ.get("CHANNEL", "stable")
+              pat = (r"^v\d+\.\d+\.\d+-beta-\d{12}$" if channel == "beta"
+                     else r"^v\d+\.\d+\.\d+-\d{12}$")
+              tags = [t for t in subprocess.check_output(
+                  ["git", "tag", "--list"], encoding="utf-8").split() if re.match(pat, t)]
+              tags.sort(key=lambda t: tuple(int(x) for x in re.findall(r"\d+", t)))
+              prev = tags[-1] if tags else ""
+              if prev and subprocess.run(
+                  ["git", "merge-base", "--is-ancestor", prev, "HEAD"],
+                  capture_output=True).returncode == 0:
+                  range_spec = [f"{prev}..HEAD"]
+                  header = f"自 {prev} 起的更新："
+              else:
+                  range_spec = ["-30", "HEAD"]
+                  header = "最近提交：" if prev else "本次更新："
+                  prev = ""
+              log = subprocess.check_output(
+                  ["git", "log", *range_spec, "--pretty=format:%h%x09%s"],
+                  encoding="utf-8").strip()
+              groups = {"feat": [], "fix": [], "其他": []}
+              conv = re.compile(
+                  r"^(feat|fix|refactor|perf|chore|docs|style|test|build|ci)"
+                  r"(\([^)]*\))?!?:\s*(.*)$", re.I)
+              for line in log.splitlines():
+                  if not line.strip():
+                      continue
+                  h, _, s = line.partition("\t")
+                  m = conv.match(s.strip())
+                  if m:
+                      kind = m.group(1).lower()
+                      title = m.group(3).strip() or s.strip()
+                      label = "feat" if kind == "feat" else ("fix" if kind == "fix" else "其他")
+                  else:
+                      label, title = "其他", s.strip()
+                  groups[label].append(f"- {h.strip()} {title}")
+              parts = [header]
+              for k, title in (("feat", "### 新功能"), ("fix", "### 修复"), ("其他", "### 其他")):
+                  if groups[k]:
+                      parts.append(title)
+                      parts.extend(groups[k])
+              notes = "\n".join(parts)
+
           delimiter = "RELEASE_NOTES_EOF"
           while delimiter in notes:
               delimiter += "_"

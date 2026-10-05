@@ -12,7 +12,7 @@
         android:id="@+id/cover"
         android:layout_width="match_parent"
         android:layout_height="84dp"
-        android:background="@drawable/bg_elder_card"
+        android:background="@drawable/bg_card"
         android:scaleType="centerCrop" />
 
     <TextView

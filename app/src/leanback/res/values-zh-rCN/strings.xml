@@ -36,10 +36,8 @@
     <string name="keep_site_missing">原站点已下线，为你搜索同名影片</string>
     <string name="keep_empty_hint">还没有收藏影片\n播放时通过菜单收藏后会显示在这里</string>
     <string name="keep_go_search">去搜索</string>
-    <string name="smb_menu_cover">更换封面</string>
     <string name="smb_menu_delete">删除服务器</string>
     <string name="smb_delete_confirm">确定删除「%1$s」吗？</string>
-    <string name="smb_url_hint">图片网址</string>
 
     <!-- Collect -->
     <string name="collect_result">“<xliff:g name="name">%s</xliff:g>”的搜索结果</string>

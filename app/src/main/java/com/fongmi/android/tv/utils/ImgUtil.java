@@ -5,7 +5,6 @@ import static android.widget.ImageView.ScaleType.FIT_CENTER;
 
 import android.content.Context;
 import android.graphics.Bitmap;
-import android.graphics.Color;
 import android.graphics.drawable.Drawable;
 import android.text.TextUtils;
 import android.view.View;
@@ -24,7 +23,6 @@ import com.bumptech.glide.request.RequestListener;
 import com.bumptech.glide.request.target.Target;
 import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.R;
-import com.fongmi.android.tv.bean.ElderCard;
 import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.impl.CustomTarget;
 import com.fongmi.android.tv.utils.ResUtil;
@@ -181,99 +179,6 @@ public class ImgUtil {
                 || name.endsWith(".webp") || name.endsWith(".gif") || name.endsWith(".bmp");
     }
 
-    // ===== 老人模式卡片封面 =====
-
-    /** 内置精选图库：key -> 显示文字与配色（占位用文字色块，后续可换真实图） */
-    private static final String[][] BUILTIN_COVERS = {
-            {"tv", "电视剧", "#E53935"},
-            {"movie", "电影", "#1E88E5"},
-            {"opera", "戏曲", "#8E24AA"},
-            {"dance", "广场舞", "#43A047"},
-            {"kids", "少儿", "#FB8C00"},
-            {"variety", "综艺", "#00ACC1"},
-    };
-
-    public static String[][] getBuiltinCovers() {
-        return BUILTIN_COVERS;
-    }
-
-    public static Drawable builtinDrawable(String key) {
-        for (String[] cover : BUILTIN_COVERS) {
-            if (cover[0].equals(key)) {
-                TextDrawable.Builder builder = new TextDrawable.Builder();
-                return builder.buildRoundRect(cover[1], Color.parseColor(cover[2]), ResUtil.dp2px(8));
-            }
-        }
-        TextDrawable.Builder builder = new TextDrawable.Builder();
-        return builder.buildRoundRect("封面", ColorGenerator.get400("封"), ResUtil.dp2px(8));
-    }
-
-    /** 统一加载老人模式卡片封面到 ImageView：按 coverType 自动选择来源，零输入兜底 */
-    public static void loadElderCover(com.fongmi.android.tv.bean.ElderCard card, ImageView view) {
-        try {
-            ElderCard.CoverType type = ElderCard.CoverType.from(card.getCoverType());
-            switch (type) {
-                case BUILTIN:
-                    view.setScaleType(CENTER_CROP);
-                    view.setImageDrawable(builtinDrawable(card.getCoverValue()));
-                    return;
-                case URL:
-                    loadElderImage(card.getPic(), view);
-                    return;
-                case LOCAL:
-                case FIRST_FRAME:
-                    loadElderImage(card.getPic(), view);
-                    return;
-                case DEFAULT:
-                default:
-                    if (!TextUtils.isEmpty(card.getVodPic())) {
-                        loadElderImage(card.getVodPic(), view);
-                    } else if (!TextUtils.isEmpty(card.getPic())) {
-                        loadElderImage(card.getPic(), view);
-                    } else {
-                        view.setScaleType(CENTER_CROP);
-                        view.setImageDrawable(elderTextDrawable(card.getName()));
-                    }
-                    return;
-            }
-        } catch (Throwable e) {
-            e.printStackTrace();
-        }
-    }
-
-    private static void loadElderImage(String src, ImageView view) {
-        view.setScaleType(CENTER_CROP);
-        if (TextUtils.isEmpty(src)) return;
-        try {
-            if (src.startsWith("/") || src.startsWith("file://")) {
-                Glide.with(view).load(new File(src.startsWith("file://") ? src.substring(7) : src)).centerCrop().error(elderTextDrawable("封")).into(view);
-            } else {
-                Glide.with(view).load(getUrl(src)).centerCrop().listener(getElderListener(src, view)).into(view);
-            }
-        } catch (Throwable e) {
-            e.printStackTrace();
-        }
-    }
-
-    private static RequestListener<Drawable> getElderListener(String src, ImageView view) {
-        return new RequestListener<>() {
-            @Override
-            public boolean onLoadFailed(@Nullable GlideException e, Object model, @NonNull Target<Drawable> target, boolean isFirstResource) {
-                view.setImageDrawable(elderTextDrawable("封"));
-                return true;
-            }
-            @Override
-            public boolean onResourceReady(Drawable resource, Object model, Target<Drawable> target, DataSource dataSource, boolean isFirstResource) {
-                return false;
-            }
-        };
-    }
-
-    private static Drawable elderTextDrawable(String text) {
-        TextDrawable.Builder builder = new TextDrawable.Builder();
-        text = TextUtils.isEmpty(text) ? "封" : text.substring(0, 1);
-        return builder.buildRoundRect(text, ColorGenerator.get400(text), ResUtil.dp2px(8));
-    }
 
     public static void thumb(File file, ImageView view) {
         if (!isImage(file)) return;

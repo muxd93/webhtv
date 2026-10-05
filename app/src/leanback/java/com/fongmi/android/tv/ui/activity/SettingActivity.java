@@ -37,6 +37,7 @@ import com.fongmi.android.tv.setting.Setting;
 import com.fongmi.android.tv.ui.base.BaseActivity;
 import com.fongmi.android.tv.ui.dialog.AboutDialog;
 import com.fongmi.android.tv.ui.dialog.ConfigDialog;
+import com.fongmi.android.tv.ui.dialog.SourceManagerDialog;
 import com.fongmi.android.tv.ui.dialog.DohDialog;
 import com.fongmi.android.tv.ui.dialog.HistoryDialog;
 import com.fongmi.android.tv.ui.dialog.LiveDialog;
@@ -151,6 +152,7 @@ public class SettingActivity extends BaseActivity implements ConfigListener, Sit
         mBinding.homeClean.setOnClickListener(this::setHomeClean);
         mBinding.vodHistory.setOnClickListener(this::onVodHistory);
         mBinding.liveHistory.setOnClickListener(this::onLiveHistory);
+        mBinding.sourceManager.setOnClickListener(this::onSourceManager);
         mBinding.wallDefault.setOnClickListener(this::setWallDefault);
         mBinding.wallRefresh.setOnClickListener(this::setWallRefresh);
         mBinding.wallRefresh.setOnLongClickListener(this::onWallHistory);
@@ -254,6 +256,10 @@ public class SettingActivity extends BaseActivity implements ConfigListener, Sit
 
     private void onLiveHistory(View view) {
         HistoryDialog.create().live().show(this);
+    }
+
+    private void onSourceManager(View view) {
+        SourceManagerDialog.create(this).show(this);
     }
 
     private void onPlayer(View view) {

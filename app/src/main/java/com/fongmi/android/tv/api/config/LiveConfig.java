@@ -7,7 +7,6 @@ import com.fongmi.android.tv.api.loader.BaseLoader;
 import com.fongmi.android.tv.api.parser.LiveParser;
 import com.fongmi.android.tv.bean.Channel;
 import com.fongmi.android.tv.bean.Config;
-import com.fongmi.android.tv.bean.Depot;
 import com.fongmi.android.tv.bean.Group;
 import com.fongmi.android.tv.bean.Keep;
 import com.fongmi.android.tv.bean.Live;
@@ -178,28 +177,10 @@ public class LiveConfig extends BaseConfig {
     }
 
     private void parseDepot(Config config, JsonObject object) throws Throwable {
-        List<Depot> items = Depot.arrayFrom(object.getAsJsonArray("urls").toString());
-        if (items.isEmpty()) throw new Exception("Depot urls is empty");
-        enterDepot(config.getUrl());
-        try {
-            // 多仓活仓（DEPOT1，与 VodConfig 对齐）：仓条目常驻可重复展开、子源父子关联、幽灵子源对账清理
-            for (Depot item : items) Config.find(item, LIVE).parentUrl(config.getUrl()).save();
-            reconcileChildren(config.getUrl(), items);
-            config.depot(true).save();
-            load(this.config = Config.find(items.get(0), LIVE));
-            this.config.update();
-        } finally {
-            exitDepot();
-        }
-    }
-
-    /** 清理 parentUrl 指向本仓、但本次展开已移除的幽灵子源（含 History/Keep/缓存级联）。 */
-    private void reconcileChildren(String depotUrl, List<Depot> items) {
-        Set<String> keep = items.stream().map(Depot::getUrl).collect(Collectors.toSet());
-        for (Config child : Config.getChildren(depotUrl, LIVE)) {
-            if (keep.contains(child.getUrl())) continue;
-            child.delete();
-        }
+        // 与 VodConfig 共用 BaseConfig.expandDepot：落库子源、对账、并发探测、首个健康子源
+        Expansion ex = expandDepot(config, object, LIVE);
+        load(this.config = ex.chosen);
+        this.config.update();
     }
 
     private void parseConfig(Config config, JsonObject object) {

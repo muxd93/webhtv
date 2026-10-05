@@ -6,7 +6,9 @@ import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.api.Decoder;
 import com.fongmi.android.tv.bean.Config;
+import com.fongmi.android.tv.bean.Depot;
 import com.fongmi.android.tv.event.ConfigEvent;
+import com.fongmi.android.tv.source.SourceState;
 import com.fongmi.android.tv.impl.Callback;
 import com.fongmi.android.tv.server.Server;
 import com.fongmi.android.tv.setting.Setting;
@@ -26,10 +28,13 @@ import com.google.gson.JsonObject;
 
 import java.io.InterruptedIOException;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 
 abstract class BaseConfig {
 
@@ -311,6 +316,64 @@ abstract class BaseConfig {
             return parsed.isJsonArray() ? parsed.getAsJsonArray() : new JsonArray();
         } catch (Exception e) {
             return new JsonArray();
+        }
+    }
+
+    /** 仓展开结果：子源列表、探测结果、选中的首个健康子源（供 VOD/Live 共用与各自落盘）。 */
+    protected static final class Expansion {
+        final List<Config> children;
+        final List<DepotProbe.Result> probe;
+        final Config chosen;
+
+        Expansion(List<Config> children, List<DepotProbe.Result> probe, Config chosen) {
+            this.children = children;
+            this.probe = probe;
+            this.chosen = chosen;
+        }
+    }
+
+    /**
+     * 统一仓展开（原 VodConfig/LiveConfig 各自实现，现收敛为单一真相）：落库子源、对账幽灵子源、
+     * 并发探测可用性、返回首个健康子源。VOD 额外在此结果上写健康/顺序档；Live 直接采用。
+     */
+    protected Expansion expandDepot(Config root, JsonObject object, int type) throws Exception {
+        List<Depot> items = Depot.arrayFrom(object.getAsJsonArray("urls").toString());
+        if (items.isEmpty()) throw new Exception("Depot urls is empty");
+        enterDepot(root.getUrl());
+        try {
+            List<Config> children = new ArrayList<>();
+            for (Depot item : items) children.add(Config.find(item, type).parentUrl(root.getUrl()).save());
+            reconcileChildren(root.getUrl(), items, type);
+            root.depot(true).save();
+            List<DepotProbe.Result> probe = DepotProbe.probe(children);
+            return new Expansion(children, probe, firstHealthy(children, probe));
+        } finally {
+            exitDepot();
+        }
+    }
+
+    /** 首个健康且已启用的子源（保持仓内声明顺序）；全部不健康/被禁用时回退首个已启用源。 */
+    protected Config firstHealthy(List<Config> children, List<DepotProbe.Result> probe) {
+        Config fallback = null;
+        for (Config child : children) {
+            if (SourceState.isDisabled(child.getUrl())) continue;
+            if (fallback == null) fallback = child;
+            for (DepotProbe.Result result : probe) {
+                if (TextUtils.equals(result.url, child.getUrl())) {
+                    if (result.ok) return child;
+                    break;
+                }
+            }
+        }
+        return fallback != null ? fallback : children.get(0);
+    }
+
+    /** 清理 parentUrl 指向本仓、但本次展开已移除的幽灵子源（含 History/Keep/缓存级联）。 */
+    protected void reconcileChildren(String depotUrl, List<Depot> items, int type) {
+        Set<String> keep = items.stream().map(Depot::getUrl).collect(Collectors.toSet());
+        for (Config child : Config.getChildren(depotUrl, type)) {
+            if (keep.contains(child.getUrl())) continue;
+            child.delete();
         }
     }
 }
