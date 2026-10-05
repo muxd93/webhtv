@@ -7,7 +7,9 @@ import org.junit.Test;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class InterfaceOrderStoreTest {
 
@@ -39,5 +41,39 @@ public class InterfaceOrderStoreTest {
                 InterfaceOrderStore.sortUrls(
                         Arrays.asList("a", "b", "a"),
                         Arrays.asList("b", "b", "missing")));
+    }
+
+    @Test
+    public void sortUrlsHealthUnknownKeepsBaseOrder() {
+        assertEquals(
+                Arrays.asList("b", "a"),
+                InterfaceOrderStore.sortUrls(
+                        Arrays.asList("a", "b"),
+                        Arrays.asList("b"),
+                        new HashMap<>()));
+    }
+
+    @Test
+    public void sortUrlsSinksUnhealthyAfterHealthy() {
+        Map<String, Boolean> health = new HashMap<>();
+        health.put("a", false);
+        assertEquals(
+                Arrays.asList("b", "c", "a"),
+                InterfaceOrderStore.sortUrls(
+                        Arrays.asList("a", "b", "c"),
+                        new ArrayList<>(),
+                        health));
+    }
+
+    @Test
+    public void sortUrlsHealthRespectsSavedOrderWithinBuckets() {
+        Map<String, Boolean> health = new HashMap<>();
+        health.put("c", false);
+        assertEquals(
+                Arrays.asList("b", "a", "c"),
+                InterfaceOrderStore.sortUrls(
+                        Arrays.asList("a", "b", "c"),
+                        Arrays.asList("b"),
+                        health));
     }
 }

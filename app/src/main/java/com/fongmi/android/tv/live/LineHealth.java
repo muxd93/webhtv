@@ -22,8 +22,9 @@ import java.util.function.IntPredicate;
 
 /**
  * 被动线路健康记分（SYS3/Stage 3）：零网络成本，信号来自真实播放结果。
- * 规则：连续失败 ≥3 次的线路沉底（稳定双桶序：健康线路原序在前、沉底线路原序在后，
- * 只沉底不删除、用户仍可手动选中）；任一次播放成功即回血清零。
+ * 规则：连续失败 ≥3 次的线路沉底（稳定桶序：健康线路原序在前、沉底线路次之、
+ * 用户屏蔽线路最后——见 {@link LineBlockStore}，只沉底不删除、用户仍可手动选中）；
+ * 任一次播放成功即回血清零。
  * 状态按线路原始 URL（md5 键）记忆，节流落盘 filesDir/live/line_health.json；
  * 进直播页预热加载，会话渲染时对全部频道重排一次。
  */
@@ -77,8 +78,8 @@ public final class LineHealth {
     }
 
     /**
-     * 渲染前对单个频道沉底重排：线路与名称同步，选中线路按 URL 原位保留。
-     * 全健康/全沉底时不重排，保持解析原序。
+     * 渲染前对单个频道重排：桶序为 健康 → 沉底 → 用户屏蔽（LineBlockStore），
+     * 各桶内保持原序，选中线路按 URL 原位保留。全同桶时不重排，保持解析原序。
      */
     public static void reorder(Channel channel) {
         List<String> urls = channel.getUrls();
@@ -87,13 +88,16 @@ public final class LineHealth {
         int selected = channel.getIndex();
         String selectedUrl = selected >= 0 && selected < size ? urls.get(selected) : "";
         boolean[] sunk = new boolean[size];
-        int count = 0;
+        boolean[] blocked = new boolean[size];
+        int sunkCount = 0, blockedCount = 0;
         for (int i = 0; i < size; i++) {
-            sunk[i] = isSunk(urls.get(i));
-            if (sunk[i]) count++;
+            blocked[i] = LineBlockStore.isBlocked(urls.get(i));
+            sunk[i] = !blocked[i] && isSunk(urls.get(i));
+            if (blocked[i]) blockedCount++;
+            else if (sunk[i]) sunkCount++;
         }
-        if (count == 0 || count == size) return;
-        int[] order = order(size, i -> sunk[i]);
+        if ((sunkCount == 0 && blockedCount == 0) || blockedCount == size) return;
+        int[] order = order(size, i -> sunk[i], i -> blocked[i]);
         channel.orderLines(order);
         List<String> reordered = channel.getUrls();
         if (!selectedUrl.isEmpty()) {
@@ -106,17 +110,29 @@ public final class LineHealth {
         }
     }
 
-    /** 稳定双桶排序：健康线路保持原序在前，沉底线路保持原序在后（纯函数，供单测）。 */
-    static int[] order(int size, IntPredicate sunk) {
-        List<Integer> healthy = new ArrayList<>(size), dead = new ArrayList<>();
-        for (int i = 0; i < size; i++) (sunk.test(i) ? dead : healthy).add(i);
-        healthy.addAll(dead);
+    /**
+     * 稳定多桶排序（纯函数，供单测）：未命中任何谓词的索引排最前，命中谓词的按
+     * 谓词顺序依次排后（order(size, sunk, blocked) = 健康、沉底、屏蔽），桶内保持原序。
+     */
+    static int[] order(int size, IntPredicate... buckets) {
+        List<List<Integer>> grouped = new ArrayList<>(buckets.length + 1);
+        for (int i = 0; i <= buckets.length; i++) grouped.add(new ArrayList<>());
+        for (int i = 0; i < size; i++) {
+            int target = 0;
+            for (int b = 0; b < buckets.length; b++) {
+                if (buckets[b].test(i)) {
+                    target = b + 1;
+                    break;
+                }
+            }
+            grouped.get(target).add(i);
+        }
         int[] result = new int[size];
-        for (int i = 0; i < size; i++) result[i] = healthy.get(i);
+        int index = 0;
+        for (List<Integer> bucket : grouped) for (int value : bucket) result[index++] = value;
         return result;
     }
 
-    /** 纯 Java MD5：本类保持零 Android 依赖（JVM 可测），键仅本类内部使用。 */
     /** 设备环境探测：JVM 单测下 Init.context() 抛 NPE（无 Android 宿主），据此跳过持久化。 */
     private static boolean androidAvailable() {
         try {
@@ -140,7 +156,6 @@ public final class LineHealth {
 
     private static void scheduleSave() {
         if (!androidAvailable() || !SAVING.compareAndSet(false, true)) return;
-        if (Init.context() == null || !SAVING.compareAndSet(false, true)) return;
         Task.schedule(() -> {
             SAVING.set(false);
             save();

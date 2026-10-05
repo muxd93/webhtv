@@ -509,7 +509,6 @@ public class CustomCspSetting {
         item.setId("live_" + System.currentTimeMillis() + "_" + Long.toHexString(System.nanoTime()));
         item.setKind(KIND_LIVE);
         item.setType(0);
-        item.setPlayerType(2);
         item.setUa("okhttp");
         return item;
     }
@@ -656,8 +655,6 @@ public class CustomCspSetting {
         private Boolean webHome;
         @SerializedName("type")
         private Integer type;
-        @SerializedName("playerType")
-        private Integer playerType;
         @SerializedName("api")
         private String api;
         @SerializedName("ext")
@@ -803,7 +800,6 @@ public class CustomCspSetting {
                 key = null;
                 if (!wasLive) {
                     if (type == null) type = 0;
-                    if (playerType == null) playerType = 2;
                     if (TextUtils.isEmpty(ua)) ua = "okhttp";
                 }
                 homePage = null;
@@ -820,7 +816,6 @@ public class CustomCspSetting {
                 logo = null;
                 epg = null;
                 ua = null;
-                playerType = null;
                 origin = null;
                 referer = null;
                 timeZone = null;
@@ -856,22 +851,11 @@ public class CustomCspSetting {
 
         public void setType(Integer type) {
             this.type = type;
-            if (isLive()) putLive("type", type);
-            else putSite("type", type);
+            putSite("type", type);
         }
 
         public Integer getType() {
-            return type == null ? isLive() ? getLiveInt("type", 0) : getSiteInt("type", 3) : type;
-        }
-
-        public void setPlayerType(Integer playerType) {
-            this.playerType = playerType;
-            if (playerType == null) removeLive("playerType");
-            else putLive("playerType", playerType);
-        }
-
-        public Integer getPlayerType() {
-            return playerType == null ? getLiveInt("playerType", null) : playerType;
+            return type == null ? getSiteInt("type", 3) : type;
         }
 
         public Integer getHide() {
@@ -1180,8 +1164,6 @@ public class CustomCspSetting {
             JsonObject object = live == null ? new JsonObject() : live.deepCopy();
             if (!TextUtils.isEmpty(name)) object.addProperty("name", name.trim());
             else if (!object.has("name")) object.addProperty("name", getName());
-            if (type != null) object.addProperty("type", type);
-            if (playerType != null) object.addProperty("playerType", playerType);
             if (!TextUtils.isEmpty(url)) object.addProperty("url", url.trim());
             if (!TextUtils.isEmpty(api)) object.addProperty("api", api.trim());
             if (!TextUtils.isEmpty(ext)) object.addProperty("ext", ext.trim());

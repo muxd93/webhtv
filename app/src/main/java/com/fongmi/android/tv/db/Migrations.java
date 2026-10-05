@@ -73,4 +73,14 @@ public class Migrations {
             database.execSQL("CREATE TABLE IF NOT EXISTS SmbServer (`id` TEXT NOT NULL, `name` TEXT, `host` TEXT, `port` INTEGER NOT NULL, `shareName` TEXT, `username` TEXT, `password` TEXT, `createTime` INTEGER NOT NULL, PRIMARY KEY(`id`))");
         }
     };
+
+    public static final Migration MIGRATION_38_39 = new Migration(38, 39) {
+        @Override
+        public void migrate(@NonNull SupportSQLiteDatabase database) {
+            // 多仓活仓（DEPOT1）：仓根标记 + 子源父子关联。SQLite 3.35 以下无 DROP COLUMN，
+            // 死列 Config.json 保持原样（字段仍在实体中，待后续单独评估表重建迁移）
+            database.execSQL("ALTER TABLE Config ADD COLUMN depot INTEGER NOT NULL DEFAULT 0");
+            database.execSQL("ALTER TABLE Config ADD COLUMN parentUrl TEXT DEFAULT NULL");
+        }
+    };
 }

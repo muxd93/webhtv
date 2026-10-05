@@ -23,6 +23,10 @@ public class Epg {
     private String date;
     @SerializedName("epg_data")
     private List<EpgData> list;
+    // SWR 元数据（LIVE9）：fetchedAt = 数据抓取时间（0 = 旧数据/未知）；nextDayFirst =
+    // 跨天"下一档"预取文本。两者不来自服务端格式，随本应用磁盘缓存 JSON 自洽往返
+    private long fetchedAt;
+    private String nextDayFirst;
 
     public static Epg objectFrom(String str, String key, ZoneId zoneId) {
         if (!Json.isObj(str)) return EpgParser.getEpg(str, key, zoneId);
@@ -72,6 +76,22 @@ public class Epg {
         return getDate().equals(date);
     }
 
+    public long getFetchedAt() {
+        return fetchedAt;
+    }
+
+    public void setFetchedAt(long fetchedAt) {
+        this.fetchedAt = fetchedAt;
+    }
+
+    public String getNextDayFirst() {
+        return nextDayFirst == null ? "" : nextDayFirst;
+    }
+
+    public void setNextDayFirst(String nextDayFirst) {
+        this.nextDayFirst = nextDayFirst;
+    }
+
     private void setTime(ZoneId zoneId) {
         setList(new ArrayList<>(new LinkedHashSet<>(getList())));
         for (EpgData item : getList()) {
@@ -109,7 +129,11 @@ public class Epg {
         EpgData data = getList().get(inRange);
         if (data.getTitle().isEmpty()) return "";
         int next = inRange + 1;
-        if (next >= getList().size()) return data.format();
+        if (next >= getList().size()) {
+            // 当天最后一档：下一档取预取的次日首条（23:5x 跨天边界）
+            String tomorrow = getNextDayFirst();
+            return tomorrow.isEmpty() ? data.format() : data.format() + " → " + tomorrow;
+        }
         EpgData nextData = getList().get(next);
         if (nextData.getTitle().isEmpty()) return data.format();
         String nextText = nextData.getStart().isEmpty() ? nextData.getTitle() : nextData.getStart() + " " + nextData.getTitle();

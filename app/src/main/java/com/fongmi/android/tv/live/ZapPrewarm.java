@@ -44,12 +44,12 @@ public final class ZapPrewarm {
         return lower.startsWith("http://") || lower.startsWith("https://");
     }
 
-    /** 按原序取前 limit 条可预热线路（纯函数，供单测）。 */
+    /** 按原序取前 limit 条可预热线路（跳过用户屏蔽的线路；纯函数，供单测）。 */
     static List<String> prewarmableLines(List<String> urls, int limit) {
         List<String> result = new ArrayList<>();
         if (urls == null) return result;
         for (String url : urls) {
-            if (!isPrewarmable(url)) continue;
+            if (!isPrewarmable(url) || LineBlockStore.isBlocked(url)) continue;
             result.add(url);
             if (result.size() >= limit) break;
         }

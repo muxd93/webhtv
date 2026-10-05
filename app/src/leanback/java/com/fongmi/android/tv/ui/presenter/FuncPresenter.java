@@ -1,8 +1,10 @@
 package com.fongmi.android.tv.ui.presenter;
 
+import android.util.TypedValue;
 import android.view.KeyEvent;
 import android.view.LayoutInflater;
 import android.view.ViewGroup;
+import android.view.ViewGroup.MarginLayoutParams;
 
 import androidx.annotation.NonNull;
 import androidx.leanback.widget.Presenter;
@@ -11,6 +13,7 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.fongmi.android.tv.bean.Func;
 import com.fongmi.android.tv.databinding.AdapterFuncBinding;
 import com.fongmi.android.tv.utils.KeyUtil;
+import com.fongmi.android.tv.utils.ResUtil;
 
 public class FuncPresenter extends Presenter {
 
@@ -40,6 +43,7 @@ public class FuncPresenter extends Presenter {
         ViewHolder holder = (ViewHolder) viewHolder;
         holder.binding.text.setText(item.getText());
         holder.binding.icon.setImageResource(item.getDrawable());
+        applyTierStyle(holder, item.getTier());
         setOnClickListener(holder, view -> listener.onItemClick(item));
         holder.view.setOnLongClickListener(view -> listener.onLongClick(item));
         holder.view.setOnFocusChangeListener((view, hasFocus) -> {
@@ -50,6 +54,18 @@ public class FuncPresenter extends Presenter {
 
     @Override
     public void onUnbindViewHolder(@NonNull Presenter.ViewHolder viewHolder) {
+    }
+
+    /** 主组保持默认醒目样式；次组降权（缩小文字、降低不透明度）并在组前留出分隔间距 */
+    private void applyTierStyle(ViewHolder holder, Func.Tier tier) {
+        boolean secondary = tier == Func.Tier.SECONDARY;
+        holder.binding.text.setTextSize(TypedValue.COMPLEX_UNIT_SP, secondary ? 15 : 18);
+        holder.binding.getRoot().setAlpha(secondary ? 0.68f : 1f);
+        ViewGroup.LayoutParams lp = holder.binding.getRoot().getLayoutParams();
+        if (lp instanceof MarginLayoutParams) {
+            ((MarginLayoutParams) lp).leftMargin = secondary ? ResUtil.dp2px(18) : 0;
+            holder.binding.getRoot().setLayoutParams(lp);
+        }
     }
 
     private boolean onKeyDown(android.view.View view, KeyEvent event) {

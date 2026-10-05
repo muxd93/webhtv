@@ -138,6 +138,8 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
         mBinding.toolbar.setOnMenuItemClickListener(this::onMenuItemClick);
         mBinding.toolbar.post(this::setSearchLongClick);
         mBinding.appBar.addOnOffsetChangedListener((appBarLayout, verticalOffset) -> {
+            // 双栏下 type 是独立侧栏，不在 AppBar 子树内，随折叠补偿 padding 不适用
+            if (isTwoPane()) return;
             int range = appBarLayout.getTotalScrollRange();
             if (range <= 0) return;
             float factor = Math.abs(verticalOffset * 1f / range);
@@ -156,7 +158,7 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
     }
 
     private void setRecyclerView() {
-        mBinding.type.setHasFixedSize(true);
+        mBinding.type.setHasFixedSize(!isTwoPane()); // 纵向侧栏条目数可变，不能按固定尺寸测量
         mBinding.type.setItemAnimator(null);
         mBinding.type.setAdapter(mAdapter = new TypeAdapter(this));
         mBinding.pager.setAdapter(new PageAdapter(getChildFragmentManager()));
@@ -184,7 +186,19 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
         showContent();
     }
 
+    /** 宽屏双栏：分类常驻侧栏，见 layout-sw720dp/fragment_vod.xml */
+    private boolean isTwoPane() {
+        return getResources().getBoolean(R.bool.two_pane);
+    }
+
     private void updateTypeMoreVisible() {
+        // 双栏必须短路：下面的判定依赖「typeBar 宽度」与 type.computeHorizontalScrollRange()，
+        // 纵向侧栏下 range 恒为 0（typeMore 会被永远隐藏，分类弹窗入口丢失），
+        // 且 typeBar 宽度为 0 时这里会无限 post 自身形成每帧重排的忙循环。
+        if (isTwoPane()) {
+            mBinding.typeMore.setVisibility(View.GONE);
+            return;
+        }
         if (mBinding.type.getWidth() == 0 || mBinding.typeBar.getWidth() == 0) {
             mBinding.type.post(this::updateTypeMoreVisible);
             return;
@@ -396,7 +410,8 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
         Site home = getHome();
         WebHomeChromeStartup.remember(getConfig(), home);
         setTitle();
-        if (mWeb != null && mWeb.load(home)) {
+        // 与 leanback 一致：web 主页总开关（Setting#isWebHomeFullscreen）默认关闭，一律走原生列表
+        if (Setting.isWebHomeFullscreen() && mWeb != null && mWeb.load(home)) {
             clearPagerTypes();
             hideProgress();
             hideNativeContent();
@@ -624,6 +639,8 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
         boolean hidden = isNativeChromeHidden();
         mBinding.appBar.setVisibility(hidden ? View.GONE : View.VISIBLE);
         setHomeWebTopMargin(hidden ? 0 : mHomeWebTopMargin);
+        // 双栏下 typeBar 是独立侧栏容器，不再随 AppBar 隐藏，必须单独处理
+        mBinding.typeBar.setVisibility(View.GONE);
         mBinding.type.setVisibility(View.GONE);
         mBinding.typeMore.setVisibility(View.GONE);
         mBinding.pager.setVisibility(View.GONE);
@@ -635,6 +652,7 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
 
     private void showNativeContent() {
         requestNormalChrome();
+        mBinding.typeBar.setVisibility(View.VISIBLE);
         mBinding.type.setVisibility(View.VISIBLE);
         updateTypeMoreVisible();
         mBinding.pager.setVisibility(View.VISIBLE);

@@ -76,17 +76,22 @@ public class LiveEpgSetting {
 
     public static void apply(Live live, Channel channel) {
         if (live == null || channel == null) return;
-        channel.setDataList(Collections.emptyList());
+        // 源地址实际变化时才清缓存（LIVE9）：同一模板重复 apply / 同地址重解析不再擦掉已抓取的节目单
         String template = getEffectiveUrl(live);
+        String previous = channel.getEpg();
         if (isGlobalXmlUrl(template)) {
+            if (!previous.isEmpty()) channel.setDataList(Collections.emptyList());
             channel.setEpg("");
             return;
         }
         if (!template.contains("{")) {
+            if (!previous.equals(template)) channel.setDataList(Collections.emptyList());
             channel.setEpg(template);
             return;
         }
-        channel.setEpg(template.replace("{id}", channel.getTvgId()).replace("{name}", channel.getTvgName()).replace("{epg}", channel.getEpg()));
+        String resolved = template.replace("{id}", channel.getTvgId()).replace("{name}", channel.getTvgName()).replace("{epg}", channel.getEpg());
+        if (!resolved.equals(previous)) channel.setDataList(Collections.emptyList());
+        channel.setEpg(resolved);
     }
 
     public static String getEffectiveUrl(Live live) {

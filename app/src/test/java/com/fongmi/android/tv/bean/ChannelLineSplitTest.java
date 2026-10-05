@@ -1,8 +1,12 @@
 package com.fongmi.android.tv.bean;
 
 import static org.junit.Assert.assertArrayEquals;
+import static org.junit.Assert.assertEquals;
 
 import org.junit.Test;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /** $线路名 后缀拆分：iptv-api 说明与源作者命名线路共用同一语法，拆分必须保名且不破坏 URL。 */
 public class ChannelLineSplitTest {
@@ -30,5 +34,30 @@ public class ChannelLineSplitTest {
     @Test
     public void nullSafe() {
         assertArrayEquals(new String[]{"", ""}, Channel.splitLine(null));
+    }
+
+    @Test
+    public void currentKeepsGuardedDollarUrl() {
+        Channel channel = new Channel();
+        channel.addLine("http://a/?u=$http://b");
+        channel.setIndex(0);
+        assertEquals("http://a/?u=$http://b", channel.getCurrent());
+    }
+
+    @Test
+    public void currentReturnsNameStrippedUrlAfterParse() {
+        Channel channel = new Channel();
+        channel.addLine("http://a.m3u8$电信");
+        channel.setIndex(0);
+        assertEquals("http://a.m3u8", channel.getCurrent());
+    }
+
+    @Test
+    public void normalizeStripsInlineNameBeforePlayback() {
+        Channel channel = new Channel();
+        channel.setUrls(new ArrayList<>(List.of("http://a.m3u8$电信")));
+        channel.normalizeLines();
+        assertEquals("电信", channel.lineName(0));
+        assertEquals("http://a.m3u8", channel.getCurrent());
     }
 }

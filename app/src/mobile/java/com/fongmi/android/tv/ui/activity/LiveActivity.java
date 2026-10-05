@@ -99,7 +99,7 @@ import com.fongmi.android.tv.utils.Util;
 import org.greenrobot.eventbus.Subscribe;
 import org.greenrobot.eventbus.ThreadMode;
 
-public class LiveActivity extends PlaybackActivity implements CustomKeyDown.Listener, TrackDialog.Listener, Biometric.Callback, PassListener, ConfigListener, LiveListener, GroupAdapter.OnClickListener, ChannelAdapter.OnClickListener, EpgDataAdapter.OnClickListener, CastDialog.Listener, InfoDialog.Listener, LiveControlDialog.Listener, LiveEpgDialog.Listener, LiveSession.Listener {
+public class LiveActivity extends PlaybackActivity implements CustomKeyDown.Listener, TrackDialog.Listener, Biometric.Callback, PassListener, ConfigListener, LiveListener, GroupAdapter.OnClickListener, ChannelAdapter.OnClickListener, EpgDataAdapter.OnClickListener, CastDialog.Listener, InfoDialog.Listener, LiveControlDialog.Listener, LiveEpgDialog.Listener, LiveLineDialog.Listener, LiveSession.Listener {
 
     private static final int LIVE_PIP_WIDTH = 16;
     private static final int LIVE_PIP_HEIGHT = 9;
@@ -978,7 +978,17 @@ public class LiveActivity extends PlaybackActivity implements CustomKeyDown.List
     private void showLineDialog(Channel item) {
         hideControl();
         hideInfo();
-        LiveLineDialog.create().channel(item).listener(this::setLine).show(this);
+        LiveLineDialog.create().channel(item).listener(this).show(this);
+    }
+
+    @Override
+    public void onLineSelected(int position) {
+        setLine(position);
+    }
+
+    @Override
+    public void onLineLongClick(int position) {
+        mSession.toggleBlock(position);
     }
 
     @Override

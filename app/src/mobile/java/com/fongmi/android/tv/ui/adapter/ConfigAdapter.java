@@ -76,7 +76,7 @@ public class ConfigAdapter extends RecyclerView.Adapter<ConfigAdapter.ViewHolder
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
         Config item = mItems.get(position);
         boolean isCurrent = TextUtils.equals(item.getUrl(), currentUrl);
-        String desc = item.getDesc();
+        String desc = item.isDepot() ? holder.binding.text.getContext().getString(com.fongmi.android.tv.R.string.config_depot_tag, item.getDesc()) : item.getDesc();
         holder.binding.text.setText(isCurrent ? desc + holder.binding.text.getContext().getString(com.fongmi.android.tv.R.string.config_in_use) : desc);
         holder.binding.text.setOnClickListener(v -> listener.onTextClick(item));
         holder.binding.delete.setVisibility(readOnly || isCurrent ? View.GONE : View.VISIBLE);

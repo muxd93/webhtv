@@ -25,6 +25,8 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
 import java.io.InterruptedIOException;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.List;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -38,6 +40,10 @@ abstract class BaseConfig {
     // 订阅源超龄刷新周期（小时）由 Setting.stale 控制（0 = 关闭自动刷新），默认 12h 对齐主流聚合源（iptv-api 等）
 
     private final AtomicInteger taskId = new AtomicInteger(0);
+    // 多仓递归守卫（DEPOT1）：parseDepot → load(子源) → parse → parseDepot 的同步深度链路
+    // 全部在同一后台线程串行执行，栈无需并发保护；每个顶层派发入口清空一次
+    private final Deque<String> depotStack = new ArrayDeque<>();
+    private static final int DEPOT_MAX_DEPTH = 3;
 
     protected boolean sync;
     protected volatile Config config;
@@ -135,6 +141,7 @@ abstract class BaseConfig {
 
     // 缓存判定在后台线程做，避免启动路径在主线程读文件
     private void loadDispatch(int id, Config config, Callback callback, boolean silent) {
+        depotStack.clear();
         String cached = ConfigCache.get(config.getUrl());
         if (cached == null) loadConfig(id, config, callback, silent);
         else loadCachedConfig(id, config, cached, callback, silent);
@@ -170,8 +177,20 @@ abstract class BaseConfig {
         if (future != null && !future.isDone()) future.cancel(true);
         suppressEvent = false;
         Config target = config == null ? defaultConfig() : config;
+        depotStack.clear();
         future = Task.submit(() -> loadConfig(id, target, callback, silent));
         callback.start();
+    }
+
+    /** 多仓递归进入：深度上限 + 环路检测；异常向上传播中断整条加载链。 */
+    protected void enterDepot(String url) throws Exception {
+        if (depotStack.size() >= DEPOT_MAX_DEPTH) throw new Exception("Depot nesting too deep: " + url);
+        if (depotStack.contains(url)) throw new Exception("Depot cycle detected: " + url);
+        depotStack.push(url);
+    }
+
+    protected void exitDepot() {
+        depotStack.poll();
     }
 
     protected void loadConfig(int id, Config config, Callback callback, boolean silent) {

@@ -80,7 +80,7 @@ import org.greenrobot.eventbus.ThreadMode;
 
 import java.util.List;
 
-public class LiveActivity extends PlaybackActivity implements GroupAdapter.OnClickListener, ChannelAdapter.OnClickListener, EpgDataAdapter.OnClickListener, CustomKeyDownLive.Listener, CustomLiveListView.Callback, TrackDialog.Listener, PassListener, ConfigListener, LiveListener, LiveEpgDialog.Listener, LiveSession.Listener {
+public class LiveActivity extends PlaybackActivity implements GroupAdapter.OnClickListener, ChannelAdapter.OnClickListener, EpgDataAdapter.OnClickListener, CustomKeyDownLive.Listener, CustomLiveListView.Callback, TrackDialog.Listener, PassListener, ConfigListener, LiveListener, LiveEpgDialog.Listener, LiveLineDialog.Listener, LiveSession.Listener {
 
     private ActivityLiveBinding mBinding;
     private ChannelAdapter mChannelAdapter;
@@ -390,9 +390,19 @@ public class LiveActivity extends PlaybackActivity implements GroupAdapter.OnCli
     private boolean onLineLong() {
         Channel channel = mSession.currentChannel();
         if (channel == null) return true;
-        LiveLineDialog.create().channel(channel).listener(this::setLine).show(this);
+        LiveLineDialog.create().channel(channel).listener(this).show(this);
         hideControl();
         return true;
+    }
+
+    @Override
+    public void onLineSelected(int position) {
+        setLine(position);
+    }
+
+    @Override
+    public void onLineLongClick(int position) {
+        mSession.toggleBlock(position);
     }
 
     private void onLiveProgram() {

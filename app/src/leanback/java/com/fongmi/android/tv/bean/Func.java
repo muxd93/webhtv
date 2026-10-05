@@ -8,15 +8,27 @@ import com.fongmi.android.tv.utils.ResUtil;
 
 public class Func implements Diffable<Func> {
 
+    /** 功能主次层级：主组为高频内容入口，次组为工具栏/系统能力（视觉降权） */
+    public enum Tier {
+        PRIMARY,
+        SECONDARY
+    }
+
     private final int resId;
+    private final Tier tier;
     private int drawable;
 
     public static Func create(int resId) {
-        return new Func(resId);
+        return new Func(resId, Tier.PRIMARY);
     }
 
-    public Func(int resId) {
+    public static Func create(int resId, Tier tier) {
+        return new Func(resId, tier);
+    }
+
+    public Func(int resId, Tier tier) {
         this.resId = resId;
+        this.tier = tier == null ? Tier.PRIMARY : tier;
         this.setDrawable();
     }
 
@@ -26,6 +38,10 @@ public class Func implements Diffable<Func> {
 
     public int getDrawable() {
         return drawable;
+    }
+
+    public Tier getTier() {
+        return tier;
     }
 
     public String getText() {
@@ -42,7 +58,6 @@ public class Func implements Diffable<Func> {
         else if (resId == R.string.home_smb) this.drawable = R.drawable.ic_home_smb;
         else if (resId == R.string.home_app) this.drawable = R.drawable.ic_home_app;
         else if (resId == R.string.home_file) this.drawable = R.drawable.ic_home_file;
-        else if (resId == R.string.home_link) this.drawable = R.drawable.ic_link;
     }
 
     @Override
