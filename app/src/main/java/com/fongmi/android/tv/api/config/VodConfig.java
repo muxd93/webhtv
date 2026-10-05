@@ -37,6 +37,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -196,13 +197,62 @@ public class VodConfig extends BaseConfig {
 
     private void parseDepot(Config config, JsonObject object) throws Throwable {
         List<Depot> items = Depot.arrayFrom(object.getAsJsonArray("urls").toString());
-        List<Config> configs = new ArrayList<>();
-        for (Depot item : items) configs.add(Config.find(item, VOD));
-        if (configs.isEmpty()) throw new Exception("Depot urls is empty");
-        // 与直播多仓（LIVE4）对齐：全部子源落库进历史供切换，仅加载第一个；点播不做跨源聚合
-        if (configs.size() > 1) App.post(() -> Notify.show(ResUtil.getString(R.string.vod_depot_imported, configs.size())));
-        load(this.config = configs.get(0));
-        Config.delete(config.getUrl());
+        if (items.isEmpty()) throw new Exception("Depot urls is empty");
+        enterDepot(config.getUrl());
+        try {
+            // 多仓活仓（DEPOT1）：仓条目常驻可重复展开；子源父子关联落库（上游改名随展开回写）
+            List<Config> children = new ArrayList<>();
+            for (Depot item : items) children.add(Config.find(item, VOD).parentUrl(config.getUrl()).save());
+            reconcileChildren(config.getUrl(), items);
+            config.depot(true).save();
+            // 多仓预检（DEPOT2）：并发探测子源可用性，结果进健康档（容灾候选排序同步受益）；首个加载源跳过死源
+            List<DepotProbe.Result> probe = DepotProbe.probe(children);
+            InterfaceOrderStore.recordVodHealth(samples(probe));
+            InterfaceOrderStore.saveVodConfigs(children);
+            int bad = countUnhealthy(probe);
+            if (children.size() > 1) {
+                App.post(() -> Notify.show(ResUtil.getString(bad > 0 ? R.string.vod_depot_imported_bad : R.string.vod_depot_imported, children.size(), bad)));
+            }
+            load(this.config = firstHealthy(children, probe));
+            // 子源加载成功后 bump time：保证重启恢复（findOne 按 time DESC）落到刚加载的源
+            this.config.update();
+        } finally {
+            exitDepot();
+        }
+    }
+
+    /** 首个健康子源（保持仓内声明顺序）；全部不健康时回退第一个（保持旧兜底行为）。 */
+    private Config firstHealthy(List<Config> children, List<DepotProbe.Result> probe) {
+        for (Config child : children) {
+            for (DepotProbe.Result result : probe) {
+                if (TextUtils.equals(result.url, child.getUrl())) {
+                    if (result.ok) return child;
+                    break;
+                }
+            }
+        }
+        return children.get(0);
+    }
+
+    private int countUnhealthy(List<DepotProbe.Result> probe) {
+        int count = 0;
+        for (DepotProbe.Result result : probe) if (!result.ok) count++;
+        return count;
+    }
+
+    private List<InterfaceOrderStore.HealthSample> samples(List<DepotProbe.Result> probe) {
+        List<InterfaceOrderStore.HealthSample> samples = new ArrayList<>();
+        for (DepotProbe.Result result : probe) samples.add(new InterfaceOrderStore.HealthSample(result.url, result.ok, System.currentTimeMillis(), result.latency));
+        return samples;
+    }
+
+    /** 清理 parentUrl 指向本仓、但本次展开已移除的幽灵子源（含 History/Keep/缓存级联）。 */
+    private void reconcileChildren(String depotUrl, List<Depot> items) {
+        Set<String> keep = items.stream().map(Depot::getUrl).collect(Collectors.toSet());
+        for (Config child : Config.getChildren(depotUrl, VOD)) {
+            if (keep.contains(child.getUrl())) continue;
+            child.delete();
+        }
     }
 
     private void parseConfig(Config config, JsonObject object) {

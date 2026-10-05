@@ -3,6 +3,7 @@ package com.fongmi.android.tv.ui.dialog;
 import android.app.Dialog;
 import android.os.Bundle;
 import android.view.LayoutInflater;
+import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowManager;
@@ -18,6 +19,8 @@ import androidx.viewbinding.ViewBinding;
 
 import com.fongmi.android.tv.bean.Channel;
 import com.fongmi.android.tv.databinding.DialogLiveLineBinding;
+import com.fongmi.android.tv.live.LineBlockStore;
+import com.fongmi.android.tv.live.LineHealth;
 import com.fongmi.android.tv.ui.adapter.LiveLineAdapter;
 import com.fongmi.android.tv.utils.ResUtil;
 import com.google.android.flexbox.FlexDirection;
@@ -105,12 +108,35 @@ public class LiveLineDialog extends BaseBottomSheetDialog implements LiveLineAda
         binding.recycler.setLayoutManager(manager);
         binding.recycler.setAdapter(adapter = new LiveLineAdapter(this, channel));
         binding.recycler.post(() -> binding.recycler.scrollToPosition(Math.max(channel.getIndex(), 0)));
+        binding.blockClear.setOnClickListener(view -> clearBlocked());
+        refresh();
+    }
+
+    /** 清空全部屏蔽（跨源全局）：本频道立即重排，其余频道在下次渲染/软重载时恢复原序。 */
+    private void clearBlocked() {
+        LineBlockStore.clear();
+        LineHealth.reorder(channel);
+        refresh();
     }
 
     @Override
     public void onLineClick(int position) {
         if (listener != null) listener.onLineSelected(position);
         if (adapter != null) adapter.notifyItemRangeChanged(0, adapter.getItemCount());
+    }
+
+    @Override
+    public void onLineLongClick(int position) {
+        if (listener != null) listener.onLineLongClick(position);
+        refresh();
+    }
+
+    /** 屏蔽集合变化后统一刷新：条目状态 + 清空入口显隐与计数。 */
+    private void refresh() {
+        if (adapter != null) adapter.notifyDataSetChanged();
+        int count = LineBlockStore.count();
+        binding.blockClear.setVisibility(count > 0 ? View.VISIBLE : View.GONE);
+        if (count > 0) binding.blockClear.setText(ResUtil.getString(com.fongmi.android.tv.R.string.live_block_clear, count));
     }
 
     private void configureWindow(Dialog dialog) {
@@ -125,5 +151,7 @@ public class LiveLineDialog extends BaseBottomSheetDialog implements LiveLineAda
     public interface Listener {
 
         void onLineSelected(int position);
+
+        void onLineLongClick(int position);
     }
 }

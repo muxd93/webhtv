@@ -379,10 +379,10 @@ public class Channel {
         setIndex((getIndex() + step + size) % size);
     }
 
+    /** urls 已在解析期归一（内联 $名称 剥离进 lineNames），含 $ 的 URL（splitLine 守卫保留）必须原样返回。 */
     public String getCurrent() {
         if (getUrls().isEmpty()) return "";
-        String url = getUrls().get(getIndex());
-        return (getDrm() != null) ? url : url.split("\\$")[0];
+        return getUrls().get(getIndex());
     }
 
     public boolean isOnly() {

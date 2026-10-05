@@ -8,7 +8,6 @@ import android.os.Bundle;
 import android.text.TextUtils;
 import android.view.MenuItem;
 import android.view.View;
-import android.widget.RelativeLayout;
 
 import androidx.annotation.NonNull;
 import androidx.core.content.pm.ShortcutInfoCompat;
@@ -97,7 +96,7 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
         mStartupConfig = Config.vod();
         mChrome = new WebHomeChromeController(this, mBinding, this, savedInstanceState, WebHomeChromeStartup.restore(mStartupConfig));
         mBinding.getRoot().addOnLayoutChangeListener((view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> checkWindowShape(right - left, bottom - top));
-        mBinding.navigation.setOnItemSelectedListener(this);
+        nav().setOnItemSelectedListener(this);
         PermissionUtil.requestFile(this, allGranted -> PermissionUtil.requestNotify(this));
         initFragment(savedInstanceState);
         initConfig();
@@ -120,7 +119,7 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
 
     @Override
     protected void initEvent() {
-        mBinding.navigation.findViewById(R.id.live).setOnLongClickListener(this::addShortcut);
+        nav().findViewById(R.id.live).setOnLongClickListener(this::addShortcut);
     }
 
     private void checkAction(Intent intent) {
@@ -202,9 +201,9 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
     }
 
     private void setNavigation() {
-        mBinding.navigation.getMenu().findItem(R.id.vod).setVisible(true);
-        mBinding.navigation.getMenu().findItem(R.id.setting).setVisible(true);
-        mBinding.navigation.getMenu().findItem(R.id.live).setVisible(LiveConfig.hasUrl());
+        nav().getMenu().findItem(R.id.vod).setVisible(true);
+        nav().getMenu().findItem(R.id.setting).setVisible(true);
+        nav().getMenu().findItem(R.id.live).setVisible(LiveConfig.hasUrl());
         syncNavigationSelection();
     }
 
@@ -227,16 +226,23 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
         else changeFragment(position);
     }
 
+    /**
+     * 导航视图在两个布局下是不同类：手机 BottomNavigationView、平板 NavigationRailView。
+     * 同一 id 跨配置时 ViewBinding 只生成 View 类型（AGP 9 不会取公共父类），
+     * 二者共同父类是 NavigationBarView，这里统一转型后访问。
+     */
+    private NavigationBarView nav() {
+        return (NavigationBarView) mBinding.navigation;
+    }
+
+    /**
+     * 只切换可见性：内容区相对导航的位置由各布局的静态规则决定
+     * （手机底部导航 layout_above、平板侧栏 layout_toEndOf）。
+     * 不再动态增删 RelativeLayout 规则 —— 在侧栏布局下 addRule(ABOVE) 会指向一个左置满高的
+     * NavigationRailView，把内容区挤成 0 高度。
+     */
     public void setNavigationVisible(boolean visible) {
-        RelativeLayout.LayoutParams params = (RelativeLayout.LayoutParams) mBinding.container.getLayoutParams();
-        if (visible) {
-            params.addRule(RelativeLayout.ABOVE, R.id.navigation);
-            mBinding.navigation.setVisibility(View.VISIBLE);
-        } else {
-            params.removeRule(RelativeLayout.ABOVE);
-            mBinding.navigation.setVisibility(View.GONE);
-        }
-        mBinding.container.setLayoutParams(params);
+        nav().setVisibility(visible ? View.VISIBLE : View.GONE);
         mBinding.getRoot().requestApplyInsets();
     }
 
@@ -278,16 +284,16 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
 
     private void selectNavigation(int position) {
         int itemId = position == 0 ? R.id.vod : R.id.setting;
-        if (mBinding.navigation.getSelectedItemId() == itemId) changeFragment(position);
-        else mBinding.navigation.setSelectedItemId(itemId);
+        if (nav().getSelectedItemId() == itemId) changeFragment(position);
+        else nav().setSelectedItemId(itemId);
     }
 
     private void syncNavigationSelection() {
         int itemId = currentPosition == 0 ? R.id.vod : R.id.setting;
-        if (mBinding.navigation.getSelectedItemId() == itemId) return;
-        mBinding.navigation.setOnItemSelectedListener(null);
-        mBinding.navigation.setSelectedItemId(itemId);
-        mBinding.navigation.setOnItemSelectedListener(this);
+        if (nav().getSelectedItemId() == itemId) return;
+        nav().setOnItemSelectedListener(null);
+        nav().setSelectedItemId(itemId);
+        nav().setOnItemSelectedListener(this);
     }
 
     private boolean changeFragment(int position) {
@@ -359,7 +365,7 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
     public void openVod() {
         resetVodChrome();
         setNavigationVisible(true);
-        mBinding.navigation.setSelectedItemId(R.id.vod);
+        nav().setSelectedItemId(R.id.vod);
         VodFragment fragment = (VodFragment) mManager.getFragment(0);
         if (fragment != null) fragment.openVodHome();
     }
@@ -427,7 +433,7 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
     protected void onBackInvoked() {
         if (mChrome != null && mChrome.consumeBack()) {
             return;
-        } else if (!mBinding.navigation.getMenu().findItem(R.id.vod).isVisible()) {
+        } else if (!nav().getMenu().findItem(R.id.vod).isVisible()) {
             setNavigation();
         } else if (returnVodFromEnhance && mManager.isVisible(3)) {
             returnVodFromEnhance = false;

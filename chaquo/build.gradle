@@ -13,6 +13,8 @@ android {
         targetSdk libs.versions.targetSdk.get().toInteger()
         python {
             version = "3.10"
+            // 构建机未把 Python 3.10 注册到 py 启动器时，用 -PchaquopyBuildPython=<python.exe>（或 gradle.properties）指定构建解释器
+            if (providers.gradleProperty("chaquopyBuildPython").isPresent()) buildPython(providers.gradleProperty("chaquopyBuildPython").get())
             pip {
                 install("-r", "requirements.txt")
             }

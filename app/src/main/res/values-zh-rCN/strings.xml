@@ -7,6 +7,9 @@
     <string name="live_pass">密码</string>
     <string name="live_refresh">刷新</string>
     <string name="live_line">线路 <xliff:g name="name">%s</xliff:g></string>
+    <string name="live_block_clear">清空屏蔽线路（<xliff:g name="count">%1$d</xliff:g>）</string>
+    <string name="config_depot_tag">仓 · <xliff:g name="name" example="xx">%s</xliff:g></string>
+    <string name="vod_depot_imported_bad">已导入 %1$d 个点播订阅源，%2$d 个不可用</string>
     <string name="live_control_source">直播源</string>
 
     <!-- Detail -->

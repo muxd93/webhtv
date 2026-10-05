@@ -35,7 +35,7 @@
             android:layout_height="0dp"
             android:layout_weight="1">
 
-            <androidx.leanback.widget.VerticalGridView
+            <com.fongmi.android.tv.ui.custom.CustomVerticalGridView
                 android:id="@+id/recycler"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
@@ -88,6 +88,7 @@
             android:ellipsize="marquee"
             android:focusable="false"
             android:nextFocusDown="@id/typeRecycler"
+            android:nextFocusRight="@id/btnSetting"
             android:singleLine="true"
             android:text="@string/app_name"
             android:textColor="@color/white"
@@ -101,6 +102,34 @@
             android:textColor="@color/white"
             android:textSize="24sp"
             tools:text="09:20:00" />
+
+        <androidx.appcompat.widget.AppCompatImageButton
+            android:id="@+id/btnSetting"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginEnd="8dp"
+            android:background="@drawable/selector_item"
+            android:contentDescription="@string/home_setting"
+            android:focusable="true"
+            android:padding="11dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_home_setting"
+            android:nextFocusLeft="@id/title"
+            android:nextFocusRight="@id/btnApp"
+            android:nextFocusDown="@id/recycler" />
+
+        <androidx.appcompat.widget.AppCompatImageButton
+            android:id="@+id/btnApp"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="@drawable/selector_item"
+            android:contentDescription="@string/home_app"
+            android:focusable="true"
+            android:padding="11dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_home_app"
+            android:nextFocusLeft="@id/btnSetting"
+            android:nextFocusDown="@id/recycler" />
 
 
     </androidx.appcompat.widget.LinearLayoutCompat>

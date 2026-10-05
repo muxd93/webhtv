@@ -67,7 +67,6 @@ import com.fongmi.android.tv.ui.custom.CustomRowPresenter;
 import com.fongmi.android.tv.ui.custom.CustomSelector;
 import com.fongmi.android.tv.ui.custom.CustomTitleView;
 import com.fongmi.android.tv.ui.dialog.AppListDialog;
-import com.fongmi.android.tv.ui.dialog.LinkDialog;
 import com.fongmi.android.tv.ui.dialog.SmbServerDialog;
 import com.fongmi.android.tv.ui.dialog.SiteDialog;
 import com.fongmi.android.tv.ui.presenter.FuncPresenter;
@@ -270,6 +269,9 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
     @Override
     protected void initEvent() {
         mBinding.title.setListener(this);
+        // 右上角工具栏按钮：设置与应用（功能行降权后的系统入口）
+        mBinding.btnSetting.setOnClickListener(v -> SettingActivity.start(this));
+        mBinding.btnApp.setOnClickListener(v -> AppListDialog.show(this));
         mBinding.toolbar.addOnLayoutChangeListener((v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
             syncNativeContentInset();
             syncWebOverlayLayout();
@@ -516,6 +518,7 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
 
     private void prewarmWebView() {
         if (isFinishing() || mWeb != null) return;
+        if (!Setting.isWebHomeFullscreen()) return;
         boolean hasWebHome = VodConfig.get().getSites().stream().anyMatch(Site::hasHomePage);
         if (!hasWebHome) return;
         SpiderDebug.log("startup", "webview prewarm start cost=%sms", System.currentTimeMillis() - App.time());
@@ -542,8 +545,16 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
         getVideo(false);
     }
 
+    /**
+     * WebView 主页总开关：站点有自定义主页且开启 web 主页时才走 WebView，否则一律走原生列表。
+     * 该开关复用 Setting.isWebHomeFullscreen()，默认关闭（见 Setting#isWebHomeFullscreen）。
+     */
+    private boolean useWebHome() {
+        return Setting.isWebHomeFullscreen() && getHome().hasHomePage();
+    }
+
     private void getVideo(boolean forceNative) {
-        if (!forceNative && getHome().hasHomePage()) {
+        if (!forceNative && useWebHome()) {
             ensureWebView();
         }
         if (!forceNative && mWeb != null && mWeb.load(getHome())) {
@@ -620,15 +631,14 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
 
     private void setFunc() {
         List<Func> items = new ArrayList<>();
+        // 主组：高频内容入口（直播可选 / 搜索 / 收藏）
         if (LiveConfig.hasUrl()) items.add(Func.create(R.string.home_live));
         items.add(Func.create(R.string.home_search));
         items.add(Func.create(R.string.home_keep));
-        items.add(Func.create(R.string.home_push));
-        items.add(Func.create(R.string.home_setting));
-        items.add(Func.create(R.string.home_smb));
-        items.add(Func.create(R.string.home_app));
-        items.add(Func.create(R.string.home_file));
-        items.add(Func.create(R.string.home_link));
+        // 次组：工具与系统能力（设置、应用已移至右上角工具栏），视觉降权
+        items.add(Func.create(R.string.home_push, Func.Tier.SECONDARY));
+        items.add(Func.create(R.string.home_smb, Func.Tier.SECONDARY));
+        items.add(Func.create(R.string.home_file, Func.Tier.SECONDARY));
         mFuncAdapter.setItems(items, new BaseDiffCallback<Func>());
     }
 
@@ -812,11 +822,8 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
         else if (item.getResId() == R.string.home_keep) KeepActivity.start(this);
         else if (item.getResId() == R.string.home_push) PushActivity.start(this);
         else if (item.getResId() == R.string.home_search) SearchActivity.start(this);
-        else if (item.getResId() == R.string.home_setting) SettingActivity.start(this);
         else if (item.getResId() == R.string.home_smb) onSmbEntry();
-        else if (item.getResId() == R.string.home_app) AppListDialog.show(this);
         else if (item.getResId() == R.string.home_file) startActivity(new Intent(this, FileActivity.class).putExtra("play_mode", true));
-        else if (item.getResId() == R.string.home_link) LinkDialog.show(this);
     }
 
     @Override
@@ -977,6 +984,9 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
         if (KeyUtil.isActionDown(event) & KeyUtil.isUpKey(event) && mBinding.recycler.hasFocus() && mBinding.typeRecycler.getVisibility() == View.VISIBLE) {
             if (isToolbarVisible()) return requestTitleFocus();
             updateToolbarVisibility(true);
+        }
+        if (KeyUtil.isActionDown(event) & KeyUtil.isUpKey(event) && mBinding.recycler.hasFocus() && mBinding.typeRecycler.getVisibility() != View.VISIBLE && isToolbarVisible()) {
+            return requestTitleFocus();
         }
         if (KeyUtil.isActionDown(event) & KeyUtil.isDownKey(event) && getCurrentFocus() == mBinding.title) return requestHomeFocus();
         return super.dispatchKeyEvent(event);

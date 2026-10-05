@@ -108,7 +108,8 @@ public class LiveViewModel extends ViewModel {
     }
 
     public void getEpg(Channel item) {
-        execute(TaskType.EPG, () -> LiveApi.getEpg(item, zoneId), epg::postValue, error -> epg.postValue(new Epg()));
+        // 失败/超时不发空 Epg：回贴频道现有数据（可为空 Epg），UI 保持旧节目单不清屏（LIVE9 SWR）
+        execute(TaskType.EPG, () -> LiveApi.getEpg(item, zoneId), epg::postValue, error -> epg.postValue(item.getData(zoneId)));
     }
 
     public void getUrl(Channel item) {

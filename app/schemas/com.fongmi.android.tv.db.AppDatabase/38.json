@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 38,
-    "identityHash": "4f529cae27aac36118f17178dbdaae9b",
+    "identityHash": "a3c2fa036f5dec909f6d1c2455761e77",
     "entities": [
       {
         "tableName": "Keep",
@@ -177,7 +177,7 @@
       },
       {
         "tableName": "Config",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `type` INTEGER NOT NULL, `time` INTEGER NOT NULL, `url` TEXT, `json` TEXT, `name` TEXT, `logo` TEXT, `home` TEXT, `parse` TEXT)",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `type` INTEGER NOT NULL, `time` INTEGER NOT NULL, `url` TEXT, `json` TEXT, `name` TEXT, `logo` TEXT, `home` TEXT, `parse` TEXT, `depot` INTEGER NOT NULL DEFAULT 0, `parentUrl` TEXT)",
         "fields": [
           {
             "fieldPath": "id",
@@ -225,6 +225,18 @@
           {
             "fieldPath": "parse",
             "columnName": "parse",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "depot",
+            "columnName": "depot",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "parentUrl",
+            "columnName": "parentUrl",
             "affinity": "TEXT"
           }
         ],
@@ -606,7 +618,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '4f529cae27aac36118f17178dbdaae9b')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'a3c2fa036f5dec909f6d1c2455761e77')"
     ]
   }
 }

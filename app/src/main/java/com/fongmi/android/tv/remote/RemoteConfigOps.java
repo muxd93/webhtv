@@ -55,7 +55,10 @@ public final class RemoteConfigOps {
         int type = number(payload, "type", 0);
         String url = string(payload, "url");
         if (TextUtils.isEmpty(url)) return RemoteCommandResult.failure("Missing config url");
-        Config.find(url, type).delete();
+        Config config = Config.find(url, type);
+        // 使用中的配置禁止远端删除：DB 行删掉而内存仍持有会造成状态错位
+        if (isCurrent(config)) return RemoteCommandResult.failure("Config in use");
+        config.delete();
         return RemoteCommandResult.success("Config deleted", data());
     }
 

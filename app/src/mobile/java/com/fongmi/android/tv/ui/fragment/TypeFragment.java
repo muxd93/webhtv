@@ -13,6 +13,7 @@ import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 import androidx.viewbinding.ViewBinding;
 
 import com.fongmi.android.tv.Product;
+import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.bean.Result;
 import com.fongmi.android.tv.bean.Site;
@@ -110,7 +111,9 @@ public class TypeFragment extends BaseFragment implements CustomScroller.Callbac
     }
 
     private void setRecyclerView() {
-        mBinding.recycler.setTranslationY(-ResUtil.dp2px(getY()));
+        // getY() 是为补偿横向分类条占位的上移量；双栏下分类移到了侧栏，内容区不再需要这个偏移
+        boolean twoPane = getResources().getBoolean(R.bool.two_pane);
+        mBinding.recycler.setTranslationY(twoPane ? 0f : -ResUtil.dp2px(getY()));
         mBinding.recycler.setHasFixedSize(true);
         setStyle(getStyle());
     }

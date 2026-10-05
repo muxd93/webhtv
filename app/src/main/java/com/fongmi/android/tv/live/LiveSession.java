@@ -126,6 +126,7 @@ public class LiveSession {
         if (!empty) {
             LiveConfig.get().refreshIfStale();
             Task.submit(LineHealth::init);
+            Task.submit(LineBlockStore::init);
             load();
             return;
         }
@@ -390,7 +391,8 @@ public class LiveSession {
 
     public void nextLine(boolean showInfo) {
         if (channel == null || channel.isOnly()) return;
-        channel.switchLine(true);
+        // 自动换线路径：跳过用户屏蔽的线路；全部被屏蔽时不动，避免错误循环
+        if (!stepLine(1)) return;
         viewModel.getEpg(channel);
         listener.onLineChanged(showInfo);
         fetchLive();
@@ -398,10 +400,21 @@ public class LiveSession {
 
     public void prevLine() {
         if (channel == null || channel.isOnly()) return;
-        channel.switchLine(false);
+        if (!stepLine(-1)) return;
         viewModel.getEpg(channel);
         listener.onLineChanged(true);
         fetchLive();
+    }
+
+    /** 环绕步进换线并跳过屏蔽线路；返回是否落到了与原先不同的线路（全部被屏蔽时环绕回原位 = false）。 */
+    private boolean stepLine(int step) {
+        int origin = channel.getIndex();
+        int size = channel.getUrls().size();
+        for (int i = 0; i < size; i++) {
+            channel.switchLine(step > 0);
+            if (!LineBlockStore.isBlocked(channel.getUrls().get(channel.getIndex()))) break;
+        }
+        return channel.getIndex() != origin;
     }
 
     public void setLine(int position) {
@@ -411,6 +424,24 @@ public class LiveSession {
         viewModel.getEpg(channel);
         listener.onLineChanged(false);
         fetchLive();
+    }
+
+    /**
+     * 弹窗长按：屏蔽/取消屏蔽指定线路（显式动作，不受 catchup 豁免影响）。
+     * 与沉底同一契约——先重排（选中线路按 URL 保位）；屏蔽当前在播线路时自动
+     * 跳到下一条未屏蔽线路（其余全部被屏蔽则留在原线继续播）。
+     */
+    public void toggleBlock(int position) {
+        if (channel == null || position < 0 || position >= channel.getUrls().size()) return;
+        String url = channel.getUrls().get(position);
+        if (LineBlockStore.isBlocked(url)) LineBlockStore.unblock(url);
+        else LineBlockStore.block(url, channel.lineName(position));
+        LineHealth.reorder(channel);
+        if (LineBlockStore.isBlocked(url) && url.equals(currentLine()) && stepLine(1)) {
+            viewModel.getEpg(channel);
+            listener.onLineChanged(false);
+            fetchLive();
+        }
     }
 
     public void onEpgDataClick(EpgData data) {

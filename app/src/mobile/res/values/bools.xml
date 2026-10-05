@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- 宽屏双栏开关：默认关闭（手机与 sw720dp 以下的小平板走横向分类条） -->
+    <bool name="two_pane">false</bool>
+
+</resources>

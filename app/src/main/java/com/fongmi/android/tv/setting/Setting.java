@@ -518,7 +518,7 @@ public class Setting {
     }
 
     public static boolean isWebHomeFullscreen() {
-        return Prefers.getBoolean("web_home_fullscreen", true);
+        return Prefers.getBoolean("web_home_fullscreen", false);
     }
 
     public static void putWebHomeFullscreen(boolean fullscreen) {

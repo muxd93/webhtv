@@ -1187,7 +1187,7 @@ public class CustomCspDialog extends BaseAlertDialog {
         String status = effective ? getString(item.isValid() ? R.string.playback_webhook_active : R.string.playback_webhook_incomplete) : getString(R.string.setting_disable);
         if (item.isWebHome() && item.hasInvalidExtensions()) status += " · " + getString(R.string.setting_custom_csp_extensions_invalid);
         if (item.isOther()) return status + " · " + item.getOtherKey();
-        if (item.isLive()) return status + " · " + getString(R.string.setting_custom_csp_player_type) + " " + empty(String.valueOf(item.getPlayerType()));
+        if (item.isLive()) return status;
         if (item.isWebHome()) return status + " · " + getString(R.string.setting_custom_csp_extensions_toggle) + " " + (TextUtils.isEmpty(item.getExtensionsText()) ? getString(R.string.none) : getString(effective ? R.string.setting_enable : R.string.setting_disable));
         return status + " · " + getString(R.string.setting_custom_csp_type) + " " + item.getType();
     }
@@ -1593,8 +1593,6 @@ public class CustomCspDialog extends BaseAlertDialog {
             binding.otherValue.addTextChangedListener(new TextSync(this));
             binding.enabled.setOnClickListener(view -> toggleEnabled());
             binding.typeGroup.addOnButtonCheckedListener((group, checkedId, isChecked) -> onTypeChecked(checkedId, isChecked));
-            binding.liveTypeGroup.addOnButtonCheckedListener((group, checkedId, isChecked) -> onLiveTypeChecked(checkedId, isChecked));
-            binding.playerTypeGroup.addOnButtonCheckedListener((group, checkedId, isChecked) -> onPlayerTypeChecked(checkedId, isChecked));
             binding.hide.setOnCheckedChangeListener((button, checked) -> sync());
             binding.searchable.setOnCheckedChangeListener((button, checked) -> sync());
             binding.changeable.setOnCheckedChangeListener((button, checked) -> sync());
@@ -1642,8 +1640,6 @@ public class CustomCspDialog extends BaseAlertDialog {
             setText(binding.origin, item.getOrigin());
             setText(binding.timeZone, item.getTimeZone());
             setText(binding.timeout, item.getTimeout() == null ? "" : String.valueOf(item.getTimeout()));
-            binding.liveTypeGroup.check(liveTypeId(item.getType()));
-            binding.playerTypeGroup.check(playerTypeId(item.getPlayerType()));
             binding.hide.setChecked(item.getHide() == 1);
             binding.searchable.setChecked(item.getSearchable() == 1);
             binding.changeable.setChecked(item.getChangeable() == 1);
@@ -1718,18 +1714,6 @@ public class CustomCspDialog extends BaseAlertDialog {
             updateValidity();
         }
 
-        private void onLiveTypeChecked(int checkedId, boolean isChecked) {
-            if (bindingItem || item == null || !item.isLive() || !isChecked) return;
-            item.setType(liveTypeFromId(checkedId));
-            updateValidity();
-        }
-
-        private void onPlayerTypeChecked(int checkedId, boolean isChecked) {
-            if (bindingItem || item == null || !item.isLive() || !isChecked) return;
-            item.setPlayerType(playerTypeFromId(checkedId));
-            updateValidity();
-        }
-
         private void updateTypePanels() {
             boolean webHome = item != null && item.isWebHome();
             boolean live = item != null && item.isLive();
@@ -1743,7 +1727,6 @@ public class CustomCspDialog extends BaseAlertDialog {
             binding.extensionsFile.setVisibility(webHome && item.isExtensionsExpanded() ? View.VISIBLE : View.GONE);
             binding.extensionsLayout.setVisibility(webHome && item.isExtensionsExpanded() ? View.VISIBLE : View.GONE);
             binding.liveUrlLayout.setVisibility(live ? View.VISIBLE : View.GONE);
-            binding.liveTypePanel.setVisibility(View.GONE);
             binding.cspOptionsPanel.setVisibility(!live && !other ? View.VISIBLE : View.GONE);
             binding.keyLayout.setVisibility(!live && !other ? View.VISIBLE : View.GONE);
             binding.typeLayout.setVisibility(!webHome && !live && !other ? View.VISIBLE : View.GONE);
@@ -1891,32 +1874,6 @@ public class CustomCspDialog extends BaseAlertDialog {
                 otherInvalid = true;
             }
             updateValidity();
-        }
-
-        private int liveTypeId(int value) {
-            if (value == 1) return R.id.liveType1;
-            if (value == 2) return R.id.liveType2;
-            return R.id.liveType0;
-        }
-
-        private int playerTypeId(Integer value) {
-            if (value == null) return R.id.playerTypeUnset;
-            if (value == 0) return R.id.playerType0;
-            if (value == 1) return R.id.playerType1;
-            return R.id.playerType2;
-        }
-
-        private int liveTypeFromId(int id) {
-            if (id == R.id.liveType1) return 1;
-            if (id == R.id.liveType2) return 2;
-            return 0;
-        }
-
-        private Integer playerTypeFromId(int id) {
-            if (id == R.id.playerTypeUnset) return null;
-            if (id == R.id.playerType0) return 0;
-            if (id == R.id.playerType1) return 1;
-            return 2;
         }
 
         private boolean isAutoName(String name, String kind) {

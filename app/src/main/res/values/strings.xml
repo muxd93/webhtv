@@ -7,6 +7,9 @@
     <string name="live_pass">Pass</string>
     <string name="live_refresh">Refresh</string>
     <string name="live_line">Line <xliff:g name="name">%s</xliff:g></string>
+    <string name="live_block_clear">Clear blocked lines (<xliff:g name="count">%1$d</xliff:g>)</string>
+    <string name="config_depot_tag">Depot · <xliff:g name="name" example="xx">%s</xliff:g></string>
+    <string name="vod_depot_imported_bad">Imported %1$d VOD sources, %2$d unavailable</string>
     <string name="live_control_source">Live source</string>
     <string name="live_no_epg">00:00 - 23:59 暂无节目信息</string>
 

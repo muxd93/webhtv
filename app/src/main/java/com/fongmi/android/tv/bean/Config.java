@@ -4,6 +4,7 @@ import android.text.TextUtils;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.room.ColumnInfo;
 import androidx.room.Entity;
 import androidx.room.Ignore;
 import androidx.room.Index;
@@ -44,6 +45,12 @@ public class Config {
     private String home;
     @SerializedName("parse")
     private String parse;
+    // 多仓活仓（DEPOT1）：depot 标记本条为仓根；parentUrl 指向来源仓（普通配置为 NULL）
+    @ColumnInfo(defaultValue = "0")
+    @SerializedName("depot")
+    private boolean depot;
+    @SerializedName("parentUrl")
+    private String parentUrl;
 
     @Ignore
     @SerializedName("notice")
@@ -82,9 +89,9 @@ public class Config {
         return AppDatabase.get().getConfigDao().findUrlByType(0);
     }
 
-    public static void delete(String url) {
-        AppDatabase.get().getConfigDao().delete(url);
-        ConfigCache.delete(url);
+    /** 指定仓的现存子源（DEPOT1 父子关联；用于展开时对账清理幽灵子源）。 */
+    public static List<Config> getChildren(String parentUrl, int type) {
+        return AppDatabase.get().getConfigDao().findChildren(parentUrl, type);
     }
 
     public static void delete(String url, int type) {
@@ -199,6 +206,22 @@ public class Config {
         this.parse = parse;
     }
 
+    public boolean isDepot() {
+        return depot;
+    }
+
+    public void setDepot(boolean depot) {
+        this.depot = depot;
+    }
+
+    public String getParentUrl() {
+        return parentUrl;
+    }
+
+    public void setParentUrl(String parentUrl) {
+        this.parentUrl = parentUrl;
+    }
+
     public long getTime() {
         return time;
     }
@@ -240,6 +263,16 @@ public class Config {
 
     public Config name(String name) {
         setName(name);
+        return this;
+    }
+
+    public Config depot(boolean depot) {
+        setDepot(depot);
+        return this;
+    }
+
+    public Config parentUrl(String parentUrl) {
+        setParentUrl(parentUrl);
         return this;
     }
 

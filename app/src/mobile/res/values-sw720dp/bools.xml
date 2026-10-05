@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- sw720dp 起启用宽屏双栏：分类列表常驻侧边，内容区占剩余宽度 -->
+    <bool name="two_pane">true</bool>
+
+</resources>

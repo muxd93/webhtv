@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- 双栏分类侧栏宽度：布局（侧栏宽度 / pager 避让）与 Product 卡片宽度计算共用同一份值，避免二者漂移 -->
+    <dimen name="vod_sidebar_width">180dp</dimen>
+
+</resources>

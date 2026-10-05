@@ -44,6 +44,8 @@ public class Product {
 
     private static int[] getSpec(Context context, int space, int column, Style style) {
         int base = MobileWindow.getWidth(context) - space;
+        // 宽屏双栏下内容区被分类侧栏占去一部分宽度，卡片须按剩余宽度计算，否则右侧溢出被裁
+        if (context.getResources().getBoolean(R.bool.two_pane)) base -= context.getResources().getDimensionPixelSize(R.dimen.vod_sidebar_width);
         int width = base / column;
         int height = (int) (width / style.getRatio());
         return new int[]{width, height};

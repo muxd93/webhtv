@@ -16,6 +16,7 @@ public class LineHealthTest {
     @After
     public void reset() {
         LineHealth.resetForTest();
+        LineBlockStore.resetForTest();
     }
 
     @Test
@@ -78,5 +79,34 @@ public class LineHealthTest {
         for (int i = 0; i < 3; i++) LineHealth.failure("http://a");
         LineHealth.reorder(single);
         assertEquals("[http://a]", single.getUrls().toString());
+    }
+
+    @Test
+    public void reorderPutsBlockedAfterSunkAndKeepsSelection() {
+        Channel channel = new Channel();
+        channel.addLine("http://a", "A");
+        channel.addLine("http://b", "B");
+        channel.addLine("http://c", "C");
+        channel.addLine("http://d", "D");
+        channel.setIndex(3);
+        for (int i = 0; i < 3; i++) LineHealth.failure("http://d");
+        LineBlockStore.block("http://b", "B");
+        LineHealth.reorder(channel);
+        assertEquals("[http://a, http://c, http://d, http://b]", channel.getUrls().toString());
+        assertEquals("[A, C, D, B]", channel.getLineNames().toString());
+        assertEquals("http://d", channel.getUrls().get(channel.getIndex()));
+    }
+
+    @Test
+    public void reorderKeepsOrderWhenAllLinesBlocked() {
+        Channel channel = new Channel();
+        channel.addLine("http://a", "A");
+        channel.addLine("http://b", "B");
+        channel.setIndex(1);
+        LineBlockStore.block("http://a", "");
+        LineBlockStore.block("http://b", "");
+        LineHealth.reorder(channel);
+        assertEquals("[http://a, http://b]", channel.getUrls().toString());
+        assertEquals(1, channel.getIndex());
     }
 }
