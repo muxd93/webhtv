@@ -36,10 +36,8 @@
     <string name="keep_site_missing">Site offline, searching same-name videos</string>
     <string name="keep_empty_hint">No keeps yet\nSave a video from the player menu and it will show up here</string>
     <string name="keep_go_search">Search</string>
-    <string name="smb_menu_cover">Change cover</string>
     <string name="smb_menu_delete">Delete server</string>
     <string name="smb_delete_confirm">Delete \"%1$s\"?</string>
-    <string name="smb_url_hint">Image URL</string>
 
     <!-- Collect -->
     <string name="collect_result">Search results for <xliff:g name="name">%s</xliff:g></string>

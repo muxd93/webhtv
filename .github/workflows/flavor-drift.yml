@@ -1,0 +1,20 @@
+name: Flavor Drift Check
+
+# 非阻塞：仅输出 leanback/mobile 同名文件的分叉报告，辅助上游同步时的人工审查。
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 3 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  drift:
+    name: Report leanback/mobile drift
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run drift report
+        continue-on-error: true
+        run: bash .github/scripts/flavor-drift-check.sh

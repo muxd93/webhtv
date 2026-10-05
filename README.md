@@ -125,7 +125,7 @@ clone 仓库后直接打 debug 包：
 git clone https://github.com/fish2018/webhtv.git
 cd webhtv
 printf 'sdk.dir=%s\n' "$ANDROID_HOME" > local.properties
-bash gradlew :app:assembleLeanbackArm64_v8aDebug
+bash gradlew :app:assembleMobileArm64_v8aDebug :app:assembleLeanbackArmeabi_v7aDebug :app:assembleLeanbackArm64_v8aDebug
 ```
 
 如果构建指定开发分支，在 clone 后切换到对应分支再打包：
@@ -134,7 +134,7 @@ bash gradlew :app:assembleLeanbackArm64_v8aDebug
 git fetch origin
 git switch beta
 bash gradlew clean
-bash gradlew :app:assembleLeanbackArm64_v8aDebug
+bash gradlew :app:assembleMobileArm64_v8aDebug
 ```
 
 已 clone 仓库更新当前分支：
@@ -150,27 +150,33 @@ bash gradlew clean
 debug 包适合本地安装测试，构建速度更快：
 
 ```bash
+bash gradlew :app:assembleMobileArm64_v8aDebug
+bash gradlew :app:assembleMobileArmeabi_v7aDebug
 bash gradlew :app:assembleLeanbackArm64_v8aDebug
+bash gradlew :app:assembleLeanbackArmeabi_v7aDebug
 ```
 
 release 包适合分发测试或正式发布：
 
 ```bash
+bash gradlew :app:assembleMobileArm64_v8aRelease
+bash gradlew :app:assembleMobileArmeabi_v7aRelease
 bash gradlew :app:assembleLeanbackArm64_v8aRelease
+bash gradlew :app:assembleLeanbackArmeabi_v7aRelease
 ```
 
 临时验证“仅 Release 包可用”的接口时，可以关闭 R8/资源压缩，获得接近 debug 的构建速度：
 
 ```bash
-bash gradlew :app:assembleLeanbackArm64_v8aRelease -PfastRelease=true
+bash gradlew :app:assembleMobileArm64_v8aRelease -PfastRelease=true
 ```
 
 快速 Release 的版本标识为 `<versionName>-fast-yyyyMMddHHmm`（当前例如 `5.6.0-fast-202608101200`），时间使用上海时区；不传 `-PfastRelease=true` 时仍执行正常 Release 优化，版本标识保持 `<versionName>-yyyyMMddHHmm`。快速包只用于临时测试，不代替正式发布包。
 
-自 UNIFY1 起仅构建 leanback（TV UI，通用触屏/遥控）arm64-v8a 单包；mobile flavor 源码冻结保留但不再出包，armeabi-v7a 停止构建。
+也可以一次打常用三包：手机 64 位、电视 32 位、电视 64 位。
 
 ```bash
-bash gradlew :app:assembleLeanbackArm64_v8aDebug
+bash gradlew :app:assembleMobileArm64_v8aDebug :app:assembleLeanbackArmeabi_v7aDebug :app:assembleLeanbackArm64_v8aDebug
 ```
 
 ### MPV native/JNI 重建
@@ -203,7 +209,7 @@ bash gradlew :app:assembleLeanbackArm64_v8aDebug
 
 ```bash
 scripts/build_mpv_native.sh --abi arm64-v8a --install
-bash gradlew :app:assembleLeanbackArm64_v8aRelease -PfastRelease=true
+bash gradlew :app:assembleMobileArm64_v8aRelease -PfastRelease=true
 ```
 
 需要更新仓库 assets 时，同步安装两套 ARM ABI；只有 JNI 源码、MPV client API 或 `stream_cb.h` 变化时才重建 JNI 桥：
@@ -233,7 +239,7 @@ bash scripts/verify_mpv_native_assets.sh --require-elf
 export ANDROID_HOME="$HOME/Library/Android/sdk"
 export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/29.0.14206865"
 scripts/build_mpv_player_jni.sh --abi all --install
-bash gradlew :app:assembleLeanbackArm64_v8aDebug
+bash gradlew :app:assembleMobileArm64_v8aDebug
 ```
 
 脚本会替换：
@@ -276,7 +282,7 @@ sudo apt-get install -y openjdk-21-jdk git python3.10 python3.10-venv build-esse
 export ANDROID_HOME="$HOME/Library/Android/sdk"
 export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.2.13676358"
 bash scripts/build_ijk_native.sh --abi arm64-v8a --install
-bash gradlew :app:assembleLeanbackArm64_v8aRelease -PfastRelease=true
+bash gradlew :app:assembleMobileArm64_v8aRelease -PfastRelease=true
 ```
 
 Ubuntu 下重建 32 位 IJK：
@@ -369,8 +375,8 @@ keyPassword=your_key_password
 
 ```bash
 scripts/build_media_deps.sh
-bash gradlew :app:testLeanbackArm64_v8aDebugUnitTest --tests 'com.fongmi.android.tv.player.danmaku.*'
-bash gradlew :app:assembleLeanbackArm64_v8aDebug
+bash gradlew :app:testMobileArm64_v8aDebugUnitTest --tests 'com.fongmi.android.tv.player.danmaku.*'
+bash gradlew :app:assembleMobileArm64_v8aDebug :app:assembleLeanbackArm64_v8aDebug
 ```
 
 脚本会按 `third_party/media-lock.json` 检出锁定提交、应用全部 Media3 补丁并发布到 `third_party/maven`。上游播放器修复及其精确移植方式记录在 lock 和[相关仓库提交审计](docs/fongmi-related-repos-audit-2026-08-09.md)中；`media3-danmaku-live.patch` 还包含 Media3 渲染侧 Robolectric 压力测试。App 测试使用 MockWebServer 模拟 WebSocket，MockWebServer 仅属于 `testImplementation`，不会进入正式 APK。发布 GitHub Action 会先运行完整 WebSocket 弹幕单测，再构建 leanback arm64 release 包。

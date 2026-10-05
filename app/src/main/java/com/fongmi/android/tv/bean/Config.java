@@ -13,6 +13,7 @@ import androidx.room.PrimaryKey;
 import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.api.config.ConfigCache;
 import com.fongmi.android.tv.db.AppDatabase;
+import com.fongmi.android.tv.source.SourceState;
 import com.github.catvod.utils.Prefers;
 import com.google.gson.annotations.SerializedName;
 import com.google.gson.reflect.TypeToken;
@@ -101,12 +102,21 @@ public class Config {
 
     public static Config vod() {
         Config item = AppDatabase.get().getConfigDao().findOne(0);
-        return item == null ? create(0, DEFAULT_VOD_URL) : item;
+        Config root = depotRootOf(item, 0);
+        return root != null ? root : (item == null ? create(0, DEFAULT_VOD_URL) : item);
     }
 
     public static Config live() {
         Config item = AppDatabase.get().getConfigDao().findOne(1);
-        return item == null ? create(1) : item;
+        Config root = depotRootOf(item, 1);
+        return root != null ? root : (item == null ? create(1) : item);
+    }
+
+    /** 若最近生效源是某仓的子源，则重启后回到仓根（重新展开/探测/选健康子源），避免仓"消失"（B）。 */
+    private static Config depotRootOf(Config item, int type) {
+        if (item == null || TextUtils.isEmpty(item.getParentUrl())) return null;
+        Config root = AppDatabase.get().getConfigDao().find(item.getParentUrl(), type);
+        return (root != null && root.isDepot()) ? root : null;
     }
 
     public static Config wall() {
@@ -306,10 +316,15 @@ public class Config {
     }
 
     public void delete() {
+        // 删仓根时级联清理其子源，避免遗留孤儿子源（A：删除仓根不级联）
+        if (isDepot()) {
+            for (Config child : getChildren(getUrl(), getType())) child.delete();
+        }
         AppDatabase.get().getConfigDao().delete(getUrl(), getType());
         History.delete(getId());
         Keep.delete(getId());
         ConfigCache.delete(getUrl());
+        SourceState.clear(getUrl());
     }
 
     @NonNull

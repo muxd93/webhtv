@@ -9,7 +9,6 @@ import androidx.room.RoomDatabase;
 import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.bean.Config;
 import com.fongmi.android.tv.bean.Device;
-import com.fongmi.android.tv.bean.ElderCard;
 import com.fongmi.android.tv.bean.History;
 import com.fongmi.android.tv.bean.Keep;
 import com.fongmi.android.tv.bean.Live;
@@ -19,7 +18,6 @@ import com.fongmi.android.tv.bean.SmbServer;
 import com.fongmi.android.tv.bean.Track;
 import com.fongmi.android.tv.db.dao.ConfigDao;
 import com.fongmi.android.tv.db.dao.DeviceDao;
-import com.fongmi.android.tv.db.dao.ElderCardDao;
 import com.fongmi.android.tv.db.dao.HistoryDao;
 import com.fongmi.android.tv.db.dao.KeepDao;
 import com.fongmi.android.tv.db.dao.LiveDao;
@@ -37,7 +35,7 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 
-@Database(entities = {Keep.class, Site.class, Live.class, Track.class, Config.class, Device.class, History.class, PlaybackDeleteTombstone.class, ElderCard.class, SmbServer.class}, version = AppDatabase.VERSION)
+@Database(entities = {Keep.class, Site.class, Live.class, Track.class, Config.class, Device.class, History.class, PlaybackDeleteTombstone.class, SmbServer.class}, version = AppDatabase.VERSION)
 public abstract class AppDatabase extends RoomDatabase {
 
     public static final int VERSION = 38;
@@ -134,7 +132,6 @@ public abstract class AppDatabase extends RoomDatabase {
 
     public abstract PlaybackDeleteTombstoneDao getPlaybackDeleteTombstoneDao();
 
-    public abstract ElderCardDao getElderCardDao();
 
     public abstract SmbServerDao getSmbServerDao();
 }

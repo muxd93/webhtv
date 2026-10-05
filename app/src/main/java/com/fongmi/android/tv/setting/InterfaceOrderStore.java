@@ -5,6 +5,7 @@ import androidx.annotation.Nullable;
 
 import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.bean.Config;
+import com.fongmi.android.tv.source.SourceState;
 import com.github.catvod.utils.Prefers;
 import com.google.gson.reflect.TypeToken;
 
@@ -107,15 +108,17 @@ public final class InterfaceOrderStore {
 
     @NonNull
     public static List<Config> sortVodConfigs(@NonNull List<Config> configs) {
+        List<Config> usable = new ArrayList<>();
+        for (Config config : configs) if (config != null && SourceState.isEnabled(config)) usable.add(config);
         List<String> available = new ArrayList<>();
-        for (Config config : configs) if (config != null) available.add(config.getUrl());
+        for (Config config : usable) available.add(config.getUrl());
         List<String> order = sortUrls(available, getVodOrder(), getVodHealth());
         List<Config> result = new ArrayList<>();
         for (String url : order) {
-            Config match = find(configs, url);
+            Config match = find(usable, url);
             if (match != null && !contains(result, match)) result.add(match);
         }
-        for (Config item : configs) if (!contains(result, item)) result.add(item);
+        for (Config item : usable) if (!contains(result, item)) result.add(item);
         return result;
     }
 

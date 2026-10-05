@@ -9,7 +9,7 @@ fi
 
 CNB_API_ENDPOINT="${CNB_API_ENDPOINT:-https://api.cnb.cool}"
 CNB_WEB_ENDPOINT="${CNB_WEB_ENDPOINT:-https://cnb.cool}"
-CNB_REPO_SLUG="${CNB_REPO_SLUG:-fish2035/webhtv-release}"
+CNB_REPO_SLUG="${CNB_REPO_SLUG:-muxd93/webhtv-release}"
 CNB_REPO_URL="${CNB_REPO_URL:-${CNB_WEB_ENDPOINT}/${CNB_REPO_SLUG}.git}"
 CNB_TARGET_BRANCH="${CNB_TARGET_BRANCH:-main}"
 CNB_RELEASE_TAG="${CNB_RELEASE_TAG:?CNB_RELEASE_TAG is required}"
@@ -30,9 +30,11 @@ fi
 
 release_download_base="${CNB_WEB_ENDPOINT}/${CNB_REPO_SLUG}/-/releases/download/${CNB_RELEASE_TAG}"
 for manifest in "${json_files[@]}"; do
-  apk_name="$(basename "${manifest%.json}.apk")"
-  if [ ! -f "${DIST_DIR}/${apk_name}" ]; then
-    echo "::error title=APK missing::No APK matches ${manifest}."
+  # 从 manifest 自身的 apk 字段取真实文件名（单一真相源），不再反向推断，
+  # 使 APK 重命名（如 WebHTV-<tag>-tv.apk）与清单命名解耦。
+  apk_name="$(jq -r '.apk // empty' "$manifest" | sed 's#.*/##')"
+  if [ -z "$apk_name" ] || [ ! -f "${DIST_DIR}/${apk_name}" ]; then
+    echo "::error title=APK missing::No APK matches ${manifest} (expected ${apk_name})."
     exit 1
   fi
   temp_manifest="$(mktemp)"

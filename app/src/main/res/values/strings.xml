@@ -9,6 +9,18 @@
     <string name="live_line">Line <xliff:g name="name">%s</xliff:g></string>
     <string name="live_block_clear">Clear blocked lines (<xliff:g name="count">%1$d</xliff:g>)</string>
     <string name="config_depot_tag">Depot · <xliff:g name="name" example="xx">%s</xliff:g></string>
+    <string name="setting_source_manager">Source management</string>
+    <string name="source_enabled">Enabled</string>
+    <string name="source_disabled">Disabled</string>
+    <string name="source_reprobe">Re-probe</string>
+    <string name="source_delete">Delete</string>
+    <string name="source_delete_depot_confirm">Delete depot \"%1$s\" and its %2$d sub-sources?</string>
+    <string name="source_add_subscription">Add subscription</string>
+    <string name="source_add_hint">Enter subscription URL (depot/warehouse address)</string>
+    <string name="source_in_use">In use</string>
+    <string name="source_available">Available %1$d/%2$d</string>
+    <string name="source_probe_progress">Probing %1$d/%2$d</string>
+    <string name="source_sources_count">%1$d sources</string>
     <string name="vod_depot_imported_bad">Imported %1$d VOD sources, %2$d unavailable</string>
     <string name="live_control_source">Live source</string>
     <string name="live_no_epg">00:00 - 23:59 暂无节目信息</string>
@@ -1582,12 +1594,8 @@
 
     <string name="player_audio_badge_queue">Queue</string>
     <string name="player_audio_repeat">Repeat</string>
-    <!-- Cover tools (dormant, used by ElderCoverPickerDialog) -->
     <string name="folder_recursive">Folder playback includes subfolders</string>
     <string name="smb">SMB share</string>
-    <string name="elder_choose_cover">选择封面</string>
-    <string name="elder_cover_local">本地图片</string>
-    <string name="elder_pic_from_url">从网址设置</string>
     <string name="smb_host">Server Address</string>
     <string name="smb_name">Name</string>
     <string name="smb_share_name">Share Name</string>

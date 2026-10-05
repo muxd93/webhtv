@@ -1114,6 +1114,18 @@
     <string name="dialog_edit">修改</string>
     <string name="dialog_positive">確定</string>
     <string name="dialog_negative">取消</string>
+    <string name="setting_source_manager">資料來源管理</string>
+    <string name="source_enabled">已啟用</string>
+    <string name="source_disabled">已停用</string>
+    <string name="source_reprobe">刷新</string>
+    <string name="source_delete">刪除</string>
+    <string name="source_delete_depot_confirm">刪除倉庫「%1$s」及其 %2$d 個子源？</string>
+    <string name="source_add_subscription">新增訂閱</string>
+    <string name="source_add_hint">請輸入訂閱位址（倉庫 / 多倉 URL）</string>
+    <string name="source_in_use">使用中</string>
+    <string name="source_available">可用 %1$d/%2$d</string>
+    <string name="source_probe_progress">偵測中 %1$d/%2$d</string>
+    <string name="source_sources_count">%1$d 個源</string>
     <string name="dialog_reset">重置</string>
     <string name="setting_show">顯示</string>
     <string name="setting_hide">隱藏</string>
@@ -1558,12 +1570,8 @@
     <string name="player_audio_badge_queue">佇列</string>
     <string name="player_audio_repeat">循環</string>
 
-    <!-- Elder Mode -->
     <string name="folder_recursive">連播包含子資料夾</string>
     <string name="smb">SMB共享</string>
-    <string name="elder_choose_cover">選擇封面</string>
-    <string name="elder_cover_local">本地圖片</string>
-    <string name="elder_pic_from_url">封面從網址</string>
     <string name="smb_host">伺服器位址</string>
     <string name="smb_name">名稱</string>
     <string name="smb_share_name">共享名</string>

@@ -3,6 +3,7 @@ package com.fongmi.android.tv.bean;
 import android.text.TextUtils;
 
 import com.fongmi.android.tv.App;
+import com.fongmi.android.tv.BuildConfig;
 import com.fongmi.android.tv.api.config.ConfigCache;
 import com.fongmi.android.tv.utils.Task;
 import com.github.catvod.net.OkHttp;
@@ -31,7 +32,7 @@ public class LivePreset {
     private String note;
 
     private static final String ASSET = "live_presets.json";
-    private static final String REMOTE = "https://raw.githubusercontent.com/muxd93/webhtv/main/other/live_presets.json";
+    private static final String REMOTE = BuildConfig.LIVE_PRESET_REMOTE;
 
     public static List<LivePreset> get() {
         String cached = ConfigCache.get(REMOTE);
