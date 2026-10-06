@@ -40,6 +40,11 @@ public final class ZapPrewarm {
     private static volatile OkHttpClient prewarmClient;
     /** 最近一次尝试预热的线路 URL（host+port 端点判定用；残留仅在"无在飞但同端点"时少一次空 cancel，无害）。 */
     private static volatile String inFlightUrl;
+    /** 最近一次预热成功的端点与时间（isWarmed 复用提示用；onResponse 即算成功，响应头已到=连接建立过）。 */
+    private static volatile String warmedEndpoint;
+    private static volatile long warmedAt;
+    /** OkHttp ConnectionPool 默认 keep-alive 5 分钟（LIVE10 证据 #2），预热连接的复用窗口以此为准。 */
+    private static final long POOL_KEEP_ALIVE_MS = TimeUnit.MINUTES.toMillis(5);
 
     private ZapPrewarm() {
     }
@@ -102,6 +107,25 @@ public final class ZapPrewarm {
         return a != null && b != null && a.host().equals(b.host()) && a.port() == b.port();
     }
 
+    /** 端点标识 host:port（日志与预热存活判定共用；不落完整 URL，避免泄露路径/token）。纯函数，供单测。 */
+    static String endpointOf(String url) {
+        HttpUrl parsed = url == null ? null : HttpUrl.parse(url);
+        return parsed == null ? "(invalid)" : parsed.host() + ":" + parsed.port();
+    }
+
+    /** 起播端点是否在连接池存活窗口内被预热过（host+port 判定；推断级提示，供 ZapMetric.reuse）。 */
+    public static boolean isWarmed(String url) {
+        String warmed = warmedEndpoint;
+        if (warmed == null) return false;
+        if (System.currentTimeMillis() - warmedAt >= POOL_KEEP_ALIVE_MS) return false;
+        return warmed.equals(endpointOf(url));
+    }
+
+    static void markWarmedForTest(String endpoint, long atMs) {
+        warmedEndpoint = endpoint;
+        warmedAt = atMs;
+    }
+
     /** 按原序取前 limit 条可预热线路（跳过用户屏蔽的线路；纯函数，供单测）。 */
     static List<String> prewarmableLines(List<String> urls, int limit) {
         List<String> result = new ArrayList<>();
@@ -121,7 +145,11 @@ public final class ZapPrewarm {
      */
     public static void schedule(Channel channel) {
         long generation = GENERATION.incrementAndGet();
-        if (!matchesInFlight(channel)) cancelInFlight();
+        if (matchesInFlight(channel)) {
+            ZapMetric.prewarmKeep(endpointOf(inFlightUrl));
+        } else {
+            cancelInFlight();
+        }
         Task.schedule(() -> {
             if (GENERATION.get() == generation) run(channel, generation);
         }, DELAY_MS, TimeUnit.MILLISECONDS);
@@ -137,6 +165,7 @@ public final class ZapPrewarm {
         if (channel == null) return;
         List<String> lines = prewarmableLines(channel.getUrls(), MAX_LINES);
         if (lines.isEmpty()) return;
+        ZapMetric.prewarmStart(channel.getName(), endpointOf(lines.get(0)));
         prewarm(lines, 0, generation);
     }
 
@@ -144,20 +173,27 @@ public final class ZapPrewarm {
         try {
             String url = lines.get(index);
             inFlightUrl = url;
+            long startNs = System.nanoTime();
             Request request = new Request.Builder().url(url).tag(TAG)
                     .header("Range", "bytes=0-" + (BYTE_BUDGET - 1)).build();
             client().newCall(request).enqueue(new Callback() {
                 @Override
                 public void onResponse(Call call, Response response) {
+                    int bytes;
                     try (Response resp = response) {
-                        drain(resp);
+                        bytes = drain(resp);
                     } catch (Throwable ignored) {
+                        bytes = -1;
                     }
+                    warmedEndpoint = endpointOf(url);
+                    warmedAt = System.currentTimeMillis();
+                    ZapMetric.prewarmResult(endpointOf(url), index + 1, lines.size(), response.code(), bytes, elapsedMs(startNs));
                 }
 
                 @Override
                 public void onFailure(Call call, IOException e) {
                     // 网络级失败顺延下一条预热；用户已换台（代数变化）则整轮作废
+                    ZapMetric.prewarmResult(endpointOf(url), index + 1, lines.size(), -1, 0, elapsedMs(startNs));
                     if (GENERATION.get() == generation && index + 1 < lines.size()) prewarm(lines, index + 1, generation);
                 }
             });
@@ -165,11 +201,15 @@ public final class ZapPrewarm {
         }
     }
 
-    private static void drain(Response response) {
-        if (response.body() == null) return;
+    private static long elapsedMs(long startNs) {
+        return TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNs);
+    }
+
+    private static int drain(Response response) {
+        if (response.body() == null) return 0;
+        int total = 0;
         try (InputStream in = response.body().byteStream()) {
             byte[] buffer = new byte[8192];
-            int total = 0;
             while (total < BYTE_BUDGET) {
                 int read = in.read(buffer, 0, Math.min(buffer.length, BYTE_BUDGET - total));
                 if (read == -1) break;
@@ -177,5 +217,6 @@ public final class ZapPrewarm {
             }
         } catch (Throwable ignored) {
         }
+        return total;
     }
 }

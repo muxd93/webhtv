@@ -553,7 +553,11 @@ public class LiveSession {
         clearPendingReload();
         playbackKey = realUrl;
         hopCount = 0;
-        if (!playbackCatchup) LineHealth.success(currentLine());
+        if (!playbackCatchup) {
+            LineHealth.success(currentLine());
+            // LIVE10 起播复用提示（推断级）：本次起播端点是否在预热池存活窗口内
+            ZapMetric.reuse(ZapPrewarm.isWarmed(realUrl), channel == null ? "" : channel.getName());
+        }
         if (zapTune > 0 && !zapLogged) {
             zapLogged = true;
             ZapMetric.resolved(System.currentTimeMillis() - zapTune, channel == null ? "" : channel.getName());

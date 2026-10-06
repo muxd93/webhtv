@@ -4,6 +4,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
+import org.junit.After;
 import org.junit.Test;
 
 import java.util.Arrays;
@@ -11,6 +12,11 @@ import java.util.List;
 
 /** 换台预热资格回归：仅 http(s) 直连线路可预热，其他协议与 loopback 一律跳过；顺延选择按原序取前两条。 */
 public class ZapPrewarmTest {
+
+    @After
+    public void reset() {
+        ZapPrewarm.markWarmedForTest(null, 0);
+    }
 
     @Test
     public void onlyHttpHttpsArePrewarmable() {
@@ -59,5 +65,26 @@ public class ZapPrewarmTest {
         assertFalse(ZapPrewarm.sameEndpoint("http://a/x", "rtp://a/x"));
         assertFalse(ZapPrewarm.sameEndpoint(null, "http://a/x"));
         assertFalse(ZapPrewarm.sameEndpoint("http://a/x", null));
+    }
+
+    @Test
+    public void endpointOfExtractsHostPortAndMasksInvalid() {
+        assertEquals("a:80", ZapPrewarm.endpointOf("http://a/x"));
+        assertEquals("a:8080", ZapPrewarm.endpointOf("http://a:8080/live.m3u8"));
+        assertEquals("b:443", ZapPrewarm.endpointOf("https://B/y?token=1"));
+        assertEquals("(invalid)", ZapPrewarm.endpointOf("rtp://x"));
+        assertEquals("(invalid)", ZapPrewarm.endpointOf(null));
+    }
+
+    @Test
+    public void isWarmedRequiresSameEndpointInsidePoolWindow() {
+        long now = System.currentTimeMillis();
+        ZapPrewarm.markWarmedForTest("a:80", now - 1000);
+        assertTrue(ZapPrewarm.isWarmed("http://a/live.m3u8"));
+        assertFalse(ZapPrewarm.isWarmed("http://a:8080/live.m3u8"));
+        assertFalse(ZapPrewarm.isWarmed("https://a/live.m3u8"));
+        assertFalse(ZapPrewarm.isWarmed(null));
+        ZapPrewarm.markWarmedForTest("a:80", now - 6 * 60 * 1000);
+        assertFalse(ZapPrewarm.isWarmed("http://a/live.m3u8"));
     }
 }
