@@ -15,6 +15,7 @@ import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.gitcloud.GitCloudAccountStore;
 import com.fongmi.android.tv.playback.ViewingRecordSyncStore;
 import com.fongmi.android.tv.remote.RemoteStore;
+import com.fongmi.android.tv.service.DLNARendererService;
 import com.fongmi.android.tv.setting.Setting;
 import com.fongmi.android.tv.databinding.ActivitySettingEnhanceBinding;
 import com.fongmi.android.tv.setting.CustomCspSetting;
@@ -55,6 +56,29 @@ public class SettingEnhanceActivity extends BaseActivity {
 
     private String getSwitch(boolean value) {
         return getString(value ? R.string.setting_enable : R.string.setting_disable);
+    }
+
+    private void setDlna(View view) {
+        Setting.putDlnaEnabled(!Setting.isDlnaEnabled());
+        mBinding.dlnaText.setText(getSwitch(Setting.isDlnaEnabled()));
+        // 开关即时启停接收服务，与原设置页行为一致
+        if (Setting.isDlnaEnabled()) DLNARendererService.start(this);
+        else DLNARendererService.stop(this);
+    }
+
+    private void setHomeClean(View view) {
+        Setting.putHomeCleanBackground(!Setting.isHomeCleanBackground());
+        mBinding.homeCleanText.setText(getSwitch(Setting.isHomeCleanBackground()));
+    }
+
+    private void setPowerSave(View view) {
+        Setting.putPowerSaveStartup(!Setting.isPowerSaveStartup());
+        mBinding.powerSaveText.setText(getSwitch(Setting.isPowerSaveStartup()));
+    }
+
+    private void setTtsFocus(View view) {
+        Setting.putTtsFocus(!Setting.isTtsFocus());
+        mBinding.ttsFocusText.setText(getSwitch(Setting.isTtsFocus()));
     }
 
     @Override
@@ -99,6 +123,11 @@ public class SettingEnhanceActivity extends BaseActivity {
         mBinding.loginState.setOnClickListener(view -> LoginStateLearnDialog.show(this, this::setText));
         mBinding.staleRefresh.setOnClickListener(this::setStaleRefresh);
         mBinding.oneKeySync.setOnClickListener(v -> OneKeySyncDialog.create().show(this));
+        // 自设置主页迁入：网络/后台策略与无障碍播报（QA2）
+        mBinding.dlna.setOnClickListener(this::setDlna);
+        mBinding.homeClean.setOnClickListener(this::setHomeClean);
+        mBinding.powerSave.setOnClickListener(this::setPowerSave);
+        mBinding.ttsFocus.setOnClickListener(this::setTtsFocus);
     }
 
     private void reorderItems() {
@@ -154,6 +183,10 @@ public class SettingEnhanceActivity extends BaseActivity {
             int pending = LoginStateSync.pendingPaths().size();
             return getString(LoginStateSync.hasLearningSnapshot() ? R.string.login_state_learning_count : R.string.login_state_count, learned, pending);
         });
+        safeSet("dlna", mBinding.dlnaText, () -> getSwitch(Setting.isDlnaEnabled()));
+        safeSet("homeClean", mBinding.homeCleanText, () -> getSwitch(Setting.isHomeCleanBackground()));
+        safeSet("powerSave", mBinding.powerSaveText, () -> getSwitch(Setting.isPowerSaveStartup()));
+        safeSet("ttsFocus", mBinding.ttsFocusText, () -> getSwitch(Setting.isTtsFocus()));
     }
 
     private boolean canSetText() {

@@ -66,7 +66,6 @@ import com.fongmi.android.tv.ui.base.BaseActivity;
 import com.fongmi.android.tv.ui.custom.CustomRowPresenter;
 import com.fongmi.android.tv.ui.custom.CustomSelector;
 import com.fongmi.android.tv.ui.custom.CustomTitleView;
-import com.fongmi.android.tv.ui.dialog.AppListDialog;
 import com.fongmi.android.tv.ui.dialog.SmbServerDialog;
 import com.fongmi.android.tv.ui.dialog.SiteDialog;
 import com.fongmi.android.tv.ui.presenter.FuncPresenter;
@@ -269,9 +268,8 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
     @Override
     protected void initEvent() {
         mBinding.title.setListener(this);
-        // 右上角工具栏按钮：设置与应用（功能行降权后的系统入口）
+        // 右上角工具栏按钮：设置（QA2：应用列表入口移除）
         mBinding.btnSetting.setOnClickListener(v -> SettingActivity.start(this));
-        mBinding.btnApp.setOnClickListener(v -> AppListDialog.show(this));
         mBinding.toolbar.addOnLayoutChangeListener((v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
             syncNativeContentInset();
             syncWebOverlayLayout();

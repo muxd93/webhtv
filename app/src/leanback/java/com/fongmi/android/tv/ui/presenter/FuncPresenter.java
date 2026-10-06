@@ -44,6 +44,7 @@ public class FuncPresenter extends Presenter {
         holder.binding.text.setText(item.getText());
         holder.binding.icon.setImageResource(item.getDrawable());
         applyTierStyle(holder, item.getTier());
+        applyIconTint(holder, item);
         setOnClickListener(holder, view -> listener.onItemClick(item));
         holder.view.setOnLongClickListener(view -> listener.onLongClick(item));
         holder.view.setOnFocusChangeListener((view, hasFocus) -> {
@@ -56,16 +57,21 @@ public class FuncPresenter extends Presenter {
     public void onUnbindViewHolder(@NonNull Presenter.ViewHolder viewHolder) {
     }
 
-    /** 主组保持默认醒目样式；次组降权（缩小文字、降低不透明度）并在组前留出分隔间距 */
+    /** 主次组统一醒目度（QA2 反馈：降权样式被误读为禁用）；次组仅保留组前分隔间距 */
     private void applyTierStyle(ViewHolder holder, Func.Tier tier) {
-        boolean secondary = tier == Func.Tier.SECONDARY;
-        holder.binding.text.setTextSize(TypedValue.COMPLEX_UNIT_SP, secondary ? 15 : 18);
-        holder.binding.getRoot().setAlpha(secondary ? 0.68f : 1f);
+        holder.binding.text.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
+        holder.binding.getRoot().setAlpha(1f);
         ViewGroup.LayoutParams lp = holder.binding.getRoot().getLayoutParams();
         if (lp instanceof MarginLayoutParams) {
-            ((MarginLayoutParams) lp).leftMargin = secondary ? ResUtil.dp2px(18) : 0;
+            ((MarginLayoutParams) lp).leftMargin = tier == Func.Tier.SECONDARY ? ResUtil.dp2px(18) : 0;
             holder.binding.getRoot().setLayoutParams(lp);
         }
+    }
+
+    /** 全部功能项彩色图标；无色项（0）保持原样 */
+    private void applyIconTint(ViewHolder holder, Func item) {
+        int tint = item.getTint();
+        if (tint != 0) holder.binding.icon.setImageTintList(android.content.res.ColorStateList.valueOf(tint));
     }
 
     private boolean onKeyDown(android.view.View view, KeyEvent event) {

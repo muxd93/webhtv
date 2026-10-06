@@ -115,20 +115,6 @@
             android:scaleType="fitCenter"
             android:src="@drawable/ic_home_setting"
             android:nextFocusLeft="@id/title"
-            android:nextFocusRight="@id/btnApp"
-            android:nextFocusDown="@id/recycler" />
-
-        <androidx.appcompat.widget.AppCompatImageButton
-            android:id="@+id/btnApp"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:background="@drawable/selector_item"
-            android:contentDescription="@string/home_app"
-            android:focusable="true"
-            android:padding="11dp"
-            android:scaleType="fitCenter"
-            android:src="@drawable/ic_home_app"
-            android:nextFocusLeft="@id/btnSetting"
             android:nextFocusDown="@id/recycler" />
 
 

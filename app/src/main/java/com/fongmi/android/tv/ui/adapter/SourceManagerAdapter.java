@@ -20,6 +20,7 @@ import com.fongmi.android.tv.databinding.AdapterSourceHeaderBinding;
 import com.fongmi.android.tv.databinding.AdapterSourceItemBinding;
 import com.fongmi.android.tv.databinding.AdapterSourceSectionBinding;
 import com.fongmi.android.tv.source.SourceState;
+import com.fongmi.android.tv.utils.UrlUtil;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -437,7 +438,10 @@ public class SourceManagerAdapter extends RecyclerView.Adapter<RecyclerView.View
             b.check.setOnCheckedChangeListener(null);
             b.check.setChecked(enabled);
             b.check.setOnCheckedChangeListener((buttonView, isChecked) -> listener.onToggleEnabled(item, isChecked));
-            b.text.setText(typeName(item.getType()) + " · " + item.getDesc());
+            // 仓子源常以 URL 充当名称（仓 JSON 未写 name）：回退短名（路径尾段/主机名），与组头的 desc==url 守卫同语义（QA2）
+            String desc = item.getDesc();
+            String label = TextUtils.equals(desc, item.getUrl()) ? UrlUtil.getName(item.getUrl()) : desc;
+            b.text.setText(typeName(item.getType()) + " · " + label);
             b.used.setVisibility(used ? View.VISIBLE : View.GONE);
             // 使用中的源不允许就地删除（与历史列表规则一致），先切换再删
             b.delete.setVisibility(used ? View.GONE : View.VISIBLE);

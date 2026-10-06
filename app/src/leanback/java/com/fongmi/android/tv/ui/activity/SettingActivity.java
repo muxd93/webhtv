@@ -31,7 +31,6 @@ import com.fongmi.android.tv.impl.Callback;
 import com.fongmi.android.tv.impl.ConfigListener;
 import com.fongmi.android.tv.impl.LiveListener;
 import com.fongmi.android.tv.impl.SiteListener;
-import com.fongmi.android.tv.service.DLNARendererService;
 import com.fongmi.android.tv.setting.PlayerSetting;
 import com.fongmi.android.tv.setting.Setting;
 import com.fongmi.android.tv.ui.base.BaseActivity;
@@ -105,10 +104,6 @@ public class SettingActivity extends BaseActivity implements ConfigListener, Sit
         mBinding.autoNextText.setText(getSwitch(Setting.isAutoNextEps()));
         mBinding.folderRecursiveText.setText(getSwitch(Setting.isFolderRecursive()));
         mBinding.pauseOnLeaveText.setText(getSwitch(Setting.isPauseOnLeave()));
-        mBinding.powerSaveText.setText(getSwitch(Setting.isPowerSaveStartup()));
-        mBinding.ttsFocusText.setText(getSwitch(Setting.isTtsFocus()));
-        mBinding.dlnaText.setText(getSwitch(Setting.isDlnaEnabled()));
-        mBinding.homeCleanText.setText(getSwitch(Setting.isHomeCleanBackground()));
         mBinding.languageText.setText((language = ResUtil.getStringArray(R.array.select_language))[Setting.getLanguageIndex()]);
         mBinding.sizeText.setText((size = ResUtil.getStringArray(R.array.select_size))[PlayerSetting.getSize()]);
     }
@@ -146,10 +141,6 @@ public class SettingActivity extends BaseActivity implements ConfigListener, Sit
         mBinding.autoNext.setOnClickListener(this::setAutoNext);
         mBinding.folderRecursive.setOnClickListener(this::setFolderRecursive);
         mBinding.pauseOnLeave.setOnClickListener(this::setPauseOnLeave);
-        mBinding.powerSave.setOnClickListener(this::setPowerSave);
-        mBinding.ttsFocus.setOnClickListener(this::setTtsFocus);
-        mBinding.dlna.setOnClickListener(this::setDlna);
-        mBinding.homeClean.setOnClickListener(this::setHomeClean);
         mBinding.vodHistory.setOnClickListener(this::onVodHistory);
         mBinding.liveHistory.setOnClickListener(this::onLiveHistory);
         mBinding.wallDefault.setOnClickListener(this::setWallDefault);
@@ -308,29 +299,6 @@ public class SettingActivity extends BaseActivity implements ConfigListener, Sit
     private void setPauseOnLeave(View view) {
         Setting.putPauseOnLeave(!Setting.isPauseOnLeave());
         mBinding.pauseOnLeaveText.setText(getSwitch(Setting.isPauseOnLeave()));
-    }
-
-    private void setPowerSave(View view) {
-        Setting.putPowerSaveStartup(!Setting.isPowerSaveStartup());
-        mBinding.powerSaveText.setText(getSwitch(Setting.isPowerSaveStartup()));
-    }
-
-    private void setTtsFocus(View view) {
-        Setting.putTtsFocus(!Setting.isTtsFocus());
-        mBinding.ttsFocusText.setText(getSwitch(Setting.isTtsFocus()));
-    }
-
-    private void setDlna(View view) {
-        Setting.putDlnaEnabled(!Setting.isDlnaEnabled());
-        mBinding.dlnaText.setText(getSwitch(Setting.isDlnaEnabled()));
-        // 开关即时启停接收服务，与原老人设置页行为一致
-        if (Setting.isDlnaEnabled()) DLNARendererService.start(this);
-        else DLNARendererService.stop(this);
-    }
-
-    private void setHomeClean(View view) {
-        Setting.putHomeCleanBackground(!Setting.isHomeCleanBackground());
-        mBinding.homeCleanText.setText(getSwitch(Setting.isHomeCleanBackground()));
     }
 
     @Override

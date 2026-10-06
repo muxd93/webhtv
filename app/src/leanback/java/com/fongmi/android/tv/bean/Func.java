@@ -44,6 +44,18 @@ public class Func implements Diffable<Func> {
         return tier;
     }
 
+    /** 功能项图标着色（QA2：全部彩色化提升观感）；0 = 不着色。取值与 ic_home_smb/file/app 的 300 系配色一致 */
+    public int getTint() {
+        if (resId == R.string.home_live) return 0xFFE57373;
+        else if (resId == R.string.home_search) return 0xFF4DD0E1;
+        else if (resId == R.string.home_keep) return 0xFFFFD54F;
+        else if (resId == R.string.home_push) return 0xFFBA68C8;
+        else if (resId == R.string.home_smb) return 0xFF81C784;
+        else if (resId == R.string.home_file) return 0xFFFFB74D;
+        else if (resId == R.string.home_app) return 0xFF64B5F6;
+        return 0;
+    }
+
     public String getText() {
         return ResUtil.getString(resId);
     }
