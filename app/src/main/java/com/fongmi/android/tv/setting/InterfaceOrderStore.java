@@ -22,6 +22,7 @@ public final class InterfaceOrderStore {
 
     public static final String KEY_VOD = "interface_order_vod";
     public static final String KEY_VOD_HEALTH = "interface_health_vod";
+    public static final String KEY_LIVE_HEALTH = "interface_health_live";
     private static final Type STRING_LIST = new TypeToken<List<String>>() {}.getType();
     private static final Type HEALTH_MAP = new TypeToken<Map<String, HealthEntry>>() {}.getType();
 
@@ -70,10 +71,39 @@ public final class InterfaceOrderStore {
         putVodOrder(order);
     }
 
-    /** 记录子源健康采样（同 url 以最新为准）；仓展开预检时调用。 */
+    /** 按配置类型记录健康采样（SRCUI6/S1）：0=VOD、1=Live 落盘，2=Wall 无消费方 no-op。 */
+    public static void recordHealth(int type, @Nullable List<HealthSample> samples) {
+        String key = type == 0 ? KEY_VOD_HEALTH : type == 1 ? KEY_LIVE_HEALTH : null;
+        if (key == null) return;
+        recordHealth(key, samples);
+    }
+
+    /** 记录 VOD 子源健康采样（同 url 以最新为准）；仓展开预检时调用。 */
     public static void recordVodHealth(@Nullable List<HealthSample> samples) {
+        recordHealth(KEY_VOD_HEALTH, samples);
+    }
+
+    /** 记录 Live 子源健康采样（SRCUI2/P4）：仅用于源管理弹窗显示，不参与直播排序。 */
+    public static void recordLiveHealth(@Nullable List<HealthSample> samples) {
+        recordHealth(KEY_LIVE_HEALTH, samples);
+    }
+
+    /** 删除配置时清理其健康条目（SRCUI6/S3），防止健康 map 随历史 url 无界增长。 */
+    public static void removeHealth(@Nullable String url) {
+        if (isEmpty(url)) return;
+        removeHealthKey(KEY_VOD_HEALTH, url);
+        removeHealthKey(KEY_LIVE_HEALTH, url);
+    }
+
+    private static void removeHealthKey(String key, String url) {
+        Map<String, HealthEntry> entries = readHealth(key);
+        if (entries.remove(url) == null) return;
+        Prefers.put(key, App.gson().toJson(entries));
+    }
+
+    private static void recordHealth(String key, @Nullable List<HealthSample> samples) {
         if (samples == null || samples.isEmpty()) return;
-        Map<String, HealthEntry> entries = readHealth();
+        Map<String, HealthEntry> entries = readHealth(key);
         long now = System.currentTimeMillis();
         for (HealthSample sample : samples) {
             if (sample == null || isEmpty(sample.url)) continue;
@@ -83,20 +113,28 @@ public final class InterfaceOrderStore {
             entry.ms = sample.ms;
             entries.put(sample.url, entry);
         }
-        Prefers.put(KEY_VOD_HEALTH, App.gson().toJson(entries));
+        Prefers.put(key, App.gson().toJson(entries));
     }
 
     /** 健康布尔视图（无记录视为健康/未知；仅显式 false 沉底）。 */
     @NonNull
     public static Map<String, Boolean> getVodHealth() {
+        return getHealth(0);
+    }
+
+    /** 按配置类型的健康历史视图（SRCUI2/P4）：0=VOD，1=Live，其余无档返回空。 */
+    @NonNull
+    public static Map<String, Boolean> getHealth(int type) {
+        String key = type == 0 ? KEY_VOD_HEALTH : type == 1 ? KEY_LIVE_HEALTH : null;
         Map<String, Boolean> result = new HashMap<>();
-        for (Map.Entry<String, HealthEntry> item : readHealth().entrySet()) result.put(item.getKey(), item.getValue().ok);
+        if (key == null) return result;
+        for (Map.Entry<String, HealthEntry> item : readHealth(key).entrySet()) result.put(item.getKey(), item.getValue().ok);
         return result;
     }
 
     @NonNull
-    private static Map<String, HealthEntry> readHealth() {
-        String json = Prefers.getString(KEY_VOD_HEALTH, "{}");
+    private static Map<String, HealthEntry> readHealth(String key) {
+        String json = Prefers.getString(key, "{}");
         if (isEmpty(json)) return new HashMap<>();
         try {
             Map<String, HealthEntry> map = App.gson().fromJson(json, HEALTH_MAP);

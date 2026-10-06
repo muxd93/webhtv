@@ -128,10 +128,10 @@ public class History implements Diffable<History> {
         return AppDatabase.get().getHistoryDao().findAcrossConfigs(System.currentTimeMillis() - Constant.HISTORY_TIME);
     }
 
-    /** 聚合模式渲染用的配置名映射（id → desc）。 */
+    /** 聚合模式渲染用的配置名映射（id → desc）；仓子源显示其仓根名（SRCUI4）。 */
     public static Map<Integer, String> configNameMap() {
         Map<Integer, String> names = new HashMap<>();
-        for (Config config : Config.getAll(VodConfig.VOD)) names.put(config.getId(), config.getDesc());
+        for (Config config : Config.getAll(VodConfig.VOD)) names.put(config.getId(), config.rootOrSelf().getDesc());
         return names;
     }
 

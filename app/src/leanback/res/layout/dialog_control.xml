@@ -358,6 +358,30 @@
 
             </androidx.appcompat.widget.LinearLayoutCompat>
 
+            <com.google.android.material.textview.MaterialTextView
+                android:id="@+id/qualityText"
+                style="@style/ControlSheetTitle"
+                android:text="@string/control_quality"
+                android:visibility="gone"
+                tools:visibility="visible" />
+
+            <HorizontalScrollView
+                android:id="@+id/qualityScroll"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:scrollbars="none"
+                android:visibility="gone"
+                tools:visibility="visible">
+
+                <androidx.appcompat.widget.LinearLayoutCompat
+                    android:id="@+id/qualityGroup"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal" />
+
+            </HorizontalScrollView>
+
         </androidx.appcompat.widget.LinearLayoutCompat>
     </androidx.core.widget.NestedScrollView>
 </FrameLayout>

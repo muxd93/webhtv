@@ -18,7 +18,7 @@ public abstract class ConfigDao extends BaseDao<Config> {
     public abstract List<Config> findByType(int type);
 
     @SuppressWarnings(RoomWarnings.QUERY_MISMATCH)
-    @Query("SELECT id, name, url, type, time, depot, parentUrl FROM Config WHERE type = :type ORDER BY time DESC")
+    @Query("SELECT id, name, url, type, time, depot, parentUrl FROM Config WHERE type = :type AND (parentUrl IS NULL OR parentUrl = '') ORDER BY time DESC")
     public abstract List<Config> findUrlByType(int type);
 
     @Query("SELECT * FROM Config WHERE id = :id")

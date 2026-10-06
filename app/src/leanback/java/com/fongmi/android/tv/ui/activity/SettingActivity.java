@@ -152,7 +152,6 @@ public class SettingActivity extends BaseActivity implements ConfigListener, Sit
         mBinding.homeClean.setOnClickListener(this::setHomeClean);
         mBinding.vodHistory.setOnClickListener(this::onVodHistory);
         mBinding.liveHistory.setOnClickListener(this::onLiveHistory);
-        mBinding.sourceManager.setOnClickListener(this::onSourceManager);
         mBinding.wallDefault.setOnClickListener(this::setWallDefault);
         mBinding.wallRefresh.setOnClickListener(this::setWallRefresh);
         mBinding.wallRefresh.setOnLongClickListener(this::onWallHistory);
@@ -216,15 +215,15 @@ public class SettingActivity extends BaseActivity implements ConfigListener, Sit
     }
 
     private void onVod(View view) {
-        ConfigDialog.create().vod().show(this);
+        SourceManagerDialog.create(this).type(0).show(this);
     }
 
     private void onLive(View view) {
-        ConfigDialog.create().live().show(this);
+        SourceManagerDialog.create(this).type(1).show(this);
     }
 
     private void onWall(View view) {
-        ConfigDialog.create().wall().show(this);
+        SourceManagerDialog.create(this).type(2).show(this);
     }
 
     private boolean onVodEdit(View view) {
@@ -256,10 +255,6 @@ public class SettingActivity extends BaseActivity implements ConfigListener, Sit
 
     private void onLiveHistory(View view) {
         HistoryDialog.create().live().show(this);
-    }
-
-    private void onSourceManager(View view) {
-        SourceManagerDialog.create(this).show(this);
     }
 
     private void onPlayer(View view) {
@@ -418,12 +413,6 @@ public class SettingActivity extends BaseActivity implements ConfigListener, Sit
                 Notify.show(R.string.restore_fail);
             }
         }).show(this));
-    }
-
-    private void initConfig() {
-        VodConfig.get().init().load(getCallback());
-        LiveConfig.get().init().load();
-        WallConfig.get().init().load();
     }
 
     @Subscribe(threadMode = ThreadMode.MAIN)

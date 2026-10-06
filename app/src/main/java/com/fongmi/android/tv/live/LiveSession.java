@@ -19,6 +19,7 @@ import com.fongmi.android.tv.utils.Task;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Shared live tuning state machine behind both the leanback and the mobile
@@ -33,6 +34,10 @@ import java.util.List;
  * remain reserved for parse-time merging of same-name channels).</p>
  */
 public class LiveSession {
+
+    /** 连续自动跳台上限:防死循环兜底(单频道组环绕自跳、全源死源等场景最多空转 3 次)。 */
+    private static final int MAX_AUTO_HOP = 3;
+    private static final long AUTO_HOP_DELAY_MS = 2000;
 
     public interface Listener {
 
@@ -51,6 +56,10 @@ public class LiveSession {
         void onLineChanged(boolean showInfo);
 
         void onCatchupLoading(EpgData data);
+
+        /** 点击无回看能力的已播节目时回调(默认静默,flavor 侧决定是否提示)。 */
+        default void onCatchupUnsupported() {
+        }
 
         void onEpgUpdated(Epg epg);
 
@@ -83,6 +92,8 @@ public class LiveSession {
     private String pendingReloadMsg;
     private boolean rendered;
     private boolean playbackCatchup;
+    private int hopCount;
+    private int hopGeneration;
     private long zapTune;
     private boolean zapLogged;
 
@@ -184,6 +195,8 @@ public class LiveSession {
         playbackKey = null;
         clearPendingReload();
         playbackCatchup = false;
+        hopCount = 0;
+        cancelAutoHop();
         zapTune = 0;
         zapLogged = false;
         ZapPrewarm.cancel();
@@ -320,6 +333,7 @@ public class LiveSession {
 
     public void tune(Channel item, boolean syncUi) {
         if (item == null || group == null) return;
+        cancelAutoHop();
         List<Channel> channels = group.getChannel();
         for (int i = 0; i < channels.size(); i++) {
             if (channels.get(i) == item) {
@@ -444,18 +458,36 @@ public class LiveSession {
         }
     }
 
+    /**
+     * 频道当前线路能否回看该节目:能力(catchup 声明 / PLTV 特征自动预设 / RTSP 时移)
+     * + days 窗口,供节目单状态标签与点击决策共用,保证"显示可回看"与"点击可回看"不漂移。
+     */
+    public static boolean isCatchupable(Channel channel, EpgData data) {
+        if (channel == null || data == null || data.isFuture() || !data.isPast()) return false;
+        if (channel.isRtsp()) return true;
+        if (!channel.hasCatchup()) return false;
+        return channel.getCatchup().withinDays(data);
+    }
+
     public void onEpgDataClick(EpgData data) {
-        if (channel == null || data == null) return;
-        if (data.isSelected()) {
-            fetchCatchup(data);
-        } else if (channel.hasCatchup() || channel.isRtsp()) {
-            listener.onCatchupLoading(data);
-            fetchCatchup(data);
+        if (channel == null || data == null || data.isFuture()) return;
+        // 回看中点正在播的这档 = 回直播;直播中点当前档仍走下方选中分支(从头看本档)
+        if (data.isInRange() && isCatchup()) {
+            getEpg();
+            fetchLive();
+            return;
         }
+        if (data.isSelected() || isCatchupable(channel, data)) {
+            if (!data.isSelected()) listener.onCatchupLoading(data);
+            fetchCatchup(data);
+            return;
+        }
+        listener.onCatchupUnsupported();
     }
 
     public void fetchLive() {
         if (channel == null) return;
+        cancelAutoHop();
         playbackCatchup = false;
         LiveConfig.get().setKeep(channel);
         listener.onFetch(false);
@@ -491,6 +523,7 @@ public class LiveSession {
         }
         clearPendingReload();
         playbackKey = realUrl;
+        hopCount = 0;
         if (!playbackCatchup) LineHealth.success(currentLine());
         if (zapTune > 0 && !zapLogged) {
             zapLogged = true;
@@ -545,6 +578,34 @@ public class LiveSession {
         startFlow();
         // 沉底即时生效：换线落点已定，立刻重排本频道（后续换台/线路列表直接反映）
         if (sunk && channel != null) LineHealth.reorder(channel);
+        scheduleAutoHopIfNeeded();
+    }
+
+    /**
+     * 全线路失败兜底:换线不可用(自动换线关闭或已是最后一线)时延时跳下一台。
+     * 代数校验防串台——期间任何 tune/fetchLive(用户手动动作、重载链)都会使挂起跳台作废;
+     * 播放成功清零计数,连续 MAX_AUTO_HOP 次失败后停回错误视图。
+     */
+    private void scheduleAutoHopIfNeeded() {
+        if (!LiveSetting.isAutoHop() || playbackCatchup || channel == null) return;
+        if (LiveSetting.isChange() && !channel.isLast()) return;
+        if (hopCount >= MAX_AUTO_HOP) return;
+        int generation = ++hopGeneration;
+        Task.schedule(() -> {
+            if (generation != hopGeneration || channel == null) return;
+            hopCount++;
+            nextChannel();
+        }, AUTO_HOP_DELAY_MS, TimeUnit.MILLISECONDS);
+    }
+
+    private void cancelAutoHop() {
+        hopGeneration++;
+    }
+
+    /** 页面销毁:作废挂起的自动跳台与在途预热,防止死后回调触碰已释放的播放器(同 mKeyDown.release 语义)。 */
+    public void release() {
+        cancelAutoHop();
+        ZapPrewarm.cancel();
     }
 
     private void startFlow() {

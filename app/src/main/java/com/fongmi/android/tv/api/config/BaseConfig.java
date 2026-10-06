@@ -8,9 +8,11 @@ import com.fongmi.android.tv.api.Decoder;
 import com.fongmi.android.tv.bean.Config;
 import com.fongmi.android.tv.bean.Depot;
 import com.fongmi.android.tv.event.ConfigEvent;
+import com.fongmi.android.tv.db.AppDatabase;
 import com.fongmi.android.tv.source.SourceState;
 import com.fongmi.android.tv.impl.Callback;
 import com.fongmi.android.tv.server.Server;
+import com.fongmi.android.tv.setting.InterfaceOrderStore;
 import com.fongmi.android.tv.setting.Setting;
 import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.Task;
@@ -29,8 +31,10 @@ import com.google.gson.JsonObject;
 import java.io.InterruptedIOException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Deque;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -148,7 +152,7 @@ abstract class BaseConfig {
     private void loadDispatch(int id, Config config, Callback callback, boolean silent) {
         depotStack.clear();
         String cached = ConfigCache.get(config.getUrl());
-        if (cached == null) loadConfig(id, config, callback, silent);
+        if (cached == null) loadConfig(id, config, callback, silent, null);
         else loadCachedConfig(id, config, cached, callback, silent);
     }
 
@@ -173,17 +177,22 @@ abstract class BaseConfig {
         } finally {
             if (taskId.get() == id && !suppressEvent) postEvent();
         }
-        if (taskId.get() == id) App.post(() -> loadFromNetwork(new Callback(), true));
+        if (taskId.get() == id) App.post(() -> loadFromNetwork(new Callback(), true, cached));
     }
 
     private void loadFromNetwork(Callback callback, boolean silent) {
+        loadFromNetwork(callback, silent, null);
+    }
+
+    /** SWR 静默回验（expected = 刚渲染的缓存内容）：网络内容一致时只续时间戳，跳过解析与仓探测。 */
+    private void loadFromNetwork(Callback callback, boolean silent, String expected) {
         beforeLoad();
         int id = taskId.incrementAndGet();
         if (future != null && !future.isDone()) future.cancel(true);
         suppressEvent = false;
         Config target = config == null ? defaultConfig() : config;
         depotStack.clear();
-        future = Task.submit(() -> loadConfig(id, target, callback, silent));
+        future = Task.submit(() -> loadConfig(id, target, callback, silent, expected));
         callback.start();
     }
 
@@ -198,11 +207,11 @@ abstract class BaseConfig {
         depotStack.poll();
     }
 
-    protected void loadConfig(int id, Config config, Callback callback, boolean silent) {
+    protected void loadConfig(int id, Config config, Callback callback, boolean silent, String expected) {
         try {
             Server.get().start();
             OkHttp.cancel(getTag());
-            load(config);
+            load(config, expected);
             if (taskId.get() != id) return;
             if (config.equals(this.config)) config.update();
             onLoadSuccess();
@@ -225,10 +234,23 @@ abstract class BaseConfig {
 
     /** 网络拉取，失败时回退到上次成功的缓存内容；解析失败同样回退。 */
     protected void load(Config config) throws Throwable {
+        load(config, null);
+    }
+
+    /** expected 非空时为 SWR 静默回验：网络内容与刚渲染的缓存一致则只续时间戳，跳过解析（仓路径即跳过重复探测）。 */
+    protected void load(Config config, String expected) throws Throwable {
         try {
-            parseAndCache(config, fetchJson(config));
+            String json = fetchJson(config);
+            if (expected != null && expected.equals(json)) {
+                onFetched(config);
+                onLoadHealth(config, true);
+                return;
+            }
+            parseAndCache(config, json);
             onFetched(config);
+            onLoadHealth(config, true);
         } catch (Throwable e) {
+            if (!isCanceled(e)) onLoadHealth(config, false);
             String cached = ConfigCache.get(config.getUrl());
             if (cached == null) throw e;
             if (cached.equals(loadedJson)) {
@@ -239,6 +261,12 @@ abstract class BaseConfig {
             App.post(() -> Notify.show("网络异常，已加载缓存配置"));
             parseAndCache(config, cached);
         }
+    }
+
+    /** 加载结果健康回写（SRCUI6/S2）：双向自愈，替代 VodConfig 侧单点失败回写；Live 经继承免费获得；仅 http 配置。 */
+    private void onLoadHealth(Config config, boolean ok) {
+        if (config == null || TextUtils.isEmpty(config.getUrl()) || !config.getUrl().startsWith("http")) return;
+        InterfaceOrderStore.recordHealth(config.getType(), Collections.singletonList(new InterfaceOrderStore.HealthSample(config.getUrl(), ok, System.currentTimeMillis(), 0)));
     }
 
     protected String fetchJson(Config config) throws Throwable {
@@ -342,21 +370,43 @@ abstract class BaseConfig {
         enterDepot(root.getUrl());
         try {
             List<Config> children = new ArrayList<>();
-            for (Depot item : items) children.add(Config.find(item, type).parentUrl(root.getUrl()).save());
+            for (Depot item : items) {
+                Config child = AppDatabase.get().getConfigDao().find(item.getUrl(), type);
+                boolean changed = child == null
+                        || !root.getUrl().equals(child.getParentUrl())
+                        || !TextUtils.equals(item.getName(), child.getName());
+                if (child == null) child = Config.create(type, item.getUrl(), item.getName());
+                else child.type(type).name(item.getName());
+                // 状态实际变化才落库，削减每次展开的写放大
+                if (changed) child.parentUrl(root.getUrl()).save();
+                children.add(child);
+            }
             reconcileChildren(root.getUrl(), items, type);
             root.depot(true).save();
-            List<DepotProbe.Result> probe = DepotProbe.probe(children);
-            return new Expansion(children, probe, firstHealthy(children, probe));
+            // 探测跟随订阅内容生命周期（SRCUI5）：子源集合指纹未变即沿用最近探测结论，不再随加载重复探测
+            String key = DepotProbe.key(type, root.getUrl());
+            boolean probe = DepotProbe.childrenChanged(key, children);
+            List<DepotProbe.Result> results = probe ? DepotProbe.probe(children) : Collections.emptyList();
+            if (probe) DepotProbe.mark(key, children);
+            Config chosen = probe ? firstHealthy(children, results) : firstHealthyPersisted(children, type);
+            return new Expansion(children, results, chosen);
         } finally {
             exitDepot();
         }
+    }
+
+    /** 仓降级对账：同一 URL 已不再返回仓格式时，清除过期 depot 标记并级联删除幽灵子源。 */
+    protected void clearStaleDepot(Config config) {
+        if (config == null || !config.isDepot()) return;
+        config.depot(false).save();
+        for (Config child : Config.getChildren(config.getUrl(), config.getType())) child.delete();
     }
 
     /** 首个健康且已启用的子源（保持仓内声明顺序）；全部不健康/被禁用时回退首个已启用源。 */
     protected Config firstHealthy(List<Config> children, List<DepotProbe.Result> probe) {
         Config fallback = null;
         for (Config child : children) {
-            if (SourceState.isDisabled(child.getUrl())) continue;
+            if (SourceState.isDisabled(child.getType(), child.getUrl())) continue;
             if (fallback == null) fallback = child;
             for (DepotProbe.Result result : probe) {
                 if (TextUtils.equals(result.url, child.getUrl())) {
@@ -366,6 +416,19 @@ abstract class BaseConfig {
             }
         }
         return fallback != null ? fallback : children.get(0);
+    }
+
+    /** 跳过探测时的选源（SRCUI5）：按持久化健康档健康优先 + 仓内声明顺序 + 禁用跳过；无任何可用项回退首个子源。 */
+    protected Config firstHealthyPersisted(List<Config> children, int type) {
+        Map<String, Boolean> health = InterfaceOrderStore.getHealth(type);
+        List<Config> healthy = new ArrayList<>(), unhealthy = new ArrayList<>();
+        for (Config child : children) {
+            if (SourceState.isDisabled(child.getType(), child.getUrl())) continue;
+            (Boolean.FALSE.equals(health.get(child.getUrl())) ? unhealthy : healthy).add(child);
+        }
+        if (healthy.isEmpty() && unhealthy.isEmpty()) return children.get(0);
+        healthy.addAll(unhealthy);
+        return healthy.get(0);
     }
 
     /** 清理 parentUrl 指向本仓、但本次展开已移除的幽灵子源（含 History/Keep/缓存级联）。 */

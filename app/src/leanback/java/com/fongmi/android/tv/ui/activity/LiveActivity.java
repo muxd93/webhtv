@@ -43,6 +43,7 @@ import com.fongmi.android.tv.impl.ConfigListener;
 import com.fongmi.android.tv.impl.CustomTarget;
 import com.fongmi.android.tv.impl.LiveListener;
 import com.fongmi.android.tv.impl.PassListener;
+import com.fongmi.android.tv.live.ChannelPrefStore;
 import com.fongmi.android.tv.live.LiveSession;
 import com.fongmi.android.tv.live.LiveWidthCache;
 import com.fongmi.android.tv.model.LiveViewModel;
@@ -213,6 +214,8 @@ public class LiveActivity extends PlaybackActivity implements GroupAdapter.OnCli
         mBinding.control.action.action.setOnClickListener(view -> onAction());
         mBinding.control.action.invert.setOnClickListener(view -> onInvert());
         mBinding.control.action.across.setOnClickListener(view -> onAcross());
+        mBinding.control.action.timeout.setOnClickListener(view -> onTimeout());
+        mBinding.control.action.hop.setOnClickListener(view -> onHop());
         mBinding.control.action.change.setOnClickListener(view -> onChange());
         mBinding.control.action.player.setOnClickListener(view -> onPlayerKernel());
         mBinding.control.action.player.setOnLongClickListener(view -> onChooseLong());
@@ -238,11 +241,13 @@ public class LiveActivity extends PlaybackActivity implements GroupAdapter.OnCli
     }
 
     private void setVideoView() {
-        setScale(LiveSetting.getScale());
+        setScale(getLiveScale());
         findViewById(R.id.timeBar).setNextFocusUpId(R.id.config);
         mBinding.control.action.invert.setSelected(LiveSetting.isInvert());
         mBinding.control.action.across.setSelected(LiveSetting.isAcross());
         mBinding.control.action.change.setSelected(LiveSetting.isChange());
+        mBinding.control.action.hop.setSelected(LiveSetting.isAutoHop());
+        setTimeoutText(LiveSetting.getTimeout());
     }
 
     private void setDecode() {
@@ -254,9 +259,16 @@ public class LiveActivity extends PlaybackActivity implements GroupAdapter.OnCli
     }
 
     private void setScale(int scale) {
-        LiveSetting.putScale(scale);
         applyResizeMode(scale);
         mBinding.control.action.scale.setText(ResUtil.getStringArray(R.array.select_scale)[scale]);
+    }
+
+    /** 生效比例:频道记忆优先,无记忆回落全局 scale_live(其默认再回落 VOD 比例)。 */
+    private int getLiveScale() {
+        // setVideoView 在 initView(onCreate)阶段执行,早于 mSession 创建,必须空安全
+        Channel channel = mSession == null ? null : mSession.currentChannel();
+        ChannelPrefStore.Pref pref = channel == null ? null : ChannelPrefStore.find(channel.getName());
+        return pref != null && pref.scale != -1 ? pref.scale : LiveSetting.getScale();
     }
 
     private void setViewModel() {
@@ -423,7 +435,7 @@ public class LiveActivity extends PlaybackActivity implements GroupAdapter.OnCli
             Notify.show(R.string.live_program_empty);
             return;
         }
-        LiveProgramDialog.create().channel(channel).zoneId(mViewModel.getZoneId()).listener(this::onItemClick).show(this);
+        LiveProgramDialog.create().channel(channel).zoneId(mViewModel.getZoneId()).listener(this::onItemClick).fetcher((c, offset, callback) -> mViewModel.getEpgDay(c, offset, callback)).show(this);
         hideControl();
         hideInfo();
     }
@@ -447,9 +459,13 @@ public class LiveActivity extends PlaybackActivity implements GroupAdapter.OnCli
     }
 
     private void onScale() {
-        int index = LiveSetting.getScale();
+        int index = getLiveScale();
         String[] array = ResUtil.getStringArray(R.array.select_scale);
-        setScale(index == array.length - 1 ? 0 : ++index);
+        int scale = index == array.length - 1 ? 0 : ++index;
+        setScale(scale);
+        // 只记当前频道;未起播(channel=null)时保持全局兜底
+        if (mSession.currentChannel() == null) LiveSetting.putScale(scale);
+        else updateChannelPref(-1, -1, scale);
     }
 
     private void onSpeed() {
@@ -501,6 +517,25 @@ public class LiveActivity extends PlaybackActivity implements GroupAdapter.OnCli
         mBinding.control.action.change.setSelected(LiveSetting.isChange());
     }
 
+    private void onHop() {
+        LiveSetting.putAutoHop(!LiveSetting.isAutoHop());
+        mBinding.control.action.hop.setSelected(LiveSetting.isAutoHop());
+    }
+
+    /** 起播超时档位循环:随源 → 10s → 15s → 20s → 30s → 45s → 随源。 */
+    private void onTimeout() {
+        long[] steps = {0, 10000, 15000, 20000, 30000, 45000};
+        int index = 0;
+        for (int i = 0; i < steps.length; i++) if (steps[i] == LiveSetting.getTimeout()) index = i;
+        long next = steps[(index + 1) % steps.length];
+        LiveSetting.putTimeout((int) next);
+        setTimeoutText(next);
+    }
+
+    private void setTimeoutText(long timeout) {
+        mBinding.control.action.timeout.setText(timeout == 0 ? getString(R.string.live_timeout_auto) : getString(R.string.live_timeout_value, (int) (timeout / 1000)));
+    }
+
     private void onChoose() {
         PlayerHelper.choose(this, player().getUrl(), player().getHeaders(), player().isVod(), player().getPosition(), mBinding.widget.title.getText());
         setRedirect(true);
@@ -516,15 +551,23 @@ public class LiveActivity extends PlaybackActivity implements GroupAdapter.OnCli
     }
 
     private void switchPlayerKernel(int type) {
-        player().switchPlayer(type);
+        // 只记当前频道,不写全局默认(与频道记忆语义一致;全局默认走设置页)
+        player().switchPlayer(type, false);
         setPlayerKernel();
         setDecode();
         setR1Callback();
+        updateChannelPref(type, -1, -1);
     }
 
     private void onDecode() {
         player().toggleDecode();
         setDecode();
+        updateChannelPref(-1, player().getDecode(), -1);
+    }
+
+    private void updateChannelPref(int player, int decode, int scale) {
+        Channel channel = mSession.currentChannel();
+        if (channel != null) ChannelPrefStore.update(channel.getName(), player, decode, scale);
     }
 
     private void hideUI() {
@@ -613,13 +656,13 @@ public class LiveActivity extends PlaybackActivity implements GroupAdapter.OnCli
 
     @Override
     protected void onSizeChanged(VideoSize size) {
-        applyResizeMode(LiveSetting.getScale());
+        applyResizeMode(getLiveScale());
         mBinding.widget.size.setText(player().getSizeText());
     }
 
     @Override
     protected void onSurfaceAttached() {
-        applyResizeMode(LiveSetting.getScale());
+        applyResizeMode(getLiveScale());
     }
 
     @Override
@@ -724,13 +767,6 @@ public class LiveActivity extends PlaybackActivity implements GroupAdapter.OnCli
         App.post(mR3, Constant.INTERVAL_HIDE);
     }
 
-    private void onToggle() {
-        if (isVisible(mBinding.control.getRoot())) hideControl();
-        else if (isVisible(mBinding.recycler)) hideUI();
-        else showUI();
-        hideInfo();
-    }
-
     private void resetPass() {
         this.count = 0;
     }
@@ -829,11 +865,17 @@ public class LiveActivity extends PlaybackActivity implements GroupAdapter.OnCli
     }
 
     @Override
+    public void onCatchupUnsupported() {
+        Notify.show(getString(R.string.live_catchup_unsupported));
+    }
+
+    @Override
     public void onEpgUpdated(Epg epg) {
         Channel channel = mSession.currentChannel();
         if (channel == null || !channel.getTvgId().equals(epg.getKey())) return;
         EpgData data = epg.getEpgData();
         boolean hasTitle = !data.getTitle().isEmpty();
+        mEpgDataAdapter.setChannel(channel);
         mEpgDataAdapter.addAll(epg.getList());
         if (hasTitle) mBinding.widget.title.setText(getString(R.string.detail_title, channel.getShow(), data.getTitle()));
         mBinding.widget.name.setMaxEms(hasTitle ? 12 : 48);
@@ -852,8 +894,34 @@ public class LiveActivity extends PlaybackActivity implements GroupAdapter.OnCli
 
     @Override
     public void onPlaybackStart(Result result) {
-        startPlayer(result.getRealUrl(), result, false, getHome().getTimeout(), buildMetadata());
+        startPlayer(result.getRealUrl(), result, false, getEffectiveTimeout(), buildMetadata());
+        // 频道记忆在起播后应用:内核/解码切换携带当前 spec 重建(仅记忆≠当前时发生),避免起播前双载旧流
+        applyChannelPrefs();
         mBinding.control.action.speed.setText(player().setSpeed(mSession.isCatchup() ? PlayerSetting.getDefaultSpeed() : 1f));
+    }
+
+    /** 起播超时:用户档位优先,未设置(0)跟随直播源声明。 */
+    private long getEffectiveTimeout() {
+        int timeout = LiveSetting.getTimeout();
+        return timeout > 0 ? timeout : getHome().getTimeout();
+    }
+
+    /** 换台后应用该频道记忆的播放器偏好{内核,解码,比例}(仅覆盖与当前不同的维度)。 */
+    private void applyChannelPrefs() {
+        Channel channel = mSession.currentChannel();
+        ChannelPrefStore.Pref pref = channel == null ? null : ChannelPrefStore.find(channel.getName());
+        if (pref == null) return;
+        if (pref.player != -1 && player().getPlayerType() != pref.player) {
+            player().switchPlayer(pref.player, false);
+            setPlayerKernel();
+            setDecode();
+            setR1Callback();
+        }
+        if (pref.decode != -1 && player().getDecode() != pref.decode) {
+            player().setDecode(pref.decode);
+            setDecode();
+        }
+        if (pref.scale != -1) setScale(pref.scale);
     }
 
     @Override
@@ -1080,6 +1148,11 @@ public class LiveActivity extends PlaybackActivity implements GroupAdapter.OnCli
 
     @Override
     public void onKeyCenter() {
+        // 错误视图常驻时 OK 键 = 重试当前频道(取址重播,fetchLive 会作废挂起的自动跳台)
+        if (mBinding.widget.error.getVisibility() == View.VISIBLE) {
+            mSession.fetchLive();
+            return;
+        }
         hideInfo();
         showUI();
     }
@@ -1090,8 +1163,20 @@ public class LiveActivity extends PlaybackActivity implements GroupAdapter.OnCli
     }
 
     @Override
-    public void onSingleTap() {
-        onToggle();
+    public void onSingleTap(float x, float width) {
+        // UNIFY1:触屏设备上的 leanback 手势,分区语义对齐 mobile(左=频道列表,右=控制条)
+        if (x < width / 2f) showUI();
+        else onMenu();
+    }
+
+    @Override
+    public void onFlingLeft() {
+        if (player().isLive()) mSession.prevLine();
+    }
+
+    @Override
+    public void onFlingRight() {
+        if (player().isLive()) mSession.nextLine(true);
     }
 
     @Override
@@ -1138,6 +1223,7 @@ public class LiveActivity extends PlaybackActivity implements GroupAdapter.OnCli
         mClock.release();
         Source.get().exit();
         mKeyDown.release();
+        if (mSession != null) mSession.release();
         App.removeCallbacks(mR0, mR1, mR2, mR3, mR4);
         if (mOsd != null) mOsd.release();
         mViewModel.url().removeObserver(mObserveUrl);

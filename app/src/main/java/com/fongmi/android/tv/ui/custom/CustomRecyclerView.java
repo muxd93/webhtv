@@ -83,6 +83,8 @@ public class CustomRecyclerView extends RecyclerView {
         int size = View.MeasureSpec.getSize(measureSpec);
         if (mode == View.MeasureSpec.UNSPECIFIED) return View.MeasureSpec.makeMeasureSpec(maxSize, View.MeasureSpec.AT_MOST);
         if (mode == View.MeasureSpec.AT_MOST && size > maxSize) return View.MeasureSpec.makeMeasureSpec(maxSize, View.MeasureSpec.AT_MOST);
+        // match_parent(EXACTLY) 超过 maxHeight 时降级为 AT_MOST，避免子项按全高布局后再被外层强钳导致滚动错位
+        if (mode == View.MeasureSpec.EXACTLY && size > maxSize) return View.MeasureSpec.makeMeasureSpec(maxSize, View.MeasureSpec.AT_MOST);
         return measureSpec;
     }
 
@@ -98,7 +100,15 @@ public class CustomRecyclerView extends RecyclerView {
 
     private void focus(int position) {
         ViewHolder holder = findViewHolderForLayoutPosition(position);
-        if (holder != null) holder.itemView.requestFocus();
+        if (holder != null) {
+            holder.itemView.requestFocus();
+            return;
+        }
+        // 布局未完成时单次重试，避免首次定位焦点静默丢失
+        postDelayed(() -> {
+            ViewHolder retry = findViewHolderForLayoutPosition(position);
+            if (retry != null) retry.itemView.requestFocus();
+        }, 100);
     }
 
     @Override

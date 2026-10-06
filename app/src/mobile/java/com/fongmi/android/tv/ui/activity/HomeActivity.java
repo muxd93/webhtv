@@ -452,7 +452,8 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
     protected void onDestroy() {
         if (mChrome != null) mChrome.destroy();
         LiveConfig.get().clear();
-        VodConfig.get().clear();
+        // 对齐 leanback：仅真正退出时清内存态，避免旋转/主题重建导致仓配置重新解析（SRCUI5/S5）
+        if (isFinishing()) VodConfig.get().clear();
         AppDatabase.backup();
         OkHttp.get().clear();
         Source.get().exit();

@@ -8,6 +8,7 @@ import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentActivity;
 import androidx.viewbinding.ViewBinding;
 
@@ -50,6 +51,11 @@ public class ConfigDialog extends BaseConfigDialog {
 
     public void show(FragmentActivity activity) {
         show(activity.getSupportFragmentManager(), null);
+    }
+
+    /** 供其他弹窗片段（如 SourceManagerDialog）宿主打开；与 mobile 版 show(Fragment) 对齐。 */
+    public void show(Fragment host) {
+        show(host.getChildFragmentManager(), null);
     }
 
     @Override
@@ -107,6 +113,6 @@ public class ConfigDialog extends BaseConfigDialog {
     @Override
     public void onStart() {
         super.onStart();
-        setWidth(0.55f);
+        setWidth(0.6f);
     }
 }

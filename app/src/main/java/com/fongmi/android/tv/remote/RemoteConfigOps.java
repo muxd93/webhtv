@@ -90,9 +90,12 @@ public final class RemoteConfigOps {
         JsonArray items = new JsonArray();
         List<String> keys = new ArrayList<>();
         for (int type = 0; type <= 2; type++) {
-            for (Config config : Config.getAll(type)) addItem(items, keys, config, false);
+            for (Config config : Config.getAll(type)) {
+                if (!TextUtils.isEmpty(config.getParentUrl())) continue; // 仓子源由根代表（SRCUI4）
+                addItem(items, keys, config, false);
+            }
             Config current = current(type);
-            if (!current.isEmpty()) addItem(items, keys, current, true);
+            if (!current.isEmpty()) addItem(items, keys, current.rootOrSelf(), true);
         }
         object.add("items", items);
         return object;

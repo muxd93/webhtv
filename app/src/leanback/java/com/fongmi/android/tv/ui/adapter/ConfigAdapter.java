@@ -8,10 +8,14 @@ import android.view.ViewGroup;
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.fongmi.android.tv.db.AppDatabase;
 import com.fongmi.android.tv.bean.Config;
 import com.fongmi.android.tv.databinding.AdapterConfigBinding;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 public class ConfigAdapter extends RecyclerView.Adapter<ConfigAdapter.ViewHolder> {
 
@@ -41,13 +45,22 @@ public class ConfigAdapter extends RecyclerView.Adapter<ConfigAdapter.ViewHolder
     }
 
     public ConfigAdapter addAll(int type, Config current) {
-        mItems = Config.getAll(type);
         currentUrl = current == null ? null : current.getUrl();
+        // 仓子源由仓根代表（SRCUI4）：历史只显示"仓根+独立源"，多子源归并为一个根条目
+        Map<String, Config> merged = new LinkedHashMap<>();
+        for (Config item : Config.getAll(type)) {
+            Config root = item.rootOrSelf();
+            merged.putIfAbsent(root.getType() + "|" + root.getUrl(), root);
+        }
+        mItems = new ArrayList<>(merged.values());
         // 当前使用的配置置顶展示并标注（ViewHolder 内），不可从历史中删除
         if (!readOnly && !TextUtils.isEmpty(currentUrl)) {
-            Config active = Config.find(currentUrl, type);
-            if (active != null) mItems.removeIf(item -> TextUtils.equals(item.getUrl(), currentUrl));
-            if (active != null) mItems.add(0, active);
+            Config cur = AppDatabase.get().getConfigDao().find(currentUrl, type); // 非创建式查找，避免幽灵行
+            if (cur != null) {
+                Config active = cur.rootOrSelf();
+                mItems.removeIf(item -> item.getType() == active.getType() && TextUtils.equals(item.getUrl(), active.getUrl()));
+                mItems.add(0, active);
+            }
         }
         return this;
     }

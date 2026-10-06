@@ -24,6 +24,7 @@ public class LiveParser {
     private static final Pattern HTTP_USER_AGENT = Pattern.compile(".*http-user-agent=\"(.?|.+?)\".*");
     private static final Pattern CATCHUP_REPLACE = Pattern.compile(".*catchup-replace=\"(.?|.+?)\".*");
     private static final Pattern CATCHUP_SOURCE = Pattern.compile(".*catchup-source=\"(.?|.+?)\".*");
+    private static final Pattern CATCHUP_DAYS = Pattern.compile(".*catchup-days=\"(.?|.+?)\".*");
     private static final Pattern CATCHUP = Pattern.compile(".*catchup=\"(.?|.+?)\".*");
     private static final Pattern TVG_CHNO = Pattern.compile(".*tvg-chno=\"(.?|.+?)\".*");
     private static final Pattern TVG_LOGO = Pattern.compile(".*tvg-logo=\"(.?|.+?)\".*");
@@ -104,6 +105,7 @@ public class LiveParser {
                 catchup.setType(extract(line, CATCHUP));
                 catchup.setSource(extract(line, CATCHUP_SOURCE));
                 catchup.setReplace(extract(line, CATCHUP_REPLACE));
+                catchup.setDays(extract(line, CATCHUP_DAYS));
                 if (live.getEpg().isEmpty()) live.setEpg(extract(line, TVG_URL).replace("\"", ""));
                 if (live.getEpg().isEmpty()) live.setEpg(extract(line, URL_TVG).replace("\"", ""));
                 if (live.getEpg().isEmpty()) live.setEpg(extract(line, "tvg-url=", "url-tvg="));
@@ -124,7 +126,11 @@ public class LiveParser {
                 unknown.setType(extract(line, CATCHUP));
                 unknown.setSource(extract(line, CATCHUP_SOURCE));
                 unknown.setReplace(extract(line, CATCHUP_REPLACE));
-                channel.setCatchup(Catchup.decide(unknown, catchup));
+                unknown.setDays(extract(line, CATCHUP_DAYS));
+                Catchup resolved = Catchup.decide(unknown, catchup);
+                // 行级 catchup 只声明了 source/days 之外的字段时,头级 days 兜底,避免整对象二选一丢窗口
+                if (resolved != null && resolved.getDays().isEmpty()) resolved.setDays(catchup.getDays());
+                channel.setCatchup(resolved);
             } else if (channel != null && !line.startsWith("#")) {
                 String[] parts = line.split("\\|", 2);
                 if (!isPlayableUrl(parts[0])) continue;

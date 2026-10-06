@@ -26,6 +26,7 @@
     <string name="control_episode_column_double">Double</string>
     <string name="control_compact_episode_title">Compact title</string>
     <string name="control_track">Track</string>
+    <string name="control_quality">Quality</string>
     <string name="home_history">History</string>
     <string name="home_recommend">Recommend</string>
     <string name="home_keep_row">My Keeps</string>

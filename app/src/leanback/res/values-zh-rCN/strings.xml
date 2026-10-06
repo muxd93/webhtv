@@ -26,6 +26,7 @@
     <string name="control_episode_column_double">双列</string>
     <string name="control_compact_episode_title">精简标题</string>
     <string name="control_track">轨道</string>
+    <string name="control_quality">清晰度</string>
     <string name="home_history">最近观看</string>
     <string name="home_recommend">更新推荐</string>
     <string name="home_keep_row">我的收藏</string>

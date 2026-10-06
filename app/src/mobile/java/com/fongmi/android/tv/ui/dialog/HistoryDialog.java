@@ -112,8 +112,12 @@ public class HistoryDialog extends BaseAlertDialog implements ConfigAdapter.OnCl
 
     @Override
     public void onDeleteClick(Config item) {
+        // 历史以仓根呈现（SRCUI4/S2）：删根会级联删除其子源，确认文案需带子源计数
+        String message = item.isDepot()
+                ? getString(R.string.source_delete_depot_confirm, item.getDesc(), Config.getChildren(item.getUrl(), item.getType()).size())
+                : getString(R.string.config_delete_confirm, item.getDesc());
         new MaterialAlertDialogBuilder(requireActivity(), R.style.ThemeOverlay_WebHTV_LightDialog)
-                .setMessage(getString(R.string.config_delete_confirm, item.getDesc()))
+                .setMessage(message)
                 .setNegativeButton(R.string.dialog_negative, null)
                 .setPositiveButton(R.string.dialog_positive, (dialog, which) -> {
                     if (adapter.remove(item) == 0) dismiss();

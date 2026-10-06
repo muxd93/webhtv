@@ -112,6 +112,11 @@ public class LiveViewModel extends ViewModel {
         execute(TaskType.EPG, () -> LiveApi.getEpg(item, zoneId), epg::postValue, error -> epg.postValue(item.getData(zoneId)));
     }
 
+    /** 节目单日期懒加载(与换台 EPG 任务互不抢占);失败/无数据回调 null,由调用方提示。 */
+    public void getEpgDay(Channel item, int offset, Consumer<Epg> callback) {
+        execute(TaskType.EPG_DAY, () -> LiveApi.getEpgDay(item, zoneId, offset), callback::accept, error -> callback.accept(null));
+    }
+
     public void getUrl(Channel item) {
         execute(TaskType.URL, () -> LiveApi.getUrl(item), url::postValue, this::handleUrlError);
     }
@@ -161,6 +166,7 @@ public class LiveViewModel extends ViewModel {
 
         LIVE(Constant.TIMEOUT_LIVE),
         EPG(Constant.TIMEOUT_EPG),
+        EPG_DAY(Constant.TIMEOUT_EPG),
         XML(Constant.TIMEOUT_XML),
         URL(Constant.TIMEOUT_PARSE_LIVE);
 

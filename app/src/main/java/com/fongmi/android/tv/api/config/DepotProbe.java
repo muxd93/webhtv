@@ -2,6 +2,8 @@ package com.fongmi.android.tv.api.config;
 
 import com.fongmi.android.tv.bean.Config;
 import com.github.catvod.net.OkHttp;
+import com.github.catvod.utils.Prefers;
+import com.github.catvod.utils.Util;
 
 import android.os.Handler;
 import android.os.Looper;
@@ -25,8 +27,11 @@ import okhttp3.Response;
 public final class DepotProbe {
 
     private static final String TAG = "depot_probe";
-    private static final int TIMEOUT_S = 4;
+    /** 注意：catvod OkHttp.client(long) 参数单位是毫秒（connect/read/write 均用 MILLISECONDS）。 */
+    private static final long TIMEOUT_MS = 4000;
     private static final long JOIN_MS = 6000;
+    /** 仓子源集合指纹持久化键前缀（SRCUI5）：集合未变即沿用最近探测结论，探测频率跟随订阅内容变化而非独立周期。 */
+    private static final String HASH_PREFIX = "depot_probe_hash_";
 
     private static Handler mainHandler;
 
@@ -56,6 +61,28 @@ public final class DepotProbe {
         void onProgress(int done, int total);
 
         void onComplete(List<Result> results);
+    }
+
+    /** 仓探测键：type + md5(url)。 */
+    public static String key(int type, String url) {
+        return type + "|" + Util.md5(url);
+    }
+
+    /** 子源集合指纹是否与最近一次探测一致（含顺序，保守）；从未探测视为已变化。 */
+    public static boolean childrenChanged(String key, List<Config> children) {
+        return !hashOf(children).equals(Prefers.getString(HASH_PREFIX + key, ""));
+    }
+
+    /** 实际探测完成后记录集合指纹。 */
+    public static void mark(String key, List<Config> children) {
+        Prefers.put(HASH_PREFIX + key, hashOf(children));
+    }
+
+    private static String hashOf(List<Config> children) {
+        if (children == null || children.isEmpty()) return "";
+        StringBuilder sb = new StringBuilder();
+        for (Config child : children) sb.append(child.getUrl()).append('\n');
+        return Util.md5(sb.toString());
     }
 
     private interface Sink {
@@ -108,7 +135,7 @@ public final class DepotProbe {
             long begin = System.currentTimeMillis();
             Request request = new Request.Builder().url(url).tag(TAG).header("Range", "bytes=0-0").build();
             try {
-                OkHttp.client(TIMEOUT_S).newCall(request).enqueue(new okhttp3.Callback() {
+                OkHttp.client(TIMEOUT_MS).newCall(request).enqueue(new okhttp3.Callback() {
                     @Override
                     public void onResponse(okhttp3.Call call, Response response) {
                         boolean ok = response.isSuccessful();

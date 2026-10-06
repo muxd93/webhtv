@@ -52,6 +52,19 @@ public class LiveApi {
         return current == null ? new Epg() : current.selected();
     }
 
+    /** 模板 EPG 是否支持按日期请求({date} 占位);XML 全量源日期由文件决定,不可懒取。 */
+    public static boolean isDateRequestable(@NonNull Channel item) {
+        return item.getEpg().startsWith("http") && item.getEpg().contains("{date}");
+    }
+
+    /** 节目单懒加载:按需抓取单日(复用 fetchEpgDay 的 TTL/负缓存/磁盘缓存);无数据返回当日空槽。 */
+    @NonNull
+    public static Epg getEpgDay(@NonNull Channel item, @NonNull ZoneId zoneId, int offset) {
+        fetchEpgDay(item, zoneId, offset);
+        String date = LocalDate.now(zoneId).plusDays(offset).format(Formatters.DATE);
+        return item.getDataList().stream().filter(epg -> epg.equal(date)).findFirst().orElseGet(() -> Epg.create(item.getTvgId(), date));
+    }
+
     /** 跨天"下一档"预取：次日首条节目文本（供 nowNext 在当天最后一档后显示）。 */
     private static String nextDayFirst(@NonNull Channel item, @NonNull ZoneId zoneId) {
         String tomorrow = LocalDate.now(zoneId).plusDays(1).format(Formatters.DATE);

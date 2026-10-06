@@ -2,6 +2,8 @@ package com.fongmi.android.tv.api.config;
 
 import android.text.TextUtils;
 
+import com.fongmi.android.tv.App;
+import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.api.LiveApi;
 import com.fongmi.android.tv.api.loader.BaseLoader;
 import com.fongmi.android.tv.api.parser.LiveParser;
@@ -15,7 +17,11 @@ import com.fongmi.android.tv.db.AppDatabase;
 import com.fongmi.android.tv.event.ConfigEvent;
 import com.fongmi.android.tv.impl.Callback;
 import com.fongmi.android.tv.setting.CustomCspSetting;
+import com.fongmi.android.tv.setting.InterfaceOrderStore;
 import com.fongmi.android.tv.setting.LiveSetting;
+import com.fongmi.android.tv.source.SourceState;
+import com.fongmi.android.tv.utils.Notify;
+import com.fongmi.android.tv.utils.ResUtil;
 import com.fongmi.android.tv.utils.UrlUtil;
 import com.github.catvod.bean.Header;
 import com.github.catvod.bean.Proxy;
@@ -38,6 +44,8 @@ public class LiveConfig extends BaseConfig {
     private List<Live> lives;
     private List<Rule> rules;
     private List<String> ads;
+    /** 同仓容灾已尝试的源（SRCUI6/S4）：成功渲染后重置，防止循环重试。 */
+    private final List<String> triedUrls = new ArrayList<>();
 
     public static LiveConfig get() {
         return Loader.INSTANCE;
@@ -96,6 +104,7 @@ public class LiveConfig extends BaseConfig {
         home = null;
         lives = null;
         rules = null;
+        triedUrls.clear();
         RuleConfig.get().invalidate();
         return this;
     }
@@ -143,6 +152,42 @@ public class LiveConfig extends BaseConfig {
     }
 
     @Override
+    protected void onLoadSuccess() {
+        super.onLoadSuccess();
+        triedUrls.clear(); // 成功渲染后重置同仓容灾预算（SRCUI6/S4）
+    }
+
+    /** 同仓容灾（SRCUI6/S4）：仅"同仓兄弟子源 + 加载阶段 + 非 sync"自动重试；跨仓/独立源/sync 走既有回退与提示。 */
+    @Override
+    protected void onConfigFailure(Config config, Callback callback, Throwable error) {
+        if (!sync && config != null && !TextUtils.isEmpty(config.getParentUrl())) {
+            Config sibling = nextSibling(config);
+            if (sibling != null) {
+                triedUrls.add(config.getUrl());
+                App.post(() -> Notify.show(ResUtil.getString(R.string.live_failover_next, config.getDesc(), sibling.getDesc())));
+                config(sibling).load(callback);
+                return;
+            }
+        }
+        super.onConfigFailure(config, callback, error);
+    }
+
+    /** 同仓下一个候选：同 parentUrl、未试过、未禁用，持久健康优先 + 仓内声明顺序；耗尽返回 null。 */
+    private Config nextSibling(Config failed) {
+        List<Config> siblings = Config.getChildren(failed.getParentUrl(), failed.getType());
+        Map<String, Boolean> health = InterfaceOrderStore.getHealth(failed.getType());
+        List<Config> healthy = new ArrayList<>(), unhealthy = new ArrayList<>();
+        for (Config child : siblings) {
+            if (TextUtils.equals(child.getUrl(), failed.getUrl()) || triedUrls.contains(child.getUrl())) continue;
+            if (SourceState.isDisabled(child.getType(), child.getUrl())) continue;
+            (Boolean.FALSE.equals(health.get(child.getUrl())) ? unhealthy : healthy).add(child);
+        }
+        if (healthy.isEmpty() && unhealthy.isEmpty()) return null;
+        healthy.addAll(unhealthy);
+        return healthy.get(0);
+    }
+
+    @Override
     public synchronized void ensureLoaded() {
         try {
             if (isLoaded()) return;
@@ -179,11 +224,19 @@ public class LiveConfig extends BaseConfig {
     private void parseDepot(Config config, JsonObject object) throws Throwable {
         // 与 VodConfig 共用 BaseConfig.expandDepot：落库子源、对账、并发探测、首个健康子源
         Expansion ex = expandDepot(config, object, LIVE);
+        InterfaceOrderStore.recordLiveHealth(samples(ex.probe));
         load(this.config = ex.chosen);
         this.config.update();
     }
 
+    private List<InterfaceOrderStore.HealthSample> samples(List<DepotProbe.Result> probe) {
+        List<InterfaceOrderStore.HealthSample> samples = new ArrayList<>();
+        for (DepotProbe.Result result : probe) samples.add(new InterfaceOrderStore.HealthSample(result.url, result.ok, System.currentTimeMillis(), result.latency));
+        return samples;
+    }
+
     private void parseConfig(Config config, JsonObject object) {
+        clearStaleDepot(config);
         CustomCspSetting.inject(object);
         initList(object);
         initLive(config, object);
