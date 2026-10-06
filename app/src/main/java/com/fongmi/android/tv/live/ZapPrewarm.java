@@ -10,7 +10,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.function.Supplier;
 
 import okhttp3.Call;
 import okhttp3.Callback;
@@ -20,10 +19,11 @@ import okhttp3.Request;
 import okhttp3.Response;
 
 /**
- * 换台预热（SYS4/SYS5，LIVE10 Stage1 修正）：停留当前台 4 秒后，对"下一频道"前两条可预热
- * 线路依次预热（DNS/TCP/TLS 连接建立 + 最多 64KB 首段字节；首条网络级失败自动顺延第二条），
- * 换台即取消上一轮（代数校验防旧预热串台）。仅 http(s) 直连线路参与（loopback 本地代理行
- * 除外）；单飞（同一时刻至多一个在途预热），总带宽预算 ≤128KB，预热结果不计入健康分（探测≠可看）。
+ * 换台预热（SYS4/SYS5，LIVE10 修正）：停留当前台 4 秒后，对"最近换台方向上的邻台"前两条
+ * 可预热线路依次预热（DNS/TCP/TLS 连接建立 + 最多 64KB 首段字节；首条网络级失败自动顺延
+ * 第二条），换台即取消上一轮（代数校验防旧预热串台），换台命中在飞预热同端点则保留。
+ * 仅 http(s) 直连线路参与（loopback 本地代理行除外）；单飞（同一时刻至多一个在途预热），
+ * 总带宽预算 ≤128KB，预热结果不计入健康分（探测≠可看）。
  *
  * <p>LIVE10：预热客户端必须从 {@link OkHttp#player()} 派生而非 client(long)——播放（Exo
  * OkHttpDataSource）持有 player 客户端的连接池，从 player 派生才共享连接池与 TLS 会话，
@@ -38,6 +38,8 @@ public final class ZapPrewarm {
     private static final int MAX_LINES = 2;
     private static final AtomicLong GENERATION = new AtomicLong();
     private static volatile OkHttpClient prewarmClient;
+    /** 最近一次尝试预热的线路 URL（host+port 端点判定用；残留仅在"无在飞但同端点"时少一次空 cancel，无害）。 */
+    private static volatile String inFlightUrl;
 
     private ZapPrewarm() {
     }
@@ -82,6 +84,24 @@ public final class ZapPrewarm {
         return host.equals("localhost") || host.equals("::1") || host.equals("0.0.0.0") || host.startsWith("127.");
     }
 
+    /** 新 tune 的当前线路与在飞预热目标同端点（host+port）时保留预热；无在飞或无当前线路则不保留。 */
+    private static boolean matchesInFlight(Channel channel) {
+        String inFlight = inFlightUrl;
+        if (inFlight == null || channel == null) return false;
+        List<String> urls = channel.getUrls();
+        int index = channel.getIndex();
+        if (index < 0 || index >= urls.size()) return false;
+        return sameEndpoint(inFlight, urls.get(index));
+    }
+
+    /** 同端点判定：host+port 相同即命中（OkHttp 连接池按路由复用，路径/查询不影响路由键）。纯函数，供单测。 */
+    static boolean sameEndpoint(String left, String right) {
+        if (left == null || right == null) return false;
+        HttpUrl a = HttpUrl.parse(left);
+        HttpUrl b = HttpUrl.parse(right);
+        return a != null && b != null && a.host().equals(b.host()) && a.port() == b.port();
+    }
+
     /** 按原序取前 limit 条可预热线路（跳过用户屏蔽的线路；纯函数，供单测）。 */
     static List<String> prewarmableLines(List<String> urls, int limit) {
         List<String> result = new ArrayList<>();
@@ -94,12 +114,16 @@ public final class ZapPrewarm {
         return result;
     }
 
-    /** 换台后调用：延迟预热 target 提供的下一频道；期间再次换台则本轮作废。 */
-    public static void schedule(Supplier<Channel> target) {
+    /**
+     * 换台后调用：延迟预热目标频道（tune 时主线程快照，scheduler 线程不再读会话状态）；
+     * 期间再次换台则本轮作废。命中在飞预热（新当前线路与预热目标同 host+port 端点）时保留
+     * 该请求——它正是新频道起播可直接复用的连接，杀掉反而错过最需要的一次预热。
+     */
+    public static void schedule(Channel channel) {
         long generation = GENERATION.incrementAndGet();
-        cancelInFlight();
+        if (!matchesInFlight(channel)) cancelInFlight();
         Task.schedule(() -> {
-            if (GENERATION.get() == generation) run(target.get(), generation);
+            if (GENERATION.get() == generation) run(channel, generation);
         }, DELAY_MS, TimeUnit.MILLISECONDS);
     }
 
@@ -118,7 +142,9 @@ public final class ZapPrewarm {
 
     private static void prewarm(List<String> lines, int index, long generation) {
         try {
-            Request request = new Request.Builder().url(lines.get(index)).tag(TAG)
+            String url = lines.get(index);
+            inFlightUrl = url;
+            Request request = new Request.Builder().url(url).tag(TAG)
                     .header("Range", "bytes=0-" + (BYTE_BUDGET - 1)).build();
             client().newCall(request).enqueue(new Callback() {
                 @Override

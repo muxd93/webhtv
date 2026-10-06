@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Predicate;
 
 /**
  * Shared live tuning state machine behind both the leanback and the mobile
@@ -96,6 +97,8 @@ public class LiveSession {
     private int hopGeneration;
     private long zapTune;
     private boolean zapLogged;
+    /** 最近一次换台方向（+1 下一台 / -1 上一台），预热目标跟随（LIVE10）；restore/数字键等无方向入口保持缺省 +1。 */
+    private int lastZapStep = 1;
 
     public LiveSession(LiveViewModel viewModel, Listener listener) {
         this.viewModel = viewModel;
@@ -199,6 +202,7 @@ public class LiveSession {
         cancelAutoHop();
         zapTune = 0;
         zapLogged = false;
+        lastZapStep = 1;
         ZapPrewarm.cancel();
         listener.onGroupsChanged();
     }
@@ -353,17 +357,22 @@ public class LiveSession {
         zapTune = System.currentTimeMillis();
         zapLogged = false;
         ZapMetric.tune(channel.getName(), channel.getUrls().size());
-        ZapPrewarm.schedule(this::nextPrewarmTarget);
+        // LIVE10:主线程快照预热目标(方向跟随最近换台方向),scheduler 线程不再读会话状态
+        ZapPrewarm.schedule(prewarmTarget());
         listener.onChannelTuned(channel, syncUi);
     }
 
-    /** 预热目标：组内下一频道（组尾不跨组预热，方向未知避免无谓流量）。 */
+    /** 预热目标（LIVE10）：最近换台方向上的邻台目的地，与 stepChannel 共用同一邻台语义；命中当前台或空位则不预热。 */
     @Nullable
-    private Channel nextPrewarmTarget() {
-        if (group == null) return null;
-        List<Channel> channels = group.getChannel();
-        int next = group.getPosition() + 1;
-        return next < channels.size() ? channels.get(next) : null;
+    private Channel prewarmTarget() {
+        if (group == null || group.isEmpty()) return null;
+        int[] target = neighborDestination(group, groups, lastZapStep, LiveSetting.isAcross());
+        if (target == null) return null;
+        Group destination = groups.get(target[0]);
+        List<Channel> channels = destination.getChannel();
+        if (target[1] < 0 || target[1] >= channels.size()) return null;
+        Channel candidate = channels.get(target[1]);
+        return destination == group && candidate == group.current() ? null : candidate;
     }
 
     public void syncToTuned() {
@@ -383,31 +392,44 @@ public class LiveSession {
 
     private void stepChannel(int step) {
         if (group == null) return;
-        int count = group.getChannel().size();
-        int position = group.getPosition() + step;
-        boolean limit = step > 0 ? position > count - 1 : position < 0;
-        if (LiveSetting.isAcross() && limit) {
-            stepGroup(step, step > 0);
-        } else {
-            group.setPosition(limit ? (step > 0 ? 0 : count - 1) : position);
+        lastZapStep = step;
+        int[] target = neighborDestination(group, groups, step, LiveSetting.isAcross());
+        if (target == null) return;
+        Group destination = groups.get(target[0]);
+        if (destination != group) {
+            group = destination;
+            listener.onGroupSelected(group);
         }
+        group.setPosition(target[1]);
         if (!group.isEmpty()) tune(group.current(), true);
     }
 
-    private void stepGroup(int step, boolean first) {
-        if (groups.isEmpty()) return;
-        int position = groups.indexOf(group) + step;
-        if (position > groups.size() - 1) position = 0;
-        if (position < 0) position = groups.size() - 1;
-        Group target = groups.get(position);
-        if (target == group) return;
-        group = target;
-        listener.onGroupSelected(group);
-        if (group.skip()) {
-            stepGroup(step, first);
-            return;
+    /**
+     * 邻台目的地（LIVE10 纯函数，stepChannel 与预热目标共用，消除两处邻台逻辑漂移）：
+     * 返回 {组索引, 组内位置}。组内步进；越界时 across 则跨组（skip 组跳过、按方向落首/尾位、
+     * 环绕；其余组全 skip 时回原组按方向落首/尾位），否则组内环绕；单组越界原位重进（与原
+     * stepGroup 提前 return 一致）。仅无组时返回 null；空组按方向落 0/-1，由调用方 isEmpty 兜底不 tune。
+     */
+    static int[] neighborDestination(Group from, List<Group> allGroups, int step, boolean across) {
+        return neighborDestination(from, allGroups, step, across, Group::skip);
+    }
+
+    /** 谓词参数化版（JVM 单测注入 skip 语义；生产即 Group::skip=收藏组）。 */
+    static int[] neighborDestination(Group from, List<Group> allGroups, int step, boolean across, Predicate<Group> skipTest) {
+        if (from == null || allGroups.isEmpty()) return null;
+        int index = allGroups.indexOf(from);
+        if (index < 0) return null;
+        int count = from.getChannel().size();
+        int position = from.getPosition() + step;
+        boolean limit = step > 0 ? position > count - 1 : position < 0;
+        if (!across || !limit) return new int[]{index, limit ? (step > 0 ? 0 : count - 1) : position};
+        for (int i = 1; i < allGroups.size(); i++) {
+            int p = Math.floorMod(index + step * i, allGroups.size());
+            Group candidate = allGroups.get(p);
+            if (!skipTest.test(candidate)) return new int[]{p, step > 0 ? 0 : candidate.getChannel().size() - 1};
         }
-        group.setPosition(first ? 0 : group.getChannel().size() - 1);
+        // 其余组全部 skip：单组时原 stepGroup 环回自身提前 return（原位重进）；多组时环绕回原组按方向落首/尾位
+        return allGroups.size() > 1 ? new int[]{index, step > 0 ? 0 : count - 1} : new int[]{index, from.getPosition()};
     }
 
     public void nextLine(boolean showInfo) {

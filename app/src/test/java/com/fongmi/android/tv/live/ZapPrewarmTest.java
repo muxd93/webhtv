@@ -48,4 +48,16 @@ public class ZapPrewarmTest {
         List<String> lines = ZapPrewarm.prewarmableLines(Arrays.asList("http://127.0.0.1:9978/proxy", "http://a", "https://b"), 2);
         assertEquals(Arrays.asList("http://a", "https://b"), lines);
     }
+
+    @Test
+    public void sameEndpointMatchesHostAndPortOnly() {
+        assertTrue(ZapPrewarm.sameEndpoint("http://a/live/1.m3u8", "http://a/live/2.ts"));
+        assertTrue(ZapPrewarm.sameEndpoint("http://a/x", "http://a:80/y"));
+        assertTrue(ZapPrewarm.sameEndpoint("https://a/x", "https://a:443/y"));
+        assertFalse(ZapPrewarm.sameEndpoint("http://a:8080/x", "http://a/x"));
+        assertFalse(ZapPrewarm.sameEndpoint("http://a/x", "https://a/x"));
+        assertFalse(ZapPrewarm.sameEndpoint("http://a/x", "rtp://a/x"));
+        assertFalse(ZapPrewarm.sameEndpoint(null, "http://a/x"));
+        assertFalse(ZapPrewarm.sameEndpoint("http://a/x", null));
+    }
 }
