@@ -243,6 +243,8 @@ public class LiveSession {
         groups.clear();
         hides.clear();
         for (Group item : home.getGroups()) (item.isHidden() ? hides : groups).add(item);
+        // LIVE10:软重载拿到全新 Channel 对象,渲染期的三桶重排必须补做,否则沉底/屏蔽顺序回退解析原序
+        reorderAll(home.getGroups());
         Group target = groupName.isEmpty() ? null : findGroupByName(groupName);
         if (target != null) group = target;
         Channel found = target == null || channel == null ? null : findChannelByName(target, channelName);
@@ -280,12 +282,17 @@ public class LiveSession {
         rendered = true;
         viewModel.parseXml(live);
         // 被动健康沉底：渲染前对全部频道重排（线路与名称同步、选中线路保位），只沉底不删除
-        for (Group item : live.getGroups()) for (Channel channel : item.getChannel()) LineHealth.reorder(channel);
+        reorderAll(live.getGroups());
         groups.clear();
         hides.clear();
         for (Group item : live.getGroups()) (item.isHidden() ? hides : groups).add(item);
         listener.onGroupsChanged();
         restore(LiveConfig.get().findKeepPosition(groups));
+    }
+
+    /** 三桶重排整棵分组树（健康→沉底→屏蔽，各桶内保持解析原序）：render 与 softReload 共用，供 JVM 单测。 */
+    static void reorderAll(List<Group> allGroups) {
+        for (Group item : allGroups) for (Channel channel : item.getChannel()) LineHealth.reorder(channel);
     }
 
     public boolean isRendered() {

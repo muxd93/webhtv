@@ -8,41 +8,78 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 
 import okhttp3.Call;
 import okhttp3.Callback;
+import okhttp3.HttpUrl;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
 
 /**
- * 换台预热（SYS4/SYS5）：停留当前台 4 秒后，对"下一频道"前两条可预热线路依次预热
- * （DNS/TCP/TLS 连接建立 + 最多 64KB 首段字节；首条网络级失败自动顺延第二条），
- * 换台即取消上一轮（代数校验防旧预热串台）。仅 http(s) 直连线路参与；
- * 单飞（同一时刻至多一个在途预热），总带宽预算 ≤128KB，预热结果不计入健康分（探测≠可看）。
+ * 换台预热（SYS4/SYS5，LIVE10 Stage1 修正）：停留当前台 4 秒后，对"下一频道"前两条可预热
+ * 线路依次预热（DNS/TCP/TLS 连接建立 + 最多 64KB 首段字节；首条网络级失败自动顺延第二条），
+ * 换台即取消上一轮（代数校验防旧预热串台）。仅 http(s) 直连线路参与（loopback 本地代理行
+ * 除外）；单飞（同一时刻至多一个在途预热），总带宽预算 ≤128KB，预热结果不计入健康分（探测≠可看）。
+ *
+ * <p>LIVE10：预热客户端必须从 {@link OkHttp#player()} 派生而非 client(long)——播放（Exo
+ * OkHttpDataSource）持有 player 客户端的连接池，从 player 派生才共享连接池与 TLS 会话，
+ * 预热建立的连接换台后才可被播放器复用。凡"为播放预热"的 HTTP 资源都应从 player 客户端派生。</p>
  */
 public final class ZapPrewarm {
 
     private static final String TAG = "zap_prewarm";
     private static final long DELAY_MS = 4000;
-    /** 注意：catvod OkHttp.client(long) 参数单位是毫秒。 */
     private static final long TIMEOUT_MS = 3000;
     private static final int BYTE_BUDGET = 65536;
     private static final int MAX_LINES = 2;
     private static final AtomicLong GENERATION = new AtomicLong();
+    private static volatile OkHttpClient prewarmClient;
 
     private ZapPrewarm() {
     }
 
-    /** 仅 http(s) 直连线路可预热（纯函数，供单测）。 */
+    /** 播放器派生客户端（共享连接池/TLS 会话），惰性构建一次。 */
+    private static OkHttpClient client() {
+        OkHttpClient client = prewarmClient;
+        if (client == null) {
+            synchronized (ZapPrewarm.class) {
+                if (prewarmClient == null) {
+                    prewarmClient = OkHttp.player().newBuilder()
+                            .connectTimeout(TIMEOUT_MS, TimeUnit.MILLISECONDS)
+                            .readTimeout(TIMEOUT_MS, TimeUnit.MILLISECONDS)
+                            .writeTimeout(TIMEOUT_MS, TimeUnit.MILLISECONDS)
+                            .build();
+                }
+                client = prewarmClient;
+            }
+        }
+        return client;
+    }
+
+    private static void cancelInFlight() {
+        // 客户端未初始化说明从无预热，跳过以免换台路径无谓构建播放器客户端
+        OkHttpClient client = prewarmClient;
+        if (client != null) OkHttp.cancel(client, TAG);
+    }
+
+    /** 仅 http(s) 直连线路可预热；loopback 本地代理行无预热价值，一并排除（纯函数，供单测）。 */
     public static boolean isPrewarmable(String url) {
         if (url == null) return false;
-        String lower = url.toLowerCase(Locale.ROOT);
-        return lower.startsWith("http://") || lower.startsWith("https://");
+        HttpUrl parsed = HttpUrl.parse(url);
+        if (parsed == null) return false;
+        String scheme = parsed.scheme();
+        if (!"http".equals(scheme) && !"https".equals(scheme)) return false;
+        return !isLoopbackHost(parsed.host());
+    }
+
+    /** loopback 主机：localhost / 127.x / ::1 / 0.0.0.0（HttpUrl.host 已小写并去 IPv6 括号；纯函数，供单测）。 */
+    static boolean isLoopbackHost(String host) {
+        if (host == null || host.isEmpty()) return false;
+        return host.equals("localhost") || host.equals("::1") || host.equals("0.0.0.0") || host.startsWith("127.");
     }
 
     /** 按原序取前 limit 条可预热线路（跳过用户屏蔽的线路；纯函数，供单测）。 */
@@ -60,7 +97,7 @@ public final class ZapPrewarm {
     /** 换台后调用：延迟预热 target 提供的下一频道；期间再次换台则本轮作废。 */
     public static void schedule(Supplier<Channel> target) {
         long generation = GENERATION.incrementAndGet();
-        OkHttp.cancel(TAG);
+        cancelInFlight();
         Task.schedule(() -> {
             if (GENERATION.get() == generation) run(target.get(), generation);
         }, DELAY_MS, TimeUnit.MILLISECONDS);
@@ -69,7 +106,7 @@ public final class ZapPrewarm {
     /** 取消在途预热（会话重置/换配置时调用）。 */
     public static void cancel() {
         GENERATION.incrementAndGet();
-        OkHttp.cancel(TAG);
+        cancelInFlight();
     }
 
     private static void run(Channel channel, long generation) {
@@ -83,7 +120,7 @@ public final class ZapPrewarm {
         try {
             Request request = new Request.Builder().url(lines.get(index)).tag(TAG)
                     .header("Range", "bytes=0-" + (BYTE_BUDGET - 1)).build();
-            OkHttp.client(TIMEOUT_MS).newCall(request).enqueue(new Callback() {
+            client().newCall(request).enqueue(new Callback() {
                 @Override
                 public void onResponse(Call call, Response response) {
                     try (Response resp = response) {

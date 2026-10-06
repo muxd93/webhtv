@@ -9,7 +9,7 @@ import org.junit.Test;
 import java.util.Arrays;
 import java.util.List;
 
-/** 换台预热资格回归：仅 http(s) 直连线路可预热，其他协议一律跳过；顺延选择按原序取前两条。 */
+/** 换台预热资格回归：仅 http(s) 直连线路可预热，其他协议与 loopback 一律跳过；顺延选择按原序取前两条。 */
 public class ZapPrewarmTest {
 
     @Test
@@ -26,10 +26,26 @@ public class ZapPrewarmTest {
     }
 
     @Test
+    public void loopbackLinesAreNotPrewarmable() {
+        assertFalse(ZapPrewarm.isPrewarmable("http://127.0.0.1:9978/proxy?do=live"));
+        assertFalse(ZapPrewarm.isPrewarmable("http://localhost/stream.m3u8"));
+        assertFalse(ZapPrewarm.isPrewarmable("http://[::1]:8080/live"));
+        assertFalse(ZapPrewarm.isPrewarmable("https://LOCALHOST/x"));
+        assertTrue(ZapPrewarm.isPrewarmable("http://192.168.1.10:8080/live.m3u8"));
+        assertTrue(ZapPrewarm.isPrewarmable("https://cdn.example.com/live.m3u8"));
+    }
+
+    @Test
     public void prewarmableLinesPicksFirstTwoInOrder() {
         List<String> lines = ZapPrewarm.prewarmableLines(Arrays.asList("rtp://x", "http://a", "https://b", "http://c"), 2);
         assertEquals(Arrays.asList("http://a", "https://b"), lines);
         assertTrue(ZapPrewarm.prewarmableLines(Arrays.asList("rtp://x", "file:///y"), 2).isEmpty());
         assertEquals(Arrays.asList("http://a"), ZapPrewarm.prewarmableLines(Arrays.asList("http://a"), 2));
+    }
+
+    @Test
+    public void prewarmableLinesSkipsLoopbackLines() {
+        List<String> lines = ZapPrewarm.prewarmableLines(Arrays.asList("http://127.0.0.1:9978/proxy", "http://a", "https://b"), 2);
+        assertEquals(Arrays.asList("http://a", "https://b"), lines);
     }
 }
