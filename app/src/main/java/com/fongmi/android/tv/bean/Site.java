@@ -300,7 +300,8 @@ public class Site implements Parcelable {
     }
 
     public long getTimeout() {
-        return timeout == null ? Constant.TIMEOUT_PLAY : TimeUnit.SECONDS.toMillis(Math.max(timeout, 1));
+        // 换源/起播看门狗下限 2s：1s 会对慢源过早判超时
+        return timeout == null ? Constant.TIMEOUT_PLAY : TimeUnit.SECONDS.toMillis(Math.max(timeout, 2));
     }
 
     public Integer getSearchable() {

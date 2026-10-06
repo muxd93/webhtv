@@ -14,11 +14,8 @@
     <string name="source_reprobe">Re-probe</string>
     <string name="source_delete">Delete</string>
     <string name="source_delete_depot_confirm">Delete depot \"%1$s\" and its %2$d sub-sources?</string>
-    <string name="source_add_subscription">Add subscription</string>
     <string name="source_add_scan">Scan &amp; push</string>
-    <string name="source_add_exists">Source already exists</string>
     <string name="live_failover_next">Live source %1$s failed, switching to %2$s</string>
-    <string name="source_add_hint">Enter subscription URL (depot/warehouse address)</string>
     <string name="source_in_use">In use</string>
     <string name="source_available">Available %1$d/%2$d</string>
     <string name="source_probe_progress">Probing %1$d/%2$d</string>

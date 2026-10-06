@@ -3,20 +3,17 @@ package com.fongmi.android.tv.ui.dialog;
 import androidx.fragment.app.FragmentActivity;
 import androidx.viewbinding.ViewBinding;
 
-import android.text.TextUtils;
 import android.view.View;
 
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.api.config.DepotProbe;
 import com.fongmi.android.tv.bean.Config;
-import com.fongmi.android.tv.db.AppDatabase;
-import com.fongmi.android.tv.databinding.DialogSourceAddBinding;
 import com.fongmi.android.tv.databinding.DialogSourceManagerBinding;
 import com.fongmi.android.tv.impl.ConfigListener;
 import com.fongmi.android.tv.setting.InterfaceOrderStore;
 import com.fongmi.android.tv.source.SourceState;
 import com.fongmi.android.tv.ui.adapter.SourceManagerAdapter;
-import com.fongmi.android.tv.utils.Notify;
+import com.fongmi.android.tv.utils.ResUtil;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
 import java.util.ArrayList;
@@ -62,7 +59,6 @@ public class SourceManagerDialog extends BaseAlertDialog implements SourceManage
         binding.recycler.setItemAnimator(null);
         binding.recycler.setHasFixedSize(false);
         binding.recycler.setAdapter(adapter.build());
-        binding.add.setOnClickListener(v -> onAddSubscription());
         binding.scan.setVisibility(View.VISIBLE);
         binding.scan.setOnClickListener(v -> openPushDialog());
     }
@@ -80,7 +76,13 @@ public class SourceManagerDialog extends BaseAlertDialog implements SourceManage
     public void onStart() {
         super.onStart();
         if (adapter.getItemCount() == 0) dismiss();
-        else setWidth(0.6f);
+        else setWidth(adaptiveWidth());
+    }
+
+    /** 竖屏手机放宽到 0.92（≤560dp），固定 0.6 会挤压行内容到不可读；TV/横屏维持 0.6。 */
+    private float adaptiveWidth() {
+        if (ResUtil.isLand(requireContext())) return 0.6f;
+        return Math.min(0.92f, (float) ResUtil.dp2px(560) / ResUtil.getScreenWidth());
     }
 
     @Override
@@ -154,32 +156,5 @@ public class SourceManagerDialog extends BaseAlertDialog implements SourceManage
         List<InterfaceOrderStore.HealthSample> samples = new ArrayList<>();
         for (DepotProbe.Result r : results) samples.add(new InterfaceOrderStore.HealthSample(r.url, r.ok, now, r.latency));
         return samples;
-    }
-
-    /** 弹窗内快速添加：玻璃样式输入 + upsert（对齐 ConfigDialog 语义，重复 URL 不产生重复行）。 */
-    private void onAddSubscription() {
-        DialogSourceAddBinding input = DialogSourceAddBinding.inflate(getLayoutInflater());
-        input.input.setHint(R.string.source_add_hint);
-        new MaterialAlertDialogBuilder(requireContext())
-                .setTitle(R.string.source_add_subscription)
-                .setView(input.getRoot())
-                .setNegativeButton(R.string.dialog_negative, null)
-                .setPositiveButton(R.string.dialog_positive, (dialog, which) -> {
-                    String url = input.input.getText().toString().trim();
-                    if (TextUtils.isEmpty(url)) return;
-                    Config saved = AppDatabase.get().getConfigDao().find(url, typeFilter);
-                    if (saved != null) {
-                        Notify.show(R.string.source_add_exists);
-                        onSelect(saved);
-                        return;
-                    }
-                    Config item = new Config().type(typeFilter).url(url);
-                    if (TextUtils.isEmpty(item.getName())) item.name(url);
-                    item.insert();
-                    adapter.rebuild();
-                    // 过滤态添加即切换：激活加载会拉取并展开仓（含格式识别），无需再单独探测
-                    onSelect(item);
-                })
-                .show();
     }
 }

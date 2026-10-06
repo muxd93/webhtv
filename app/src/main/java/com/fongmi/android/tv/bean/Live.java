@@ -225,7 +225,8 @@ public class Live {
     }
 
     public long getTimeout() {
-        return timeout == null ? Constant.TIMEOUT_PLAY : TimeUnit.SECONDS.toMillis(Math.max(timeout, 1));
+        // 换台/起播看门狗下限 2s：1s 会对慢线路过早判超时（与 Site.getTimeout 对齐）
+        return timeout == null ? Constant.TIMEOUT_PLAY : TimeUnit.SECONDS.toMillis(Math.max(timeout, 2));
     }
 
     public Map<String, String> getHeader() {

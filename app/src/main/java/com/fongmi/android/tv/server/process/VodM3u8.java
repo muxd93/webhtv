@@ -14,7 +14,7 @@ import fi.iki.elonen.NanoHTTPD;
 import fi.iki.elonen.NanoHTTPD.IHTTPSession;
 import fi.iki.elonen.NanoHTTPD.Response;
 
-/** Serves a pre-purified VOD playlist held in memory for one playback. */
+/** Serves a pre-purified VOD playlist from the URL-keyed cache; tokens are idempotent within the cache TTL. */
 public class VodM3u8 implements Process {
 
     private static final String MIME_M3U8 = "application/vnd.apple.mpegurl; charset=utf-8";
@@ -26,7 +26,7 @@ public class VodM3u8 implements Process {
 
     @Override
     public Response doResponse(IHTTPSession session, String url, Map<String, String> files) {
-        String text = AdFilterController.consume(session.getParms().get("t"));
+        String text = AdFilterController.serve(session.getParms().get("t"));
         if (TextUtils.isEmpty(text)) return Nano.error(Response.Status.BAD_REQUEST, "Unknown or expired playlist token");
         byte[] bytes = text.getBytes(StandardCharsets.UTF_8);
         Response response = NanoHTTPD.newFixedLengthResponse(Response.Status.OK, MIME_M3U8, new ByteArrayInputStream(bytes), bytes.length);

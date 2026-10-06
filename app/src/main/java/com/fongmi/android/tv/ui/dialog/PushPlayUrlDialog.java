@@ -2,6 +2,7 @@ package com.fongmi.android.tv.ui.dialog;
 
 import android.text.TextUtils;
 import android.view.LayoutInflater;
+import android.view.WindowManager;
 import android.view.inputmethod.EditorInfo;
 
 import androidx.annotation.NonNull;
@@ -13,6 +14,7 @@ import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.bean.Device;
 import com.fongmi.android.tv.databinding.DialogRemoteTrustTextCommandBinding;
 import com.fongmi.android.tv.utils.Notify;
+import com.fongmi.android.tv.utils.ResUtil;
 import com.fongmi.android.tv.utils.Sniffer;
 import com.fongmi.android.tv.utils.Util;
 import com.github.catvod.net.OkHttp;
@@ -67,7 +69,19 @@ public class PushPlayUrlDialog extends BaseAlertDialog {
     @Override
     public void onStart() {
         super.onStart();
+        applyAdaptiveWidth();
         binding.input.requestFocus();
+    }
+
+    /** 竖屏手机自适应宽度（≤560dp、≥320dp），TV/横屏 0.6；与 SourceManagerDialog/ConfigDialog 策略一致（QA1-E1）。 */
+    private void applyAdaptiveWidth() {
+        if (getDialog() == null || getDialog().getWindow() == null) return;
+        int screen = ResUtil.getScreenWidth();
+        int width = ResUtil.isLand(requireContext()) ? Math.round(screen * 0.6f)
+                : Math.max(ResUtil.dp2px(320), Math.min(Math.round(screen * 0.92f), ResUtil.dp2px(560)));
+        WindowManager.LayoutParams params = getDialog().getWindow().getAttributes();
+        params.width = width;
+        getDialog().getWindow().setAttributes(params);
     }
 
     @Override

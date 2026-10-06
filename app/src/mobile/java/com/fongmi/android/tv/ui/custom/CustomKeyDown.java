@@ -61,6 +61,9 @@ public class CustomKeyDown extends GestureDetector.SimpleOnGestureListener imple
         int action = e.getActionMasked();
         if (action == MotionEvent.ACTION_DOWN) multiTouch = false;
         if (action == MotionEvent.ACTION_POINTER_DOWN) multiTouch = true;
+        // QA1-B2:指针降回 1 或事件取消时同步复位缩放态,消除延迟复位期间单击被吞的死区
+        if (action == MotionEvent.ACTION_POINTER_UP && e.getPointerCount() <= 2) changeScale = false;
+        if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) changeScale = false;
         if (action == MotionEvent.ACTION_UP) listener.onTouchEnd();
         if (changeBright && action == MotionEvent.ACTION_UP) PlayerSetting.putBrightness(currentBright);
         if (changeSpeed && action == MotionEvent.ACTION_UP) listener.onSpeedEnd();
@@ -221,7 +224,7 @@ public class CustomKeyDown extends GestureDetector.SimpleOnGestureListener imple
 
     @Override
     public void onScaleEnd(@NonNull ScaleGestureDetector detector) {
-        App.post(() -> changeScale = false, 500);
+        changeScale = false;
     }
 
     @Override

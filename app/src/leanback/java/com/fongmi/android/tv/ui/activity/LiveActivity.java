@@ -1164,7 +1164,13 @@ public class LiveActivity extends PlaybackActivity implements GroupAdapter.OnCli
 
     @Override
     public void onSingleTap(float x, float width) {
-        // UNIFY1:触屏设备上的 leanback 手势,分区语义对齐 mobile(左=频道列表,右=控制条)
+        // UNIFY1/QA1-B1:分区语义对齐 mobile(左=频道列表,右=控制条);有可见浮层时点击一律先收回
+        hideInfo();
+        if (isVisible(mBinding.control.getRoot()) || isVisible(mBinding.recycler)) {
+            if (isVisible(mBinding.control.getRoot())) hideControl();
+            if (isVisible(mBinding.recycler)) hideUI();
+            return;
+        }
         if (x < width / 2f) showUI();
         else onMenu();
     }

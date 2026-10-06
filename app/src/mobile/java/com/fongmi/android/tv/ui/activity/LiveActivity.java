@@ -1609,7 +1609,7 @@ public class LiveActivity extends PlaybackActivity implements CustomKeyDown.List
     @Override
     public void onSingleTap(float x, float width) {
         if (isLock()) {
-            Log.i(ORIENTATION_TAG, "split tap blocked while locked x=" + x + " width=" + width + " " + orientationState());
+            Log.i(ORIENTATION_TAG, "tap blocked while locked x=" + x + " width=" + width + " " + orientationState());
             hideInfo();
             hideUI(false);
             showControl();
@@ -1620,19 +1620,14 @@ public class LiveActivity extends PlaybackActivity implements CustomKeyDown.List
             return;
         }
         hideInfo();
-        if (x < width / 2f) {
-            if (isVisible(mBinding.recycler)) hideUI();
-            else {
-                hideControl();
-                showUI();
-            }
-        } else {
+        // QA1-B1 先关闭：有可见浮层时视频区点击一律收回，不再切换到另一浮层
+        if (isVisible(mBinding.control.getRoot()) || isVisible(mBinding.recycler)) {
             if (isVisible(mBinding.control.getRoot())) hideControl();
-            else {
-                hideUI(false);
-                showControl();
-            }
+            if (isVisible(mBinding.recycler)) hideUI();
+            return;
         }
+        if (x < width / 2f) showUI();
+        else showControl();
     }
 
     @Override

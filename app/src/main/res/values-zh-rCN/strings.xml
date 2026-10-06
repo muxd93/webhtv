@@ -1136,11 +1136,8 @@
     <string name="source_reprobe">刷新</string>
     <string name="source_delete">删除</string>
     <string name="source_delete_depot_confirm">删除仓库“%1$s”及其 %2$d 个子源？</string>
-    <string name="source_add_subscription">添加订阅</string>
     <string name="source_add_scan">扫码推送</string>
-    <string name="source_add_exists">该源已存在</string>
     <string name="live_failover_next">直播源 %1$s 失败，正在切换 %2$s</string>
-    <string name="source_add_hint">输入订阅地址（仓库 / 多仓 URL）</string>
     <string name="source_in_use">使用中</string>
     <string name="source_available">可用 %1$d/%2$d</string>
     <string name="source_probe_progress">探测中 %1$d/%2$d</string>

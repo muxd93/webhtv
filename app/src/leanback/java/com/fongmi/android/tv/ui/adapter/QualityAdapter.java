@@ -31,6 +31,7 @@ public class QualityAdapter extends RecyclerView.Adapter<QualityAdapter.ViewHold
 
     public void addAll(Result result) {
         this.result = result;
+        this.position = 0;
         notifyDataSetChanged();
     }
 

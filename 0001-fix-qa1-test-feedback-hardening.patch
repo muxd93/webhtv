@@ -1,0 +1,1170 @@
+From c665ea7479dfa6b2e846e393770ccfe807b45a37 Mon Sep 17 00:00:00 2001
+From: XD <xd.mu@outlook.com>
+Date: Tue, 6 Oct 2026 19:01:55 +0800
+Subject: [PATCH] =?UTF-8?q?fix:=20QA1=20=E6=B5=8B=E8=AF=95=E5=8F=8D?=
+ =?UTF-8?q?=E9=A6=88=E7=B3=BB=E7=BB=9F=E6=80=A7=E5=8A=A0=E5=9B=BA=E2=80=94?=
+ =?UTF-8?q?=E2=80=94=E5=B9=BF=E5=91=8A=E5=87=80=E5=8C=96=E7=BC=93=E5=AD=98?=
+ =?UTF-8?q?=E3=80=81=E7=9C=8B=E9=97=A8=E7=8B=97=E7=BB=9F=E4=B8=80=E5=8F=A3?=
+ =?UTF-8?q?=E5=BE=84=E3=80=81=E7=9B=B4=E6=92=AD=E7=82=B9=E5=87=BB=E6=A8=A1?=
+ =?UTF-8?q?=E5=9E=8B=E3=80=81=E8=B6=85=E6=97=B6=E4=B8=8B=E9=99=90=E4=B8=8E?=
+ =?UTF-8?q?=E6=BA=90=E7=AE=A1=E7=90=86=E5=BC=B9=E7=AA=97?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+整合尚未推送的 5 笔提交（quickfix-test-5 + QA1-S1'~S4）：
+
+- 广告过滤重构为 URL 级净化缓存（QA1-S1'）：缓存命中复用同 token 不重复
+  提示、本地路由幂等供数（重试/重放不再 400）、回退毒化防"过滤→回退→重
+  过滤"回环、删 retry 死字段
+- 起播看门狗按 deadline 计费（QA1-S2'）：过滤/代理等待计入起播预算、消除
+  等待期旧看门狗并发，activeTimeout 贯穿 parse/切清晰度/引擎重试 22 处，
+  质量档位跨集归零
+- 直播点击改"先关闭后打开"模型（QA1-S3）：mobile 重构 + leanback 补齐关闭
+  分支，双指缩放态同步复位消除 500ms 点击死区
+- 换源/换台看门狗下限 1s→2s（Site/Live 对齐）
+- 源管理弹窗去独立"添加订阅"（能力已含于扫码推送）并补 mobile 竖屏自适应
+  宽度；推送 URL 弹窗同步补齐
+
+Verification: AdFilterCacheTest 8/8；各阶段 mobile/leanback 两变体编译通过。
+Task-Guard: quickfix-test-5, QA1-S1-purify-cache, QA1-S2-watchdog-quality, QA1-S3-live-tap, QA1-S4-timeout-dialogs
+---
+ .../android/tv/ui/activity/LiveActivity.java  |   8 +-
+ .../android/tv/ui/adapter/QualityAdapter.java |   1 +
+ .../java/com/fongmi/android/tv/bean/Live.java |   3 +-
+ .../java/com/fongmi/android/tv/bean/Site.java |   3 +-
+ .../android/tv/player/AdFilterCache.java      |  97 +++++++++++++++
+ .../android/tv/player/AdFilterController.java |  58 +++++----
+ .../android/tv/player/PlayerManager.java      |  83 ++++++++-----
+ .../android/tv/server/process/VodM3u8.java    |   4 +-
+ .../tv/ui/activity/PlaybackActivity.java      |   2 +-
+ .../tv/ui/dialog/ApkPushUrlDialog.java        |  14 +++
+ .../tv/ui/dialog/PushPlayUrlDialog.java       |  14 +++
+ .../tv/ui/dialog/SourceManagerDialog.java     |  41 ++----
+ app/src/main/res/layout/dialog_source_add.xml |  22 ----
+ .../main/res/layout/dialog_source_manager.xml |  11 --
+ app/src/main/res/values-zh-rCN/strings.xml    |   3 -
+ app/src/main/res/values-zh-rTW/strings.xml    |   3 -
+ app/src/main/res/values/strings.xml           |   3 -
+ .../android/tv/ui/activity/LiveActivity.java  |  19 ++-
+ .../android/tv/ui/adapter/QualityAdapter.java |   1 +
+ .../android/tv/ui/custom/CustomKeyDown.java   |   5 +-
+ .../android/tv/player/AdFilterCacheTest.java  | 117 ++++++++++++++++++
+ 21 files changed, 358 insertions(+), 154 deletions(-)
+ create mode 100644 app/src/main/java/com/fongmi/android/tv/player/AdFilterCache.java
+ delete mode 100644 app/src/main/res/layout/dialog_source_add.xml
+ create mode 100644 app/src/test/java/com/fongmi/android/tv/player/AdFilterCacheTest.java
+
+diff --git a/app/src/leanback/java/com/fongmi/android/tv/ui/activity/LiveActivity.java b/app/src/leanback/java/com/fongmi/android/tv/ui/activity/LiveActivity.java
+index cddeb0d9b3..5676d8c225 100644
+--- a/app/src/leanback/java/com/fongmi/android/tv/ui/activity/LiveActivity.java
++++ b/app/src/leanback/java/com/fongmi/android/tv/ui/activity/LiveActivity.java
+@@ -1164,7 +1164,13 @@ public class LiveActivity extends PlaybackActivity implements GroupAdapter.OnCli
+ 
+     @Override
+     public void onSingleTap(float x, float width) {
+-        // UNIFY1:触屏设备上的 leanback 手势,分区语义对齐 mobile(左=频道列表,右=控制条)
++        // UNIFY1/QA1-B1:分区语义对齐 mobile(左=频道列表,右=控制条);有可见浮层时点击一律先收回
++        hideInfo();
++        if (isVisible(mBinding.control.getRoot()) || isVisible(mBinding.recycler)) {
++            if (isVisible(mBinding.control.getRoot())) hideControl();
++            if (isVisible(mBinding.recycler)) hideUI();
++            return;
++        }
+         if (x < width / 2f) showUI();
+         else onMenu();
+     }
+diff --git a/app/src/leanback/java/com/fongmi/android/tv/ui/adapter/QualityAdapter.java b/app/src/leanback/java/com/fongmi/android/tv/ui/adapter/QualityAdapter.java
+index fd79c710eb..45e9f16014 100644
+--- a/app/src/leanback/java/com/fongmi/android/tv/ui/adapter/QualityAdapter.java
++++ b/app/src/leanback/java/com/fongmi/android/tv/ui/adapter/QualityAdapter.java
+@@ -31,6 +31,7 @@ public class QualityAdapter extends RecyclerView.Adapter<QualityAdapter.ViewHold
+ 
+     public void addAll(Result result) {
+         this.result = result;
++        this.position = 0;
+         notifyDataSetChanged();
+     }
+ 
+diff --git a/app/src/main/java/com/fongmi/android/tv/bean/Live.java b/app/src/main/java/com/fongmi/android/tv/bean/Live.java
+index 80f0535c60..ff7a334c45 100644
+--- a/app/src/main/java/com/fongmi/android/tv/bean/Live.java
++++ b/app/src/main/java/com/fongmi/android/tv/bean/Live.java
+@@ -225,7 +225,8 @@ public class Live {
+     }
+ 
+     public long getTimeout() {
+-        return timeout == null ? Constant.TIMEOUT_PLAY : TimeUnit.SECONDS.toMillis(Math.max(timeout, 1));
++        // 换台/起播看门狗下限 2s：1s 会对慢线路过早判超时（与 Site.getTimeout 对齐）
++        return timeout == null ? Constant.TIMEOUT_PLAY : TimeUnit.SECONDS.toMillis(Math.max(timeout, 2));
+     }
+ 
+     public Map<String, String> getHeader() {
+diff --git a/app/src/main/java/com/fongmi/android/tv/bean/Site.java b/app/src/main/java/com/fongmi/android/tv/bean/Site.java
+index cc95f51165..6db8820e5d 100644
+--- a/app/src/main/java/com/fongmi/android/tv/bean/Site.java
++++ b/app/src/main/java/com/fongmi/android/tv/bean/Site.java
+@@ -300,7 +300,8 @@ public class Site implements Parcelable {
+     }
+ 
+     public long getTimeout() {
+-        return timeout == null ? Constant.TIMEOUT_PLAY : TimeUnit.SECONDS.toMillis(Math.max(timeout, 1));
++        // 换源/起播看门狗下限 2s：1s 会对慢源过早判超时
++        return timeout == null ? Constant.TIMEOUT_PLAY : TimeUnit.SECONDS.toMillis(Math.max(timeout, 2));
+     }
+ 
+     public Integer getSearchable() {
+diff --git a/app/src/main/java/com/fongmi/android/tv/player/AdFilterCache.java b/app/src/main/java/com/fongmi/android/tv/player/AdFilterCache.java
+new file mode 100644
+index 0000000000..f811615b24
+--- /dev/null
++++ b/app/src/main/java/com/fongmi/android/tv/player/AdFilterCache.java
+@@ -0,0 +1,97 @@
++package com.fongmi.android.tv.player;
++
++import java.util.LinkedHashMap;
++import java.util.Map;
++import java.util.function.LongSupplier;
++
++/**
++ * URL 级净化清单缓存（QA1-A3）：同源地址一次净化多次复用，路由 token 幂等。
++ * 命中未过期条目复用同一 token（不重新拉取、不重新提示）；poisoned 条目由
++ * 回退路径标记，TTL 内同 URL 不再过滤、不再供数，防止"过滤→回退→重过滤"
++ * 回环。过期惰性回收，容量 LRU 淘汰。无 Android 依赖，纯 JVM 可测。
++ */
++final class AdFilterCache {
++
++    record Entry(String url, String content, int removed, String token, long createdAt, boolean poisoned) {
++
++        boolean fresh(long now, long ttlMs) {
++            return now - createdAt <= ttlMs;
++        }
++    }
++
++    private final int capacity;
++    private final long ttlMs;
++    private final LongSupplier clock;
++    private final LinkedHashMap<String, Entry> entries;
++
++    AdFilterCache(int capacity, long ttlMs) {
++        this(capacity, ttlMs, System::currentTimeMillis);
++    }
++
++    AdFilterCache(int capacity, long ttlMs, LongSupplier clock) {
++        this.capacity = capacity;
++        this.ttlMs = ttlMs;
++        this.clock = clock;
++        this.entries = new LinkedHashMap<String, AdFilterCache.Entry>(16, 0.75f, true) {
++            @Override
++            protected boolean removeEldestEntry(java.util.Map.Entry<String, AdFilterCache.Entry> eldest) {
++                return size() > capacity;
++            }
++        };
++    }
++
++    /** 未过期的可用条目；poisoned 不算命中。 */
++    synchronized Entry find(String url) {
++        Entry entry = freshEntry(url);
++        return entry == null || entry.poisoned() ? null : entry;
++    }
++
++    /** 未过期条目（含 poisoned），供调用方区分"中毒跳过"与"无条目可重新过滤"。 */
++    synchronized Entry peek(String url) {
++        return freshEntry(url);
++    }
++
++    synchronized Entry put(String url, String content, int removed, String token) {
++        purge();
++        Entry entry = new Entry(url, content, removed, token, clock.getAsLong(), false);
++        entries.put(url, entry);
++        return entry;
++    }
++
++    /** 幂等供数：token 在 TTL 内可重复响应；poisoned/过期/未知一律拒绝。 */
++    synchronized Entry findByToken(String token) {
++        if (token == null || token.isEmpty()) return null;
++        long now = clock.getAsLong();
++        for (Entry entry : entries.values()) {
++            if (!entry.token().equals(token)) continue;
++            return !entry.fresh(now, ttlMs) || entry.poisoned() ? null : entry;
++        }
++        return null;
++    }
++
++    /** 路由播放失败回退时调用：仅标记既有未过期条目，TTL 后可重新过滤。 */
++    synchronized void poison(String url) {
++        Entry entry = entries.get(url);
++        if (entry == null || !entry.fresh(clock.getAsLong(), ttlMs) || entry.poisoned()) return;
++        entries.put(url, new Entry(entry.url(), entry.content(), entry.removed(), entry.token(), entry.createdAt(), true));
++    }
++
++    synchronized void invalidate(String url) {
++        entries.remove(url);
++    }
++
++    private Entry freshEntry(String url) {
++        Entry entry = entries.get(url);
++        if (entry == null) return null;
++        if (!entry.fresh(clock.getAsLong(), ttlMs)) {
++            entries.remove(url);
++            return null;
++        }
++        return entry;
++    }
++
++    private void purge() {
++        long now = clock.getAsLong();
++        entries.values().removeIf(entry -> !entry.fresh(now, ttlMs));
++    }
++}
+diff --git a/app/src/main/java/com/fongmi/android/tv/player/AdFilterController.java b/app/src/main/java/com/fongmi/android/tv/player/AdFilterController.java
+index 555cb87406..4eee851026 100644
+--- a/app/src/main/java/com/fongmi/android/tv/player/AdFilterController.java
++++ b/app/src/main/java/com/fongmi/android/tv/player/AdFilterController.java
+@@ -8,9 +8,10 @@ import com.fongmi.android.tv.setting.Setting;
+ import com.github.catvod.crawler.SpiderDebug;
+ import com.github.catvod.net.OkHttp;
+ 
+-import java.util.LinkedHashMap;
+ import java.util.Locale;
+ import java.util.Map;
++import java.util.UUID;
++import java.util.concurrent.TimeUnit;
+ import java.util.regex.Pattern;
+ 
+ import okhttp3.Request;
+@@ -19,21 +20,20 @@ import okhttp3.ResponseBody;
+ 
+ /**
+  * Fetches a VOD playlist before playback, runs M3u8Purifier and serves the
+- * cleaned text through a short-lived local route. Fail-open: any fetch,
+- * parse or purify problem returns no rewrite and playback keeps the original
+- * URL. Only media playlists are rewritten; master and wrapper playlists stay
+- * direct to preserve ABR.
++ * cleaned text through a local route. Results are cached per source URL
++ * (QA1-A3): a fresh cache hit reuses the same route token without refetching
++ * or re-notifying; a poisoned entry (route playback failed and fell back)
++ * suppresses re-filtering of that URL until it expires. Fail-open: any
++ * fetch, parse or purify problem returns no rewrite and playback keeps the
++ * original URL. Only media playlists are rewritten; master and wrapper
++ * playlists stay direct to preserve ABR.
+  */
+ public final class AdFilterController {
+ 
+     private static final Pattern M3U8_HINT = Pattern.compile("\\.m3u8([?#]|$)", Pattern.CASE_INSENSITIVE);
+-    private static final int MAX_CACHE = 4;
+-    private static final LinkedHashMap<String, String> PURIFIED = new LinkedHashMap<>() {
+-        @Override
+-        protected boolean removeEldestEntry(LinkedHashMap.Entry<String, String> eldest) {
+-            return size() > MAX_CACHE;
+-        }
+-    };
++    private static final long CACHE_TTL_MS = TimeUnit.MINUTES.toMillis(10);
++    private static final int MAX_CACHE = 8;
++    private static final AdFilterCache CACHE = new AdFilterCache(MAX_CACHE, CACHE_TTL_MS);
+ 
+     private AdFilterController() {
+     }
+@@ -51,15 +51,18 @@ public final class AdFilterController {
+         return url != null && url.contains("/vodm3u8?t=");
+     }
+ 
+-    public record Result(String rewritten, int removed, String original) {
++    public record Result(String rewritten, int removed, String original, boolean cached) {
+     }
+ 
+     public static Result process(String url, Map<String, String> headers) {
+         try {
++            AdFilterCache.Entry cached = CACHE.peek(url);
++            if (cached != null && cached.poisoned()) return null;
++            if (cached != null) return new Result(routeUrl(cached.token()), cached.removed(), url, true);
+             Request.Builder builder = new Request.Builder().url(url);
+-            if (headers != null) for (Map.Entry<String, String> entry : headers.entrySet()) {
+-                if ("Range".equalsIgnoreCase(entry.getKey())) continue;
+-                builder.header(entry.getKey(), entry.getValue());
++            if (headers != null) for (Map.Entry<String, String> header : headers.entrySet()) {
++                if ("Range".equalsIgnoreCase(header.getKey())) continue;
++                builder.header(header.getKey(), header.getValue());
+             }
+             Response response = OkHttp.player().newCall(builder.build()).execute();
+             try (response; ResponseBody body = response.body()) {
+@@ -68,11 +71,8 @@ public final class AdFilterController {
+                 if (!text.trim().startsWith("#EXTM3U")) return null;
+                 M3u8Purifier.Result result = M3u8Purifier.purify(url, text, RuleConfig.get().getAds());
+                 if (result == null || result.removed() <= 0 || TextUtils.isEmpty(result.content())) return null;
+-                String token = newToken();
+-                synchronized (PURIFIED) {
+-                    PURIFIED.put(token, result.content());
+-                }
+-                return new Result(routeUrl(token), result.removed(), url);
++                AdFilterCache.Entry stored = CACHE.put(url, result.content(), result.removed(), newToken());
++                return new Result(routeUrl(stored.token()), stored.removed(), url, false);
+             }
+         } catch (Throwable e) {
+             SpiderDebug.log("adfilter", e);
+@@ -80,11 +80,15 @@ public final class AdFilterController {
+         }
+     }
+ 
+-    public static String consume(String token) {
+-        if (TextUtils.isEmpty(token)) return null;
+-        synchronized (PURIFIED) {
+-            return PURIFIED.remove(token);
+-        }
++    /** 幂等供数：同一 token 在 TTL 内可重复响应（Exo 重试/重放不再 400）。 */
++    public static String serve(String token) {
++        AdFilterCache.Entry entry = CACHE.findByToken(token);
++        return entry == null ? null : entry.content();
++    }
++
++    /** 路由播放失败回退时调用：TTL 内同 URL 不再过滤、不再复用该路由。 */
++    public static void poison(String url) {
++        if (!TextUtils.isEmpty(url)) CACHE.poison(url);
+     }
+ 
+     private static String routeUrl(String token) {
+@@ -92,6 +96,6 @@ public final class AdFilterController {
+     }
+ 
+     private static String newToken() {
+-        return Long.toHexString(System.nanoTime()) + Long.toHexString(java.util.UUID.randomUUID().getMostSignificantBits());
++        return Long.toHexString(System.nanoTime()) + Long.toHexString(UUID.randomUUID().getMostSignificantBits());
+     }
+ }
+diff --git a/app/src/main/java/com/fongmi/android/tv/player/PlayerManager.java b/app/src/main/java/com/fongmi/android/tv/player/PlayerManager.java
+index c1821b9f8b..088905d6f5 100644
+--- a/app/src/main/java/com/fongmi/android/tv/player/PlayerManager.java
++++ b/app/src/main/java/com/fongmi/android/tv/player/PlayerManager.java
+@@ -133,6 +133,8 @@ public class PlayerManager implements ParseCallback {
+     public static final String RELOAD_LUT_WARMUP = "__webhtv_lut_warmup_reload__";
+     private static final String NETWORK_GUARD_DEBUG = "EXO_NETWORK_GUARD";
+     private static final long AD_FILTER_TIMEOUT_MS = 6000;
++    /** 看门狗剩余时间的下限：过滤/代理等待超出预算时至少留 1s 给 prepare 判定。 */
++    private static final long WATCHDOG_FLOOR_MS = 1000L;
+ 
+     private static void logNetworkGuard(String message) {
+         if (SpiderDebug.isEnabled()) Log.d(NETWORK_GUARD_DEBUG, message);
+@@ -267,8 +269,9 @@ public class PlayerManager implements ParseCallback {
+     private boolean playbackForeground;
+     private boolean exoDecoderResourceRecoveryInProgress;
+     private int playerType;
+-    private int retry;
+     private int localProxyRetry;
++    private long activeTimeout = Constant.TIMEOUT_PLAY;
++    private long watchdogDeadlineMs;
+     private boolean adFilterActive;
+     private String adFilterOriginalUrl;
+     private List<ParseJob.Quality> qualityOptions;
+@@ -1411,7 +1414,6 @@ public class PlayerManager implements ParseCallback {
+                 && player.getPlayWhenReady();
+         if (activePlayback) scheduleNetworkProtection(0);
+         else resetNetworkProtectionSession("reset");
+-        retry = 0;
+         localProxyRetry = 0;
+         hardDecodeSwitchRetryArmed = false;
+         clearPendingSwitchRestore();
+@@ -1491,7 +1493,7 @@ public class PlayerManager implements ParseCallback {
+         playWhenReady = wasPlayWhenReady;
+         if (SpiderDebug.isEnabled()) SpiderDebug.log("player", "switch decode fresh decode=%d position=%d spec=%s", next, position, debugSpec());
+         callback.onPlayerRebuild(player, resetVideoSurface);
+-        setMediaItem(Constant.TIMEOUT_PLAY);
++        setMediaItem(activeTimeout);
+         if (position > 0) seekTo(position);
+         if (speed != 1f) setSpeed(speed);
+         setRepeatOne(repeat);
+@@ -1527,7 +1529,7 @@ public class PlayerManager implements ParseCallback {
+             spec = PlaySpec.from(result, key, metadata);
+             bindPlaybackTrace();
+             if (SpiderDebug.isEnabled()) SpiderDebug.log("player", "switch decode fresh result decode=%d position=%d spec=%s", next, position, debugSpec());
+-            setMediaItem(Constant.TIMEOUT_PLAY);
++            setMediaItem(activeTimeout);
+             if (position > 0) seekTo(position);
+             if (speed != 1f) setSpeed(speed);
+             setRepeatOne(repeat);
+@@ -1563,7 +1565,7 @@ public class PlayerManager implements ParseCallback {
+         engine = buildEngine(playerType, decode);
+         player = engine.getPlayer();
+         callback.onPlayerRebuild(player, resetVideoSurface);
+-        setMediaItem(Constant.TIMEOUT_PLAY);
++        setMediaItem(activeTimeout);
+         if (position > 0) seekTo(position);
+         if (speed != 1f) setSpeed(speed);
+         setRepeatOne(repeat);
+@@ -1601,7 +1603,7 @@ public class PlayerManager implements ParseCallback {
+             spec = PlaySpec.from(result, key, metadata);
+             bindPlaybackTrace();
+             if (SpiderDebug.isEnabled()) SpiderDebug.log("player", "switch player fresh result type=%d position=%d spec=%s", type, position, debugSpec());
+-            setMediaItem(Constant.TIMEOUT_PLAY);
++            setMediaItem(activeTimeout);
+             if (position > 0) seekTo(position);
+             if (speed != 1f) setSpeed(speed);
+             setRepeatOne(repeat);
+@@ -1637,7 +1639,7 @@ public class PlayerManager implements ParseCallback {
+         if (spec == null || spec.getUrl() == null) return;
+         this.playWhenReady = wasPlayWhenReady;
+         if (reparseForPlayerSwitch(position, speed, repeat)) return;
+-        setMediaItem(Constant.TIMEOUT_PLAY);
++        setMediaItem(activeTimeout);
+         if (position > 0) seekTo(position);
+         if (speed != 1f) setSpeed(speed);
+         setRepeatOne(repeat);
+@@ -2569,7 +2571,7 @@ public class PlayerManager implements ParseCallback {
+                     "action=restore-state result=partial errorType=%s",
+                     error.getClass().getSimpleName());
+         }
+-        App.post(runnable, Constant.TIMEOUT_PLAY);
++        App.post(runnable, activeTimeout);
+         return true;
+     }
+ 
+@@ -2611,7 +2613,7 @@ public class PlayerManager implements ParseCallback {
+                     "action=restore-state result=partial errorType=%s",
+                     error.getClass().getSimpleName());
+         }
+-        App.post(runnable, Constant.TIMEOUT_PLAY);
++        App.post(runnable, activeTimeout);
+         return true;
+     }
+ 
+@@ -2660,7 +2662,7 @@ public class PlayerManager implements ParseCallback {
+                     "action=restore-state result=partial errorType=%s",
+                     error.getClass().getSimpleName());
+         }
+-        App.post(runnable, Constant.TIMEOUT_PLAY);
++        App.post(runnable, activeTimeout);
+         return true;
+     }
+ 
+@@ -3504,7 +3506,7 @@ public class PlayerManager implements ParseCallback {
+                 return true;
+             }
+             pendingIjkRuntimeFallbackReparse = false;
+-            setMediaItem(Constant.TIMEOUT_PLAY);
++            setMediaItem(activeTimeout);
+             if (position > 0) seekTo(position);
+             if (speed != 1f) setSpeed(speed);
+             setRepeatOne(repeat);
+@@ -4770,7 +4772,7 @@ public class PlayerManager implements ParseCallback {
+         startNativeAudioSession(wasPlayWhenReady);
+         if (speed != 1f) setSpeed(speed);
+         setRepeatOne(repeat);
+-        App.post(runnable, Constant.TIMEOUT_PLAY);
++        App.post(runnable, activeTimeout);
+         return true;
+     }
+ 
+@@ -4803,7 +4805,7 @@ public class PlayerManager implements ParseCallback {
+         startNativeAudioSession(wasPlayWhenReady);
+         if (speed != 1f) setSpeed(speed);
+         setRepeatOne(repeat);
+-        App.post(runnable, Constant.TIMEOUT_PLAY);
++        App.post(runnable, activeTimeout);
+         return true;
+     }
+ 
+@@ -5258,7 +5260,7 @@ public class PlayerManager implements ParseCallback {
+         prepareMpvOutputForNewItem();
+         beginPlaybackTrace("start", false);
+         this.playWhenReady = playWhenReady;
+-        retry = 0;
++        activeTimeout = timeout;
+         localProxyRetry = 0;
+         hardDecodeSwitchRetryArmed = false;
+         qualityOptions = null;
+@@ -5276,17 +5278,22 @@ public class PlayerManager implements ParseCallback {
+ 
+     public void parse(String key, Result result, boolean useParse, MediaMetadata metadata,
+                       boolean playWhenReady, long positionMs) {
++        parse(key, result, useParse, metadata, playWhenReady, positionMs, Constant.TIMEOUT_PLAY);
++    }
++
++    public void parse(String key, Result result, boolean useParse, MediaMetadata metadata,
++                      boolean playWhenReady, long positionMs, long timeout) {
+         endPlaybackTelemetrySession("replace-parse");
+         prepareIjkRuntimeForUserPlayback();
+         stopParse();
+         clearPendingSwitchRestore();
+         clearDanmaku("parse");
+         spec = PlaySpec.fromParse(result, key, metadata, useParse);
++        activeTimeout = timeout;
+         pendingInitialStartPositionMs = positionMs > 0 ? positionMs : C.TIME_UNSET;
+         prepareMpvOutputForNewItem();
+         beginPlaybackTrace("parse", false);
+         this.playWhenReady = playWhenReady;
+-        retry = 0;
+         localProxyRetry = 0;
+         hardDecodeSwitchRetryArmed = false;
+         qualityOptions = null;
+@@ -5351,7 +5358,7 @@ public class PlayerManager implements ParseCallback {
+         spec = PlaySpec.from(result, key, metadata);
+         bindPlaybackTrace();
+         if (SpiderDebug.isEnabled()) SpiderDebug.log("player", "switch player refreshed direct spec=%s", debugSpec());
+-        setMediaItem(Constant.TIMEOUT_PLAY);
++        setMediaItem(activeTimeout);
+         restoreAfterSwitchReparse();
+     }
+ 
+@@ -5376,12 +5383,15 @@ public class PlayerManager implements ParseCallback {
+ 
+     public void setMediaItem() {
+         playWhenReady = player == null || player.getPlayWhenReady();
+-        setMediaItem(Constant.TIMEOUT_PLAY);
++        setMediaItem(activeTimeout);
+     }
+ 
+     private void setMediaItem(long timeout) {
+         if (spec == null || spec.getUrl() == null) return;
+         int seq = ++prepareSeq;
++        // 过滤/代理等待期不计入旧条目看门狗，且等待本身计入本次起播预算（QA1-A3 C3）
++        App.removeCallbacks(runnable);
++        watchdogDeadlineMs = SystemClock.elapsedRealtime() + timeout;
+         if (rejectMpvDrmMedia()) return;
+         if (AdFilterController.shouldProcess(spec.getUrl())) {
+             awaitAdFilterAndSetMediaItem(seq, timeout);
+@@ -5412,8 +5422,8 @@ public class PlayerManager implements ParseCallback {
+                 adFilterOriginalUrl = url;
+                 adFilterActive = true;
+                 target.setUrl(result.rewritten());
+-                if (SpiderDebug.isEnabled()) SpiderDebug.log("adfilter", "applied removed=%d seq=%d url=%s", result.removed(), seq, summarizeUrl(url));
+-                Notify.show(ResUtil.getString(R.string.player_ad_removed, result.removed()));
++                if (SpiderDebug.isEnabled()) SpiderDebug.log("adfilter", "%s removed=%d seq=%d url=%s", result.cached() ? "reused" : "applied", result.removed(), seq, summarizeUrl(url));
++                if (!result.cached()) Notify.show(ResUtil.getString(R.string.player_ad_removed, result.removed()));
+             }
+             setMediaItemNow(timeout, true);
+         });
+@@ -5446,7 +5456,7 @@ public class PlayerManager implements ParseCallback {
+         applyIjkAutoInitialControl();
+         applyMpvAutoInitialControl();
+         logPlaybackRoute();
+-        if (SpiderDebug.isEnabled()) SpiderDebug.log("player", "setMediaItem timeout=%d notify=%s spec=%s", timeout, notifyPrepare, debugSpec());
++        if (SpiderDebug.isEnabled()) SpiderDebug.log("player", "setMediaItem timeout=%d watchdog=%d notify=%s spec=%s", timeout, watchdogRemainingMs(), notifyPrepare, debugSpec());
+         resetNetworkProtectionSession("new-media");
+         App.removeCallbacks(runnable);
+         setDanmakus(spec.getDanmakus());
+@@ -5462,10 +5472,15 @@ public class PlayerManager implements ParseCallback {
+         schedulePlaybackTelemetry();
+         scheduleMpvAutoOutputEvaluation();
+         startNativeAudioSession(playWhenReady);
+-        App.post(runnable, timeout);
++        App.post(runnable, watchdogRemainingMs());
+         if (notifyPrepare) callback.onPrepare();
+     }
+ 
++    /** 看门狗按 setMediaItem 入口记录的 deadline 取剩余时间，过滤/代理等待计入起播预算。 */
++    private long watchdogRemainingMs() {
++        return Math.max(WATCHDOG_FLOOR_MS, watchdogDeadlineMs - SystemClock.elapsedRealtime());
++    }
++
+     private void prepareExoFrameSchedulingForNewPlayback() {
+         if (!(engine instanceof ExoPlayerEngine exo)) return;
+         if (!exo.prepareFrameSchedulingForNextPlayback()) return;
+@@ -6303,7 +6318,7 @@ public class PlayerManager implements ParseCallback {
+         qualityOptions = null;
+         qualityPosition = 0;
+         if (spec != null) spec.setUrl(url);
+-        setMediaItem(Constant.TIMEOUT_PLAY);
++        setMediaItem(activeTimeout);
+         restoreAfterSwitchReparse();
+     }
+ 
+@@ -6345,7 +6360,7 @@ public class PlayerManager implements ParseCallback {
+         qualityPosition = position;
+         spec.setUrl(qualityOptions.get(position).url());
+         if (initial) {
+-            setMediaItem(Constant.TIMEOUT_PLAY);
++            setMediaItem(activeTimeout);
+             restoreAfterSwitchReparse();
+         } else {
+             long resumeMs = 0;
+@@ -6849,7 +6864,7 @@ public class PlayerManager implements ParseCallback {
+             engine.restart(spec.checkUa(), position, wasPlayWhenReady);
+             if (speed != 1f) setSpeed(speed);
+             setRepeatOne(repeat);
+-            App.post(runnable, Constant.TIMEOUT_PLAY);
++            App.post(runnable, activeTimeout);
+             return true;
+         } catch (Throwable error) {
+             mpvHlsManagedReload = false;
+@@ -7187,7 +7202,7 @@ public class PlayerManager implements ParseCallback {
+         engine.restart(spec.checkUa(), C.TIME_UNSET, wasPlayWhenReady);
+         if (speed != 1f) setSpeed(speed);
+         setRepeatOne(repeat);
+-        App.post(runnable, Constant.TIMEOUT_PLAY);
++        App.post(runnable, activeTimeout);
+         callback.onPrepare();
+         return true;
+     }
+@@ -7842,7 +7857,7 @@ public class PlayerManager implements ParseCallback {
+             PlaybackErrorClassifier.Failure failure = PlaybackErrorClassifier.classify(e, getEffectivePlaybackRoute());
+             PlayerEngine.ErrorAction action = engine.handleError(e);
+             PlaybackTrace.log("playback-error", playbackTrace.current(), "%s action=%s player=%d decode=%d", failure.logSummary(), action, playerType, engine.getDecode());
+-            if (SpiderDebug.isEnabled()) SpiderDebug.log("player", "error code=%d errorType=%s action=%s retry=%d causeTypes=%s", e.errorCode, e.getClass().getSimpleName(), action, retry, causeChain(e));
++            if (SpiderDebug.isEnabled()) SpiderDebug.log("player", "error code=%d errorType=%s action=%s causeTypes=%s", e.errorCode, e.getClass().getSimpleName(), action, causeChain(e));
+             LocalProxyDebug.dumpIfLocalFailure(spec == null ? null : spec.getUrl(), e);
+             if (retryLutFailure(e)) return;
+             if (retryLutWarmupByRefresh(action, e)) return;
+@@ -8067,7 +8082,7 @@ public class PlayerManager implements ParseCallback {
+                 setRepeatOne(recovery.repeat());
+                 setTextOffsetMs(recovery.textOffsetMs());
+                 setAudioOffsetMs(recovery.audioOffsetMs());
+-                App.post(runnable, Constant.TIMEOUT_PLAY);
++                App.post(runnable, activeTimeout);
+                 callback.onPrepare();
+                 PlaybackTrace.log(
+                         "exo-decoder-resource",
+@@ -8118,7 +8133,7 @@ public class PlayerManager implements ParseCallback {
+             scheduleMpvAutoOutputEvaluation();
+             if (speed != 1f) setSpeed(speed);
+             setRepeatOne(repeat);
+-            App.post(runnable, Constant.TIMEOUT_PLAY);
++            App.post(runnable, activeTimeout);
+             callback.onPrepare();
+         }, HARD_DECODE_SWITCH_RETRY_DELAY_MS);
+         return true;
+@@ -8148,7 +8163,7 @@ public class PlayerManager implements ParseCallback {
+             engine.start(target.checkUa(), position, wasPlayWhenReady);
+             if (speed != 1f) setSpeed(speed);
+             setRepeatOne(repeat);
+-            App.post(runnable, Constant.TIMEOUT_PLAY);
++            App.post(runnable, activeTimeout);
+             callback.onPrepare();
+         }, EXO_TUNNELING_RETRY_DELAY_MS);
+         return true;
+@@ -8203,7 +8218,7 @@ public class PlayerManager implements ParseCallback {
+             engine.start(target.checkUa(), position, wasPlayWhenReady);
+             if (speed != 1f) setSpeed(speed);
+             setRepeatOne(repeat);
+-            App.post(runnable, Constant.TIMEOUT_PLAY);
++            App.post(runnable, activeTimeout);
+             callback.onPrepare();
+         }, EXO_DECODER_RUNTIME_RETRY_DELAY_MS);
+         return true;
+@@ -8241,7 +8256,7 @@ public class PlayerManager implements ParseCallback {
+             engine.start(target.checkUa(), position, wasPlayWhenReady);
+             if (speed != 1f) setSpeed(speed);
+             setRepeatOne(repeat);
+-            App.post(runnable, Constant.TIMEOUT_PLAY);
++            App.post(runnable, activeTimeout);
+             callback.onPrepare();
+             if (SpiderDebug.isEnabled()) {
+                 SpiderDebug.log(
+@@ -8287,11 +8302,13 @@ public class PlayerManager implements ParseCallback {
+     private boolean retryAdFilter(PlaybackException e) {
+         if (!adFilterActive || spec == null || !AdFilterController.isRouteUrl(spec.getUrl())) return false;
+         adFilterActive = false;
+-        if (SpiderDebug.isEnabled()) SpiderDebug.log("adfilter", "playback failed on filtered playlist, retry direct url=%s", summarizeUrl(adFilterOriginalUrl));
++        if (SpiderDebug.isEnabled()) SpiderDebug.log("adfilter", "playback failed on filtered playlist, poison route and retry direct url=%s", summarizeUrl(adFilterOriginalUrl));
++        AdFilterController.poison(adFilterOriginalUrl);
+         App.removeCallbacks(runnable);
+         playWhenReady = player == null || player.getPlayWhenReady();
+         spec.setUrl(adFilterOriginalUrl);
+-        setMediaItemNow(Constant.TIMEOUT_PLAY, true);
++        watchdogDeadlineMs = SystemClock.elapsedRealtime() + activeTimeout;
++        setMediaItemNow(activeTimeout, true);
+         return true;
+     }
+ 
+diff --git a/app/src/main/java/com/fongmi/android/tv/server/process/VodM3u8.java b/app/src/main/java/com/fongmi/android/tv/server/process/VodM3u8.java
+index 366cbd7e02..2dc4109d7d 100644
+--- a/app/src/main/java/com/fongmi/android/tv/server/process/VodM3u8.java
++++ b/app/src/main/java/com/fongmi/android/tv/server/process/VodM3u8.java
+@@ -14,7 +14,7 @@ import fi.iki.elonen.NanoHTTPD;
+ import fi.iki.elonen.NanoHTTPD.IHTTPSession;
+ import fi.iki.elonen.NanoHTTPD.Response;
+ 
+-/** Serves a pre-purified VOD playlist held in memory for one playback. */
++/** Serves a pre-purified VOD playlist from the URL-keyed cache; tokens are idempotent within the cache TTL. */
+ public class VodM3u8 implements Process {
+ 
+     private static final String MIME_M3U8 = "application/vnd.apple.mpegurl; charset=utf-8";
+@@ -26,7 +26,7 @@ public class VodM3u8 implements Process {
+ 
+     @Override
+     public Response doResponse(IHTTPSession session, String url, Map<String, String> files) {
+-        String text = AdFilterController.consume(session.getParms().get("t"));
++        String text = AdFilterController.serve(session.getParms().get("t"));
+         if (TextUtils.isEmpty(text)) return Nano.error(Response.Status.BAD_REQUEST, "Unknown or expired playlist token");
+         byte[] bytes = text.getBytes(StandardCharsets.UTF_8);
+         Response response = NanoHTTPD.newFixedLengthResponse(Response.Status.OK, MIME_M3U8, new ByteArrayInputStream(bytes), bytes.length);
+diff --git a/app/src/main/java/com/fongmi/android/tv/ui/activity/PlaybackActivity.java b/app/src/main/java/com/fongmi/android/tv/ui/activity/PlaybackActivity.java
+index 38092ecee3..34c87087e2 100644
+--- a/app/src/main/java/com/fongmi/android/tv/ui/activity/PlaybackActivity.java
++++ b/app/src/main/java/com/fongmi/android/tv/ui/activity/PlaybackActivity.java
+@@ -344,7 +344,7 @@ public abstract class PlaybackActivity extends BaseActivity implements MediaCont
+             onError(ResUtil.getString(R.string.error_play_url));
+         } else if (result.needParse() || useParse) {
+             attachSurface();
+-            player().parse(key, result, useParse, metadata, PlayerSetting.isAutoPlay(), startPositionMs);
++            player().parse(key, result, useParse, metadata, PlayerSetting.isAutoPlay(), startPositionMs, timeout);
+         } else {
+             attachSurface();
+             player().start(PlaySpec.from(result, key, metadata), timeout, PlayerSetting.isAutoPlay(), startPositionMs);
+diff --git a/app/src/main/java/com/fongmi/android/tv/ui/dialog/ApkPushUrlDialog.java b/app/src/main/java/com/fongmi/android/tv/ui/dialog/ApkPushUrlDialog.java
+index d020bf2049..e583bc25ed 100644
+--- a/app/src/main/java/com/fongmi/android/tv/ui/dialog/ApkPushUrlDialog.java
++++ b/app/src/main/java/com/fongmi/android/tv/ui/dialog/ApkPushUrlDialog.java
+@@ -2,6 +2,7 @@ package com.fongmi.android.tv.ui.dialog;
+ 
+ import android.text.TextUtils;
+ import android.view.LayoutInflater;
++import android.view.WindowManager;
+ import android.view.inputmethod.EditorInfo;
+ 
+ import androidx.annotation.NonNull;
+@@ -14,6 +15,7 @@ import com.fongmi.android.tv.R;
+ import com.fongmi.android.tv.bean.Device;
+ import com.fongmi.android.tv.databinding.DialogRemoteTrustTextCommandBinding;
+ import com.fongmi.android.tv.utils.Notify;
++import com.fongmi.android.tv.utils.ResUtil;
+ import com.fongmi.android.tv.utils.Sniffer;
+ import com.fongmi.android.tv.utils.Util;
+ import com.github.catvod.net.OkHttp;
+@@ -75,9 +77,21 @@ public class ApkPushUrlDialog extends BaseAlertDialog {
+     @Override
+     public void onStart() {
+         super.onStart();
++        applyAdaptiveWidth();
+         binding.input.requestFocus();
+     }
+ 
++    /** 竖屏手机自适应宽度（≤560dp、≥320dp），TV/横屏 0.6；与 SourceManagerDialog/ConfigDialog 策略一致（QA1-E1）。 */
++    private void applyAdaptiveWidth() {
++        if (getDialog() == null || getDialog().getWindow() == null) return;
++        int screen = ResUtil.getScreenWidth();
++        int width = ResUtil.isLand(requireContext()) ? Math.round(screen * 0.6f)
++                : Math.max(ResUtil.dp2px(320), Math.min(Math.round(screen * 0.92f), ResUtil.dp2px(560)));
++        WindowManager.LayoutParams params = getDialog().getWindow().getAttributes();
++        params.width = width;
++        getDialog().getWindow().setAttributes(params);
++    }
++
+     @Override
+     protected void initEvent() {
+         binding.negative.setOnClickListener(view -> dismiss());
+diff --git a/app/src/main/java/com/fongmi/android/tv/ui/dialog/PushPlayUrlDialog.java b/app/src/main/java/com/fongmi/android/tv/ui/dialog/PushPlayUrlDialog.java
+index d8bfee2d06..8971870768 100644
+--- a/app/src/main/java/com/fongmi/android/tv/ui/dialog/PushPlayUrlDialog.java
++++ b/app/src/main/java/com/fongmi/android/tv/ui/dialog/PushPlayUrlDialog.java
+@@ -2,6 +2,7 @@ package com.fongmi.android.tv.ui.dialog;
+ 
+ import android.text.TextUtils;
+ import android.view.LayoutInflater;
++import android.view.WindowManager;
+ import android.view.inputmethod.EditorInfo;
+ 
+ import androidx.annotation.NonNull;
+@@ -13,6 +14,7 @@ import com.fongmi.android.tv.R;
+ import com.fongmi.android.tv.bean.Device;
+ import com.fongmi.android.tv.databinding.DialogRemoteTrustTextCommandBinding;
+ import com.fongmi.android.tv.utils.Notify;
++import com.fongmi.android.tv.utils.ResUtil;
+ import com.fongmi.android.tv.utils.Sniffer;
+ import com.fongmi.android.tv.utils.Util;
+ import com.github.catvod.net.OkHttp;
+@@ -67,9 +69,21 @@ public class PushPlayUrlDialog extends BaseAlertDialog {
+     @Override
+     public void onStart() {
+         super.onStart();
++        applyAdaptiveWidth();
+         binding.input.requestFocus();
+     }
+ 
++    /** 竖屏手机自适应宽度（≤560dp、≥320dp），TV/横屏 0.6；与 SourceManagerDialog/ConfigDialog 策略一致（QA1-E1）。 */
++    private void applyAdaptiveWidth() {
++        if (getDialog() == null || getDialog().getWindow() == null) return;
++        int screen = ResUtil.getScreenWidth();
++        int width = ResUtil.isLand(requireContext()) ? Math.round(screen * 0.6f)
++                : Math.max(ResUtil.dp2px(320), Math.min(Math.round(screen * 0.92f), ResUtil.dp2px(560)));
++        WindowManager.LayoutParams params = getDialog().getWindow().getAttributes();
++        params.width = width;
++        getDialog().getWindow().setAttributes(params);
++    }
++
+     @Override
+     protected void initEvent() {
+         binding.negative.setOnClickListener(v -> dismiss());
+diff --git a/app/src/main/java/com/fongmi/android/tv/ui/dialog/SourceManagerDialog.java b/app/src/main/java/com/fongmi/android/tv/ui/dialog/SourceManagerDialog.java
+index 9a4cedbbe7..aa1091d87f 100644
+--- a/app/src/main/java/com/fongmi/android/tv/ui/dialog/SourceManagerDialog.java
++++ b/app/src/main/java/com/fongmi/android/tv/ui/dialog/SourceManagerDialog.java
+@@ -3,20 +3,17 @@ package com.fongmi.android.tv.ui.dialog;
+ import androidx.fragment.app.FragmentActivity;
+ import androidx.viewbinding.ViewBinding;
+ 
+-import android.text.TextUtils;
+ import android.view.View;
+ 
+ import com.fongmi.android.tv.R;
+ import com.fongmi.android.tv.api.config.DepotProbe;
+ import com.fongmi.android.tv.bean.Config;
+-import com.fongmi.android.tv.db.AppDatabase;
+-import com.fongmi.android.tv.databinding.DialogSourceAddBinding;
+ import com.fongmi.android.tv.databinding.DialogSourceManagerBinding;
+ import com.fongmi.android.tv.impl.ConfigListener;
+ import com.fongmi.android.tv.setting.InterfaceOrderStore;
+ import com.fongmi.android.tv.source.SourceState;
+ import com.fongmi.android.tv.ui.adapter.SourceManagerAdapter;
+-import com.fongmi.android.tv.utils.Notify;
++import com.fongmi.android.tv.utils.ResUtil;
+ import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+ 
+ import java.util.ArrayList;
+@@ -62,7 +59,6 @@ public class SourceManagerDialog extends BaseAlertDialog implements SourceManage
+         binding.recycler.setItemAnimator(null);
+         binding.recycler.setHasFixedSize(false);
+         binding.recycler.setAdapter(adapter.build());
+-        binding.add.setOnClickListener(v -> onAddSubscription());
+         binding.scan.setVisibility(View.VISIBLE);
+         binding.scan.setOnClickListener(v -> openPushDialog());
+     }
+@@ -80,7 +76,13 @@ public class SourceManagerDialog extends BaseAlertDialog implements SourceManage
+     public void onStart() {
+         super.onStart();
+         if (adapter.getItemCount() == 0) dismiss();
+-        else setWidth(0.6f);
++        else setWidth(adaptiveWidth());
++    }
++
++    /** 竖屏手机放宽到 0.92（≤560dp），固定 0.6 会挤压行内容到不可读；TV/横屏维持 0.6。 */
++    private float adaptiveWidth() {
++        if (ResUtil.isLand(requireContext())) return 0.6f;
++        return Math.min(0.92f, (float) ResUtil.dp2px(560) / ResUtil.getScreenWidth());
+     }
+ 
+     @Override
+@@ -155,31 +157,4 @@ public class SourceManagerDialog extends BaseAlertDialog implements SourceManage
+         for (DepotProbe.Result r : results) samples.add(new InterfaceOrderStore.HealthSample(r.url, r.ok, now, r.latency));
+         return samples;
+     }
+-
+-    /** 弹窗内快速添加：玻璃样式输入 + upsert（对齐 ConfigDialog 语义，重复 URL 不产生重复行）。 */
+-    private void onAddSubscription() {
+-        DialogSourceAddBinding input = DialogSourceAddBinding.inflate(getLayoutInflater());
+-        input.input.setHint(R.string.source_add_hint);
+-        new MaterialAlertDialogBuilder(requireContext())
+-                .setTitle(R.string.source_add_subscription)
+-                .setView(input.getRoot())
+-                .setNegativeButton(R.string.dialog_negative, null)
+-                .setPositiveButton(R.string.dialog_positive, (dialog, which) -> {
+-                    String url = input.input.getText().toString().trim();
+-                    if (TextUtils.isEmpty(url)) return;
+-                    Config saved = AppDatabase.get().getConfigDao().find(url, typeFilter);
+-                    if (saved != null) {
+-                        Notify.show(R.string.source_add_exists);
+-                        onSelect(saved);
+-                        return;
+-                    }
+-                    Config item = new Config().type(typeFilter).url(url);
+-                    if (TextUtils.isEmpty(item.getName())) item.name(url);
+-                    item.insert();
+-                    adapter.rebuild();
+-                    // 过滤态添加即切换：激活加载会拉取并展开仓（含格式识别），无需再单独探测
+-                    onSelect(item);
+-                })
+-                .show();
+-    }
+ }
+diff --git a/app/src/main/res/layout/dialog_source_add.xml b/app/src/main/res/layout/dialog_source_add.xml
+deleted file mode 100644
+index d1378fd995..0000000000
+--- a/app/src/main/res/layout/dialog_source_add.xml
++++ /dev/null
+@@ -1,22 +0,0 @@
+-<?xml version="1.0" encoding="utf-8"?>
+-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+-    android:layout_width="match_parent"
+-    android:layout_height="wrap_content"
+-    android:background="@drawable/shape_dialog_glass_panel"
+-    android:padding="20dp">
+-
+-    <EditText
+-        android:id="@+id/input"
+-        android:layout_width="match_parent"
+-        android:layout_height="wrap_content"
+-        android:background="@drawable/shape_dialog_glass_input"
+-        android:imeOptions="actionDone"
+-        android:inputType="textUri"
+-        android:maxLines="1"
+-        android:paddingHorizontal="12dp"
+-        android:paddingVertical="10dp"
+-        android:textColor="@color/white"
+-        android:textColorHint="@color/white_50"
+-        android:textSize="14sp" />
+-
+-</FrameLayout>
+diff --git a/app/src/main/res/layout/dialog_source_manager.xml b/app/src/main/res/layout/dialog_source_manager.xml
+index 0312b9fd9f..8a45d2e1e8 100644
+--- a/app/src/main/res/layout/dialog_source_manager.xml
++++ b/app/src/main/res/layout/dialog_source_manager.xml
+@@ -26,23 +26,12 @@
+             android:id="@+id/scan"
+             android:layout_width="wrap_content"
+             android:layout_height="wrap_content"
+-            android:layout_marginEnd="12dp"
+             android:background="@drawable/selector_dialog_glass_chip"
+             android:focusable="true"
+             android:text="@string/source_add_scan"
+             android:textColor="@color/white"
+             android:textSize="14sp"
+             android:visibility="gone" />
+-
+-        <com.google.android.material.textview.MaterialTextView
+-            android:id="@+id/add"
+-            android:layout_width="wrap_content"
+-            android:layout_height="wrap_content"
+-            android:background="@drawable/selector_dialog_glass_chip"
+-            android:focusable="true"
+-            android:text="@string/source_add_subscription"
+-            android:textColor="@color/white"
+-            android:textSize="14sp" />
+     </LinearLayout>
+ 
+     <com.fongmi.android.tv.ui.custom.CustomRecyclerView
+diff --git a/app/src/main/res/values-zh-rCN/strings.xml b/app/src/main/res/values-zh-rCN/strings.xml
+index 36197af33f..2579c2c64b 100644
+--- a/app/src/main/res/values-zh-rCN/strings.xml
++++ b/app/src/main/res/values-zh-rCN/strings.xml
+@@ -1136,11 +1136,8 @@
+     <string name="source_reprobe">刷新</string>
+     <string name="source_delete">删除</string>
+     <string name="source_delete_depot_confirm">删除仓库“%1$s”及其 %2$d 个子源？</string>
+-    <string name="source_add_subscription">添加订阅</string>
+     <string name="source_add_scan">扫码推送</string>
+-    <string name="source_add_exists">该源已存在</string>
+     <string name="live_failover_next">直播源 %1$s 失败，正在切换 %2$s</string>
+-    <string name="source_add_hint">输入订阅地址（仓库 / 多仓 URL）</string>
+     <string name="source_in_use">使用中</string>
+     <string name="source_available">可用 %1$d/%2$d</string>
+     <string name="source_probe_progress">探测中 %1$d/%2$d</string>
+diff --git a/app/src/main/res/values-zh-rTW/strings.xml b/app/src/main/res/values-zh-rTW/strings.xml
+index 600011b1a7..eeff02e009 100644
+--- a/app/src/main/res/values-zh-rTW/strings.xml
++++ b/app/src/main/res/values-zh-rTW/strings.xml
+@@ -1120,11 +1120,8 @@
+     <string name="source_reprobe">刷新</string>
+     <string name="source_delete">刪除</string>
+     <string name="source_delete_depot_confirm">刪除倉庫「%1$s」及其 %2$d 個子源？</string>
+-    <string name="source_add_subscription">新增訂閱</string>
+     <string name="source_add_scan">掃碼推送</string>
+-    <string name="source_add_exists">該源已存在</string>
+     <string name="live_failover_next">直播源 %1$s 失敗，正在切換 %2$s</string>
+-    <string name="source_add_hint">請輸入訂閱位址（倉庫 / 多倉 URL）</string>
+     <string name="source_in_use">使用中</string>
+     <string name="source_available">可用 %1$d/%2$d</string>
+     <string name="source_probe_progress">偵測中 %1$d/%2$d</string>
+diff --git a/app/src/main/res/values/strings.xml b/app/src/main/res/values/strings.xml
+index dc13edc134..d5e4557f4f 100644
+--- a/app/src/main/res/values/strings.xml
++++ b/app/src/main/res/values/strings.xml
+@@ -14,11 +14,8 @@
+     <string name="source_reprobe">Re-probe</string>
+     <string name="source_delete">Delete</string>
+     <string name="source_delete_depot_confirm">Delete depot \"%1$s\" and its %2$d sub-sources?</string>
+-    <string name="source_add_subscription">Add subscription</string>
+     <string name="source_add_scan">Scan &amp; push</string>
+-    <string name="source_add_exists">Source already exists</string>
+     <string name="live_failover_next">Live source %1$s failed, switching to %2$s</string>
+-    <string name="source_add_hint">Enter subscription URL (depot/warehouse address)</string>
+     <string name="source_in_use">In use</string>
+     <string name="source_available">Available %1$d/%2$d</string>
+     <string name="source_probe_progress">Probing %1$d/%2$d</string>
+diff --git a/app/src/mobile/java/com/fongmi/android/tv/ui/activity/LiveActivity.java b/app/src/mobile/java/com/fongmi/android/tv/ui/activity/LiveActivity.java
+index 38ce1a98af..a0f7a64b66 100644
+--- a/app/src/mobile/java/com/fongmi/android/tv/ui/activity/LiveActivity.java
++++ b/app/src/mobile/java/com/fongmi/android/tv/ui/activity/LiveActivity.java
+@@ -1609,7 +1609,7 @@ public class LiveActivity extends PlaybackActivity implements CustomKeyDown.List
+     @Override
+     public void onSingleTap(float x, float width) {
+         if (isLock()) {
+-            Log.i(ORIENTATION_TAG, "split tap blocked while locked x=" + x + " width=" + width + " " + orientationState());
++            Log.i(ORIENTATION_TAG, "tap blocked while locked x=" + x + " width=" + width + " " + orientationState());
+             hideInfo();
+             hideUI(false);
+             showControl();
+@@ -1620,19 +1620,14 @@ public class LiveActivity extends PlaybackActivity implements CustomKeyDown.List
+             return;
+         }
+         hideInfo();
+-        if (x < width / 2f) {
+-            if (isVisible(mBinding.recycler)) hideUI();
+-            else {
+-                hideControl();
+-                showUI();
+-            }
+-        } else {
++        // QA1-B1 先关闭：有可见浮层时视频区点击一律收回，不再切换到另一浮层
++        if (isVisible(mBinding.control.getRoot()) || isVisible(mBinding.recycler)) {
+             if (isVisible(mBinding.control.getRoot())) hideControl();
+-            else {
+-                hideUI(false);
+-                showControl();
+-            }
++            if (isVisible(mBinding.recycler)) hideUI();
++            return;
+         }
++        if (x < width / 2f) showUI();
++        else showControl();
+     }
+ 
+     @Override
+diff --git a/app/src/mobile/java/com/fongmi/android/tv/ui/adapter/QualityAdapter.java b/app/src/mobile/java/com/fongmi/android/tv/ui/adapter/QualityAdapter.java
+index 8b4e4a9462..19b5328daf 100644
+--- a/app/src/mobile/java/com/fongmi/android/tv/ui/adapter/QualityAdapter.java
++++ b/app/src/mobile/java/com/fongmi/android/tv/ui/adapter/QualityAdapter.java
+@@ -27,6 +27,7 @@ public class QualityAdapter extends RecyclerView.Adapter<QualityAdapter.ViewHold
+ 
+     public void addAll(Result result) {
+         this.result = result;
++        this.position = 0;
+         notifyDataSetChanged();
+     }
+ 
+diff --git a/app/src/mobile/java/com/fongmi/android/tv/ui/custom/CustomKeyDown.java b/app/src/mobile/java/com/fongmi/android/tv/ui/custom/CustomKeyDown.java
+index 438b4e1a93..7e5c0e5426 100644
+--- a/app/src/mobile/java/com/fongmi/android/tv/ui/custom/CustomKeyDown.java
++++ b/app/src/mobile/java/com/fongmi/android/tv/ui/custom/CustomKeyDown.java
+@@ -61,6 +61,9 @@ public class CustomKeyDown extends GestureDetector.SimpleOnGestureListener imple
+         int action = e.getActionMasked();
+         if (action == MotionEvent.ACTION_DOWN) multiTouch = false;
+         if (action == MotionEvent.ACTION_POINTER_DOWN) multiTouch = true;
++        // QA1-B2:指针降回 1 或事件取消时同步复位缩放态,消除延迟复位期间单击被吞的死区
++        if (action == MotionEvent.ACTION_POINTER_UP && e.getPointerCount() <= 2) changeScale = false;
++        if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) changeScale = false;
+         if (action == MotionEvent.ACTION_UP) listener.onTouchEnd();
+         if (changeBright && action == MotionEvent.ACTION_UP) PlayerSetting.putBrightness(currentBright);
+         if (changeSpeed && action == MotionEvent.ACTION_UP) listener.onSpeedEnd();
+@@ -221,7 +224,7 @@ public class CustomKeyDown extends GestureDetector.SimpleOnGestureListener imple
+ 
+     @Override
+     public void onScaleEnd(@NonNull ScaleGestureDetector detector) {
+-        App.post(() -> changeScale = false, 500);
++        changeScale = false;
+     }
+ 
+     @Override
+diff --git a/app/src/test/java/com/fongmi/android/tv/player/AdFilterCacheTest.java b/app/src/test/java/com/fongmi/android/tv/player/AdFilterCacheTest.java
+new file mode 100644
+index 0000000000..b171f8d11b
+--- /dev/null
++++ b/app/src/test/java/com/fongmi/android/tv/player/AdFilterCacheTest.java
+@@ -0,0 +1,117 @@
++package com.fongmi.android.tv.player;
++
++import static org.junit.Assert.assertEquals;
++import static org.junit.Assert.assertNotNull;
++import static org.junit.Assert.assertNull;
++
++import org.junit.Test;
++
++import java.util.concurrent.atomic.AtomicLong;
++
++/** QA1-A3 净化缓存回归：命中复用同 token、TTL 过期、LRU 淘汰、token 幂等供数、中毒语义。 */
++public class AdFilterCacheTest {
++
++    private AdFilterCache cache(int capacity, long ttlMs, AtomicLong clock) {
++        return new AdFilterCache(capacity, ttlMs, clock::get);
++    }
++
++    @Test
++    public void findReturnsFreshEntryWithStableToken() {
++        AtomicLong clock = new AtomicLong(1000);
++        AdFilterCache cache = cache(4, 10_000, clock);
++        AdFilterCache.Entry stored = cache.put("u1", "c1", 3, "t1");
++        AdFilterCache.Entry hit = cache.find("u1");
++        assertNotNull(hit);
++        assertEquals(stored.token(), hit.token());
++        assertEquals("c1", hit.content());
++        assertEquals(3, hit.removed());
++        assertEquals(1000, hit.createdAt());
++    }
++
++    @Test
++    public void findMissesUnknownUrl() {
++        AdFilterCache cache = cache(4, 10_000, new AtomicLong(1000));
++        assertNull(cache.find("missing"));
++        assertNull(cache.findByToken("missing"));
++    }
++
++    @Test
++    public void entryExpiresAfterTtl() {
++        AtomicLong clock = new AtomicLong(1000);
++        AdFilterCache cache = cache(4, 10_000, clock);
++        cache.put("u1", "c1", 1, "t1");
++        clock.set(11_000);
++        assertNotNull(cache.peek("u1"));
++        clock.set(11_001);
++        assertNull(cache.find("u1"));
++        assertNull(cache.peek("u1"));
++        assertNull(cache.findByToken("t1"));
++    }
++
++    @Test
++    public void poisonSuppressesFindServeAndRefilterUntilExpiry() {
++        AtomicLong clock = new AtomicLong(1000);
++        AdFilterCache cache = cache(4, 10_000, clock);
++        cache.put("u1", "c1", 2, "t1");
++        cache.poison("u1");
++        assertNull(cache.find("u1"));
++        assertNull(cache.findByToken("t1"));
++        AdFilterCache.Entry poisoned = cache.peek("u1");
++        assertNotNull(poisoned);
++        assertEquals(true, poisoned.poisoned());
++        clock.set(11_001);
++        assertNull(cache.peek("u1"));
++        cache.put("u1", "c2", 0, "t2");
++        assertNotNull(cache.find("u1"));
++        assertEquals("t2", cache.find("u1").token());
++    }
++
++    @Test
++    public void poisonUnknownOrStaleUrlIsNoop() {
++        AtomicLong clock = new AtomicLong(1000);
++        AdFilterCache cache = cache(4, 10_000, clock);
++        cache.poison("missing");
++        cache.put("u1", "c1", 1, "t1");
++        clock.set(20_000);
++        cache.poison("u1");
++        assertNull(cache.peek("u1"));
++    }
++
++    @Test
++    public void lruEvictsLeastRecentlyUsedWithAccessRefresh() {
++        AtomicLong clock = new AtomicLong(1000);
++        AdFilterCache cache = cache(3, 100_000, clock);
++        cache.put("a", "ca", 1, "ta");
++        cache.put("b", "cb", 1, "tb");
++        cache.put("c", "cc", 1, "tc");
++        cache.find("b");
++        cache.put("d", "cd", 1, "td");
++        assertNull(cache.find("a"));
++        assertNotNull(cache.find("b"));
++        assertNotNull(cache.find("c"));
++        assertNotNull(cache.find("d"));
++    }
++
++    @Test
++    public void tokenServesRepeatedlyUntilPoisonOrExpiry() {
++        AtomicLong clock = new AtomicLong(1000);
++        AdFilterCache cache = cache(4, 10_000, clock);
++        cache.put("u1", "c1", 1, "t1");
++        assertEquals("c1", cache.findByToken("t1").content());
++        assertEquals("c1", cache.findByToken("t1").content());
++        cache.poison("u1");
++        assertNull(cache.findByToken("t1"));
++    }
++
++    @Test
++    public void putReplacesExistingEntryIncludingPoisoned() {
++        AtomicLong clock = new AtomicLong(1000);
++        AdFilterCache cache = cache(4, 10_000, clock);
++        cache.put("u1", "c1", 1, "t1");
++        cache.poison("u1");
++        cache.put("u1", "c2", 4, "t2");
++        assertEquals("c2", cache.find("u1").content());
++        assertNotNull(cache.findByToken("t2"));
++        assertNull(cache.findByToken("t1"));
++    }
++}
+-- 
+2.45.1.windows.1
+
