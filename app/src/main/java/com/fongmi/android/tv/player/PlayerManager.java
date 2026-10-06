@@ -125,11 +125,14 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class PlayerManager implements ParseCallback {
 
     public static final String RELOAD_LUT_WARMUP = "__webhtv_lut_warmup_reload__";
     private static final String NETWORK_GUARD_DEBUG = "EXO_NETWORK_GUARD";
+    private static final long AD_FILTER_TIMEOUT_MS = 6000;
 
     private static void logNetworkGuard(String message) {
         if (SpiderDebug.isEnabled()) Log.d(NETWORK_GUARD_DEBUG, message);
@@ -266,6 +269,10 @@ public class PlayerManager implements ParseCallback {
     private int playerType;
     private int retry;
     private int localProxyRetry;
+    private boolean adFilterActive;
+    private String adFilterOriginalUrl;
+    private List<ParseJob.Quality> qualityOptions;
+    private int qualityPosition;
     private int prepareSeq;
     private int lutApplySeq;
     private int lutWarmupRecoveredErrors;
@@ -1455,6 +1462,16 @@ public class PlayerManager implements ParseCallback {
         setMediaItem();
     }
 
+    public int getDecode() {
+        return engine == null ? PlayerEngine.HARD : engine.getDecode();
+    }
+
+    /** 频道记忆预应用:仅硬/软两态,实际变化时走 toggleDecode 既有重建路径;spec 为空时 setMediaItem 自守卫。 */
+    public void setDecode(int decode) {
+        if (engine == null || engine.getDecode() == decode) return;
+        toggleDecode();
+    }
+
     public void switchDecode(PlaySpec freshSpec, long position, float speed, boolean repeat) {
         if (engine == null || player == null || freshSpec == null) return;
         beginIjkRuntimeManualOverride();
@@ -1591,7 +1608,8 @@ public class PlayerManager implements ParseCallback {
         }
     }
 
-    private void switchPlayer(int type, boolean persist) {
+    /** persist=false 供直播控制条"只记当前频道"路径使用,不写全局默认。 */
+    public void switchPlayer(int type, boolean persist) {
         if (engine == null || player == null) return;
         type = PlayerSetting.sanitizePlayer(type);
         if (type == playerType) return;
@@ -5243,6 +5261,8 @@ public class PlayerManager implements ParseCallback {
         retry = 0;
         localProxyRetry = 0;
         hardDecodeSwitchRetryArmed = false;
+        qualityOptions = null;
+        qualityPosition = 0;
         setMediaItem(timeout);
     }
 
@@ -5269,6 +5289,8 @@ public class PlayerManager implements ParseCallback {
         retry = 0;
         localProxyRetry = 0;
         hardDecodeSwitchRetryArmed = false;
+        qualityOptions = null;
+        qualityPosition = 0;
         parseJob = ParseJob.create(this).start(result, useParse);
     }
 
@@ -5361,11 +5383,40 @@ public class PlayerManager implements ParseCallback {
         if (spec == null || spec.getUrl() == null) return;
         int seq = ++prepareSeq;
         if (rejectMpvDrmMedia()) return;
+        if (AdFilterController.shouldProcess(spec.getUrl())) {
+            awaitAdFilterAndSetMediaItem(seq, timeout);
+            return;
+        }
         if (LocalProxyDebug.shouldAwaitReady(spec.getUrl())) {
             awaitLocalProxyAndSetMediaItem(seq, timeout);
             return;
         }
         setMediaItemNow(timeout, true);
+    }
+
+    private void awaitAdFilterAndSetMediaItem(int seq, long timeout) {
+        PlaySpec target = spec;
+        String url = target.getUrl();
+        Map<String, String> headers = target.getHeaders() == null ? null : new HashMap<>(target.getHeaders());
+        if (SpiderDebug.isEnabled()) SpiderDebug.log("adfilter", "process start seq=%d url=%s", seq, summarizeUrl(url));
+        AtomicBoolean settled = new AtomicBoolean();
+        Task.execute(() -> finishAdFilterAndSetMediaItem(seq, timeout, target, url, settled, AdFilterController.process(url, headers)));
+        Task.schedule(() -> finishAdFilterAndSetMediaItem(seq, timeout, target, url, settled, null), AD_FILTER_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+    }
+
+    private void finishAdFilterAndSetMediaItem(int seq, long timeout, PlaySpec target, String url, AtomicBoolean settled, AdFilterController.Result result) {
+        if (!settled.compareAndSet(false, true)) return;
+        App.post(() -> {
+            if (seq != prepareSeq || spec != target || engine == null) return;
+            if (result != null && result.rewritten() != null) {
+                adFilterOriginalUrl = url;
+                adFilterActive = true;
+                target.setUrl(result.rewritten());
+                if (SpiderDebug.isEnabled()) SpiderDebug.log("adfilter", "applied removed=%d seq=%d url=%s", result.removed(), seq, summarizeUrl(url));
+                Notify.show(ResUtil.getString(R.string.player_ad_removed, result.removed()));
+            }
+            setMediaItemNow(timeout, true);
+        });
     }
 
     private void awaitLocalProxyAndSetMediaItem(int seq, long timeout) {
@@ -6249,6 +6300,8 @@ public class PlayerManager implements ParseCallback {
         PlaybackTrace.log("player", playbackTrace.current(), "parseSuccess from=%s url=%s headers=%s", from, summarizeUrl(url), headers == null ? 0 : headers.size());
         if (headers != null) headers.remove(HttpHeaders.RANGE);
         if (spec != null) spec.setHeaders(headers);
+        qualityOptions = null;
+        qualityPosition = 0;
         if (spec != null) spec.setUrl(url);
         setMediaItem(Constant.TIMEOUT_PLAY);
         restoreAfterSwitchReparse();
@@ -6263,6 +6316,47 @@ public class PlayerManager implements ParseCallback {
         }
         clearPendingSwitchRestore();
         callback.onError(ResUtil.getString(R.string.error_play_parse));
+    }
+
+    @Override
+    public void onParseSuccessMulti(Map<String, String> headers, List<ParseJob.Quality> qualities, String from) {
+        if (!TextUtils.isEmpty(from)) Notify.show(ResUtil.getString(R.string.parse_from, from));
+        playbackTrace.mark(PlaybackTrace.Stage.PARSE_COMPLETE, "headers=" + (headers == null ? 0 : headers.size()) + " qualities=" + qualities.size());
+        if (headers != null) headers.remove(HttpHeaders.RANGE);
+        if (spec != null) spec.setHeaders(headers);
+        qualityOptions = qualities;
+        selectQualityInternal(0, true);
+    }
+
+    public List<ParseJob.Quality> getQualityOptions() {
+        return qualityOptions;
+    }
+
+    public int getQualityPosition() {
+        return qualityPosition;
+    }
+
+    public boolean selectQuality(int position) {
+        return selectQualityInternal(position, false);
+    }
+
+    private boolean selectQualityInternal(int position, boolean initial) {
+        if (qualityOptions == null || qualityOptions.isEmpty() || position < 0 || position >= qualityOptions.size() || spec == null) return false;
+        qualityPosition = position;
+        spec.setUrl(qualityOptions.get(position).url());
+        if (initial) {
+            setMediaItem(Constant.TIMEOUT_PLAY);
+            restoreAfterSwitchReparse();
+        } else {
+            long resumeMs = 0;
+            try {
+                resumeMs = player.getCurrentPosition();
+            } catch (Throwable ignored) {
+            }
+            pendingInitialStartPositionMs = resumeMs > 0 ? resumeMs : C.TIME_UNSET;
+            setMediaItem();
+        }
+        return true;
     }
 
     private String debugSpec() {
@@ -7759,6 +7853,7 @@ public class PlayerManager implements ParseCallback {
             if (decoderRuntimeObserved && retryExoDecoderRuntimeFailure(e)) return;
             if (action == PlayerEngine.ErrorAction.DECODE && retryHardDecodeSwitch(e)) return;
             if (action == PlayerEngine.ErrorAction.FATAL && retryLocalProxy(e)) return;
+            if (action == PlayerEngine.ErrorAction.FATAL && retryAdFilter(e)) return;
             if (retryIjkRuntimeProfileFallback(e, failure, action)) return;
             if (action == PlayerEngine.ErrorAction.RELOAD) {
                 finishPlaybackProfileAbSession(
@@ -8186,6 +8281,17 @@ public class PlayerManager implements ParseCallback {
             if (SpiderDebug.isEnabled()) SpiderDebug.log("player", "local proxy retry start attempt=%d spec=%s", attempt, debugSpec());
             setMediaItem();
         }, LOCAL_PROXY_RETRY_DELAY_MS);
+        return true;
+    }
+
+    private boolean retryAdFilter(PlaybackException e) {
+        if (!adFilterActive || spec == null || !AdFilterController.isRouteUrl(spec.getUrl())) return false;
+        adFilterActive = false;
+        if (SpiderDebug.isEnabled()) SpiderDebug.log("adfilter", "playback failed on filtered playlist, retry direct url=%s", summarizeUrl(adFilterOriginalUrl));
+        App.removeCallbacks(runnable);
+        playWhenReady = player == null || player.getPlayWhenReady();
+        spec.setUrl(adFilterOriginalUrl);
+        setMediaItemNow(Constant.TIMEOUT_PLAY, true);
         return true;
     }
 

@@ -15,6 +15,7 @@
         android:orientation="horizontal">
 
         <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/title"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
@@ -26,9 +27,8 @@
             android:id="@+id/add"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:background="@drawable/shape_dialog_glass_input"
+            android:background="@drawable/selector_dialog_glass_chip"
             android:focusable="true"
-            android:padding="8dp"
             android:text="@string/source_add_subscription"
             android:textColor="@color/white"
             android:textSize="14sp" />

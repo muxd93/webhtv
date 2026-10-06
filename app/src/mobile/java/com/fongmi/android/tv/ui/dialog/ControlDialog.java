@@ -25,6 +25,7 @@ import com.fongmi.android.tv.bean.History;
 import com.fongmi.android.tv.bean.Parse;
 import com.fongmi.android.tv.databinding.ActivityVideoBinding;
 import com.fongmi.android.tv.databinding.DialogControlBinding;
+import com.fongmi.android.tv.player.ParseJob;
 import com.fongmi.android.tv.player.PlayerManager;
 import com.fongmi.android.tv.player.lut.LutPreset;
 import com.fongmi.android.tv.setting.PlayerSetting;
@@ -143,6 +144,7 @@ public class ControlDialog extends BaseBottomSheetDialog implements ParseAdapter
         setEpisodeColumn();
         setPlayer();
         setParse();
+        setQuality();
         binding.controlScroll.post(() -> binding.controlScroll.scrollTo(0, 0));
     }
 
@@ -242,6 +244,34 @@ public class ControlDialog extends BaseBottomSheetDialog implements ParseAdapter
         binding.parse.setItemAnimator(null);
         binding.parse.addItemDecoration(new SpaceItemDecoration(8));
         binding.parse.setAdapter(new ParseAdapter(this, ViewType.DARK));
+    }
+
+    private void setQuality() {
+        List<ParseJob.Quality> options = player == null ? null : player.getQualityOptions();
+        boolean visible = options != null && options.size() > 1;
+        binding.qualityText.setVisibility(visible ? View.VISIBLE : View.GONE);
+        binding.qualityScroll.setVisibility(visible ? View.VISIBLE : View.GONE);
+        if (!visible) return;
+        binding.qualityGroup.removeAllViews();
+        for (int i = 0; i < options.size(); i++) {
+            ParseJob.Quality option = options.get(i);
+            TextView chip = new TextView(requireContext(), null, 0, R.style.ControlSheetButton);
+            chip.setText(option.name());
+            chip.setTag(i);
+            chip.setOnClickListener(v -> {
+                if (player.selectQuality((int) v.getTag())) setQualitySelection();
+            });
+            androidx.appcompat.widget.LinearLayoutCompat.LayoutParams params = new androidx.appcompat.widget.LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            params.rightMargin = ResUtil.dp2px(7);
+            binding.qualityGroup.addView(chip, params);
+            chip.setSelected(i == player.getQualityPosition());
+        }
+    }
+
+    private void setQualitySelection() {
+        for (int i = 0; i < binding.qualityGroup.getChildCount(); i++) {
+            binding.qualityGroup.getChildAt(i).setSelected(i == player.getQualityPosition());
+        }
     }
 
     private void setScale(View view) {

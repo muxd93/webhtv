@@ -10,8 +10,12 @@ import androidx.annotation.NonNull;
 import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.Constant;
 import com.fongmi.android.tv.utils.KeyUtil;
+import com.fongmi.android.tv.utils.ResUtil;
 
 public class CustomKeyDownLive extends GestureDetector.SimpleOnGestureListener {
+
+    private static final int FLING_MIN_DISTANCE = 120;
+    private static final int FLING_MIN_VELOCITY = 1200;
 
     private final GestureDetector detector;
     private final StringBuilder text;
@@ -85,7 +89,20 @@ public class CustomKeyDownLive extends GestureDetector.SimpleOnGestureListener {
 
     @Override
     public boolean onSingleTapConfirmed(@NonNull MotionEvent e) {
-        if (listener.dispatch(false)) listener.onSingleTap();
+        if (listener.dispatch(false)) listener.onSingleTap(e.getRawX(), ResUtil.getScreenWidth(App.get()));
+        return true;
+    }
+
+    /** 触屏换线:水平为主且过阈值的 fling,catchup(VOD 型流)由调用方跳过,滑动留给后续进度交互。 */
+    @Override
+    public boolean onFling(@NonNull MotionEvent e1, @NonNull MotionEvent e2, float velocityX, float velocityY) {
+        if (!listener.dispatch(false)) return false;
+        float dx = e2.getX() - e1.getX();
+        float dy = e2.getY() - e1.getY();
+        if (Math.abs(dx) < FLING_MIN_DISTANCE || Math.abs(dx) < Math.abs(dy) * 2) return false;
+        if (Math.abs(velocityX) < FLING_MIN_VELOCITY) return false;
+        if (dx > 0) listener.onFlingRight();
+        else listener.onFlingLeft();
         return true;
     }
 
@@ -133,8 +150,13 @@ public class CustomKeyDownLive extends GestureDetector.SimpleOnGestureListener {
 
         void onMenu();
 
-        void onSingleTap();
+        /** 单击分区:x<width/2 左半屏=频道列表,右半屏=控制条(对齐 mobile 语义)。 */
+        void onSingleTap(float x, float width);
 
         void onDoubleTap();
+
+        void onFlingLeft();
+
+        void onFlingRight();
     }
 }

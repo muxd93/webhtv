@@ -25,7 +25,12 @@ import java.util.List;
 @Entity(indices = @Index(value = {"url", "type"}, unique = true))
 public class Config {
 
-    public static final String DEFAULT_VOD_URL = "http://z.qiqiv.cn/123.txt";
+    // 内置默认源列表：首次安装或点播源被清空时整体回填；第一条为默认生效源，展示顺序按声明顺序（time 递减）
+    public static final String[] DEFAULT_VOD_URLS = {
+            "http://z.qiqiv.cn/123.txt",
+            "https://www.iyouhun.com/tv/dc",
+            "https://github.catvod.com/https://raw.githubusercontent.com/tushen6/Tomorrow/master/lmw.json"
+    };
 
     @PrimaryKey(autoGenerate = true)
     @SerializedName("id")
@@ -103,7 +108,17 @@ public class Config {
     public static Config vod() {
         Config item = AppDatabase.get().getConfigDao().findOne(0);
         Config root = depotRootOf(item, 0);
-        return root != null ? root : (item == null ? create(0, DEFAULT_VOD_URL) : item);
+        return root != null ? root : (item == null ? seedDefaults() : item);
+    }
+
+    /** 点播源列表为空时回填内置默认源；第一条时间最大，成为默认生效源并保持列表首位。 */
+    private static Config seedDefaults() {
+        long time = System.currentTimeMillis();
+        Config active = new Config().type(0).url(DEFAULT_VOD_URLS[0]).time(time).insert();
+        for (int i = 1; i < DEFAULT_VOD_URLS.length; i++) {
+            new Config().type(0).url(DEFAULT_VOD_URLS[i]).time(time - i).insert();
+        }
+        return active;
     }
 
     public static Config live() {
@@ -276,6 +291,11 @@ public class Config {
         return this;
     }
 
+    public Config time(long time) {
+        setTime(time);
+        return this;
+    }
+
     public Config depot(boolean depot) {
         setDepot(depot);
         return this;
@@ -324,7 +344,7 @@ public class Config {
         History.delete(getId());
         Keep.delete(getId());
         ConfigCache.delete(getUrl());
-        SourceState.clear(getUrl());
+        SourceState.clear(getType(), getUrl());
     }
 
     @NonNull

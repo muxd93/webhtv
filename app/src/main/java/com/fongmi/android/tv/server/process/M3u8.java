@@ -66,15 +66,20 @@ public class M3u8 implements Process {
     }
 
     private Request request(IHTTPSession session, String target) {
-        Request.Builder builder = new Request.Builder()
-                .url(target)
-                .header("User-Agent", DEFAULT_UA)
-                .header("Referer", DEFAULT_REFERER)
-                .header("Origin", DEFAULT_ORIGIN);
+        Request.Builder builder = new Request.Builder().url(target);
+        // 4gtv 专用头仅对该站注入;其余站点走 OkHttp 通用头,避免 python 源复用本路由时拿到错误 Referer/Origin
+        if (is4gtv(target)) builder.header("User-Agent", DEFAULT_UA).header("Referer", DEFAULT_REFERER).header("Origin", DEFAULT_ORIGIN);
         String range = session.getHeaders().get("range");
         if (!TextUtils.isEmpty(range)) builder.header("Range", range);
         if (session.getMethod() == NanoHTTPD.Method.HEAD) builder.head();
         return builder.build();
+    }
+
+    private boolean is4gtv(String url) {
+        HttpUrl httpUrl = HttpUrl.parse(url);
+        if (httpUrl == null) return false;
+        String host = httpUrl.host();
+        return host.equals("4gtv.tv") || host.endsWith(".4gtv.tv") || host.equals("4gtv.com") || host.endsWith(".4gtv.com");
     }
 
     private Response playlist(okhttp3.Response upstream, ResponseBody body) throws IOException {

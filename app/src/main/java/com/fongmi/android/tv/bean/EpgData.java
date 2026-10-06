@@ -85,6 +85,11 @@ public class EpgData {
         return getStartTime() > System.currentTimeMillis();
     }
 
+    /** endTime<=0 视为无有效时间的占位条目,不算已播过。 */
+    public boolean isPast() {
+        return getEndTime() > 0 && getEndTime() < System.currentTimeMillis();
+    }
+
     public String format() {
         if (getTitle().isEmpty()) return "";
         if (getStart().isEmpty() && getEnd().isEmpty()) return getTitle();

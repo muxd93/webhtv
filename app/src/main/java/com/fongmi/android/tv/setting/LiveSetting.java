@@ -39,6 +39,23 @@ public class LiveSetting {
         Prefers.put("invert", invert);
     }
 
+    public static boolean isAutoHop() {
+        return Prefers.getBoolean("auto_hop", true);
+    }
+
+    public static void putAutoHop(boolean hop) {
+        Prefers.put("auto_hop", hop);
+    }
+
+    /** 用户起播超时档位(毫秒);0=跟随直播源声明。 */
+    public static int getTimeout() {
+        return Prefers.getInt("live_timeout", 0);
+    }
+
+    public static void putTimeout(int timeout) {
+        Prefers.put("live_timeout", timeout);
+    }
+
     public static int getScale() {
         return Prefers.getInt("scale_live", PlayerSetting.getScale());
     }

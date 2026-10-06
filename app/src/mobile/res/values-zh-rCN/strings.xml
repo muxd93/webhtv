@@ -72,6 +72,7 @@
     <string name="control_episode_column_double">双列</string>
     <string name="control_compact_episode_title">精简标题</string>
     <string name="control_track">轨道</string>
+    <string name="control_quality">清晰度</string>
     <string name="control_other">其它</string>
     <string name="live_control_play">来源</string>
     <string name="live_control_config">订阅接口</string>

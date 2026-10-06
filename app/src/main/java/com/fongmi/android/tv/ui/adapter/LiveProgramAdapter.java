@@ -8,9 +8,11 @@ import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.fongmi.android.tv.R;
+import com.fongmi.android.tv.bean.Channel;
 import com.fongmi.android.tv.bean.Epg;
 import com.fongmi.android.tv.bean.EpgData;
 import com.fongmi.android.tv.databinding.AdapterLiveProgramItemBinding;
+import com.fongmi.android.tv.live.LiveSession;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -19,10 +21,17 @@ public class LiveProgramAdapter extends RecyclerView.Adapter<LiveProgramAdapter.
 
     private final OnClickListener listener;
     private final List<EpgData> items;
+    private Channel channel;
 
     public LiveProgramAdapter(OnClickListener listener) {
         this.listener = listener;
         this.items = new ArrayList<>();
+    }
+
+    /** 频道决定"可回看"标签与降透明度判定(catchup 声明随当前线路变化,换线后重设)。 */
+    public LiveProgramAdapter channel(Channel item) {
+        this.channel = item;
+        return this;
     }
 
     public interface OnClickListener {
@@ -57,9 +66,12 @@ public class LiveProgramAdapter extends RecyclerView.Adapter<LiveProgramAdapter.
         EpgData item = items.get(position);
         holder.binding.time.setText(item.getTime());
         holder.binding.title.setText(item.getTitle());
-        holder.binding.status.setVisibility(item.isSelected() ? View.VISIBLE : View.GONE);
-        holder.binding.status.setText(holder.itemView.getContext().getString(R.string.live_program_current));
+        // 三态:正在播 > 未开始 > 可回看;无能力的已播节目无标签且降透明度
+        int text = item.isInRange() ? R.string.live_program_current : item.isFuture() ? R.string.live_program_future : LiveSession.isCatchupable(channel, item) ? R.string.live_program_catchup : 0;
+        holder.binding.status.setVisibility(text == 0 ? View.GONE : View.VISIBLE);
+        if (text != 0) holder.binding.status.setText(text);
         holder.binding.getRoot().setSelected(item.isSelected());
+        holder.binding.getRoot().setAlpha(item.isPast() && !LiveSession.isCatchupable(channel, item) ? 0.5f : 1f);
         holder.binding.getRoot().setOnClickListener(view -> {
             if (!item.isFuture()) listener.onProgramClick(item);
         });

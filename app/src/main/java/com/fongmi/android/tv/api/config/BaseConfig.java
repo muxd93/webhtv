@@ -352,11 +352,18 @@ abstract class BaseConfig {
         }
     }
 
+    /** 仓降级对账：同一 URL 已不再返回仓格式时，清除过期 depot 标记并级联删除幽灵子源。 */
+    protected void clearStaleDepot(Config config) {
+        if (config == null || !config.isDepot()) return;
+        config.depot(false).save();
+        for (Config child : Config.getChildren(config.getUrl(), config.getType())) child.delete();
+    }
+
     /** 首个健康且已启用的子源（保持仓内声明顺序）；全部不健康/被禁用时回退首个已启用源。 */
     protected Config firstHealthy(List<Config> children, List<DepotProbe.Result> probe) {
         Config fallback = null;
         for (Config child : children) {
-            if (SourceState.isDisabled(child.getUrl())) continue;
+            if (SourceState.isDisabled(child.getType(), child.getUrl())) continue;
             if (fallback == null) fallback = child;
             for (DepotProbe.Result result : probe) {
                 if (TextUtils.equals(result.url, child.getUrl())) {

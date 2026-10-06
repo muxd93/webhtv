@@ -29,7 +29,8 @@ public final class ZapPrewarm {
 
     private static final String TAG = "zap_prewarm";
     private static final long DELAY_MS = 4000;
-    private static final int TIMEOUT_S = 3;
+    /** 注意：catvod OkHttp.client(long) 参数单位是毫秒。 */
+    private static final long TIMEOUT_MS = 3000;
     private static final int BYTE_BUDGET = 65536;
     private static final int MAX_LINES = 2;
     private static final AtomicLong GENERATION = new AtomicLong();
@@ -82,7 +83,7 @@ public final class ZapPrewarm {
         try {
             Request request = new Request.Builder().url(lines.get(index)).tag(TAG)
                     .header("Range", "bytes=0-" + (BYTE_BUDGET - 1)).build();
-            OkHttp.client(TIMEOUT_S).newCall(request).enqueue(new Callback() {
+            OkHttp.client(TIMEOUT_MS).newCall(request).enqueue(new Callback() {
                 @Override
                 public void onResponse(Call call, Response response) {
                     try (Response resp = response) {

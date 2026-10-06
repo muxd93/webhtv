@@ -36,6 +36,14 @@ public class LiveProgramDateAdapter extends RecyclerView.Adapter<LiveProgramDate
         return items.isEmpty() ? new Epg() : items.get(selected);
     }
 
+    /** 懒加载回填:以日期定位槽位,替换占位空数据并刷新该行。 */
+    public void update(Epg epg) {
+        int index = find(epg.getDate());
+        if (index < 0) return;
+        items.set(index, epg);
+        notifyItemChanged(index);
+    }
+
     private int find(String date) {
         for (int i = 0; i < items.size(); i++) if (items.get(i).getDate().equals(date)) return i;
         return -1;

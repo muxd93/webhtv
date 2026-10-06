@@ -15,6 +15,7 @@ import com.fongmi.android.tv.db.AppDatabase;
 import com.fongmi.android.tv.event.ConfigEvent;
 import com.fongmi.android.tv.impl.Callback;
 import com.fongmi.android.tv.setting.CustomCspSetting;
+import com.fongmi.android.tv.setting.InterfaceOrderStore;
 import com.fongmi.android.tv.setting.LiveSetting;
 import com.fongmi.android.tv.utils.UrlUtil;
 import com.github.catvod.bean.Header;
@@ -179,11 +180,19 @@ public class LiveConfig extends BaseConfig {
     private void parseDepot(Config config, JsonObject object) throws Throwable {
         // 与 VodConfig 共用 BaseConfig.expandDepot：落库子源、对账、并发探测、首个健康子源
         Expansion ex = expandDepot(config, object, LIVE);
+        InterfaceOrderStore.recordLiveHealth(samples(ex.probe));
         load(this.config = ex.chosen);
         this.config.update();
     }
 
+    private List<InterfaceOrderStore.HealthSample> samples(List<DepotProbe.Result> probe) {
+        List<InterfaceOrderStore.HealthSample> samples = new ArrayList<>();
+        for (DepotProbe.Result result : probe) samples.add(new InterfaceOrderStore.HealthSample(result.url, result.ok, System.currentTimeMillis(), result.latency));
+        return samples;
+    }
+
     private void parseConfig(Config config, JsonObject object) {
+        clearStaleDepot(config);
         CustomCspSetting.inject(object);
         initList(object);
         initLive(config, object);

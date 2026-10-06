@@ -9,6 +9,7 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -62,6 +63,21 @@ public class Catchup {
 
     public void setDays(String days) {
         this.days = days;
+    }
+
+    /** days 解析失败或 <=0 表示源未声明回看天数窗口,不设上限(与历史无边界行为一致)。 */
+    public int daysInt() {
+        try {
+            return Integer.parseInt(getDays().trim());
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    public boolean withinDays(EpgData data) {
+        int limit = daysInt();
+        if (limit <= 0) return true;
+        return data.getStartTime() >= System.currentTimeMillis() - TimeUnit.DAYS.toMillis(limit);
     }
 
     public String getRegex() {

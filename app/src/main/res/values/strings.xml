@@ -21,6 +21,12 @@
     <string name="source_available">Available %1$d/%2$d</string>
     <string name="source_probe_progress">Probing %1$d/%2$d</string>
     <string name="source_sources_count">%1$d sources</string>
+    <string name="source_section_depots">Subscribed depots</string>
+    <string name="source_section_standalone">Standalone sources</string>
+    <string name="source_depot_inactive">Not activated</string>
+    <string name="source_manager_vod">Manage VOD sources</string>
+    <string name="source_manager_live">Manage live sources</string>
+    <string name="source_manager_wall">Manage wallpaper sources</string>
     <string name="vod_depot_imported_bad">Imported %1$d VOD sources, %2$d unavailable</string>
     <string name="live_control_source">Live source</string>
     <string name="live_no_epg">00:00 - 23:59 暂无节目信息</string>
@@ -1086,6 +1092,7 @@
     <string name="player_preload_pause_always">Always</string>
     <string name="player_auto_play">Auto play</string>
     <string name="player_auto_change">Auto source change</string>
+    <string name="player_ad_removed">Removed %1$d ad segments</string>
     <string name="player_speed">Press speed</string>
     <string name="player_ua">User-Agent</string>
     <string name="player_osd">On-screen display</string>
@@ -1626,6 +1633,14 @@
 
     <string name="live_epg_default">Follow live source</string>
     <string name="live_program_current">Live</string>
+    <string name="live_program_catchup">Catchup</string>
+    <string name="live_program_future">Upcoming</string>
+    <string name="live_catchup_unsupported">Catchup is not supported on this channel</string>
+    <string name="live_timeout">Timeout</string>
+    <string name="live_timeout_auto">Auto</string>
+    <string name="live_timeout_value">%ds</string>
+    <string name="live_hop">Auto hop</string>
+    <string name="live_epg_no_data">No program data for this date</string>
     <string name="live_epg_save">Save</string>
     <string name="live_epg_apply">Use</string>
     <string name="live_epg_follow">Source</string>

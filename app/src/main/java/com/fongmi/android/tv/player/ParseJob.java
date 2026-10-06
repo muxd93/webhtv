@@ -18,6 +18,7 @@ import com.github.catvod.net.OkHttp;
 import com.github.catvod.utils.Json;
 import com.github.catvod.utils.Util;
 import com.google.common.net.HttpHeaders;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
@@ -113,14 +114,63 @@ public class ParseJob implements ParseCallback {
         }
     }
 
+    public record Quality(String name, String url) {
+    }
+
+    static List<Quality> parseQualities(JsonArray array) {
+        List<Quality> qualities = new ArrayList<>();
+        try {
+            if (array == null || array.size() < 4 || array.size() % 2 != 0) return qualities;
+            for (int i = 0; i + 1 < array.size(); i += 2) {
+                JsonElement nameElement = array.get(i);
+                JsonElement urlElement = array.get(i + 1);
+                if (!isText(nameElement) || !isText(urlElement)) return new ArrayList<>();
+                String name = nameElement.getAsString().trim();
+                String url = urlElement.getAsString().trim();
+                if (name.isEmpty() || url.isEmpty()) return new ArrayList<>();
+                qualities.add(new Quality(name, url));
+            }
+        } catch (Exception e) {
+            return new ArrayList<>();
+        }
+        return qualities;
+    }
+
+    private static boolean isText(JsonElement element) {
+        return element != null && element.isJsonPrimitive() && element.getAsJsonPrimitive().isString();
+    }
+
+    /** 数组 url 含 ≥2 对名称+地址时回调多档，否则交回 firstUrl 单地址兜底。 */
+    private boolean tryMultiQuality(JsonObject object, Parse item) {
+        JsonElement element = object.get("url");
+        if (element == null || !element.isJsonArray()) return false;
+        List<Quality> qualities = parseQualities(element.getAsJsonArray());
+        if (qualities.size() < 2) return false;
+        onParseSuccessMulti(getHeader(object), qualities, item.getName());
+        return true;
+    }
+
     private void jsonParse(Parse item, String webUrl, boolean fatal) throws Exception {
         try (Response res = OkHttp.newCall(item.getUrl() + webUrl, item.getHeader()).execute()) {
             JsonObject object = Json.parse(res.body().string()).getAsJsonObject();
+            if (tryMultiQuality(object, item)) return;
             String url = Json.safeString(object, "url");
+            if (url.isEmpty()) url = firstUrl(object.get("url"));
             JsonObject data = object.getAsJsonObject("data");
             if (url.isEmpty()) url = Json.safeString(data, "url");
+            if (url.isEmpty()) url = firstUrl(data.get("url"));
             checkResult(getHeader(object), url, item.getName(), fatal);
         }
+    }
+
+    /** 多档 jx 返回数组型 url([名称,URL,...] 或 [URL,...]):取首个 http(s) 项。 */
+    private String firstUrl(JsonElement element) {
+        if (element == null || !element.isJsonArray()) return "";
+        for (JsonElement item : element.getAsJsonArray()) {
+            String text = item.isJsonPrimitive() ? item.getAsString() : "";
+            if (text.contains("://")) return text;
+        }
+        return "";
     }
 
     private void jsonExtend(String webUrl) throws Throwable {
@@ -201,6 +251,15 @@ public class ParseJob implements ParseCallback {
         if (!done.compareAndSet(false, true)) return;
         App.post(() -> {
             if (callback != null) callback.onParseSuccess(headers, url, from);
+            stop();
+        });
+    }
+
+    @Override
+    public void onParseSuccessMulti(Map<String, String> headers, List<Quality> qualities, String from) {
+        if (!done.compareAndSet(false, true)) return;
+        App.post(() -> {
+            if (callback != null) callback.onParseSuccessMulti(headers, qualities, from);
             stop();
         });
     }

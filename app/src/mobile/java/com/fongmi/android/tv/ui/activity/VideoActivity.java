@@ -17,6 +17,7 @@ import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.SystemClock;
 import android.provider.Settings;
 import android.text.InputType;
 import android.text.TextUtils;
@@ -95,6 +96,7 @@ import com.fongmi.android.tv.impl.CustomTarget;
 import com.fongmi.android.tv.model.SiteViewModel;
 import com.fongmi.android.tv.playback.PlaybackEventCollector;
 import com.fongmi.android.tv.playback.PlaybackOrientation;
+import com.fongmi.android.tv.player.AutoChangeMetric;
 import com.fongmi.android.tv.player.PlayerHelper;
 import com.fongmi.android.tv.player.PlayerManager;
 import com.fongmi.android.tv.player.engine.PlayerEngine;
@@ -294,6 +296,9 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     private boolean fullscreen;
     private boolean initAuto;
     private boolean autoMode;
+    private boolean autoChangePending;
+    private long autoChangeStart;
+    private String autoChangeReason;
     private boolean revealManualSearch;
     private boolean useParse;
     private boolean rotate;
@@ -1332,6 +1337,7 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
         } else {
             mBinding.name.setText(getName());
             App.post(mR4, 10000);
+            autoChangeReason = "detail_empty";
             checkSearch(false);
         }
     }
@@ -1884,6 +1890,7 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     }
 
     private boolean onChange() {
+        autoChangeReason = "manual";
         checkSearch(true);
         return true;
     }
@@ -5857,6 +5864,10 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
             case Player.STATE_READY:
                 if (mPendingKaraokeResult == null) mKaraokeResultShown = false;
                 recordPlayHealth(true, "");
+                if (autoChangePending) {
+                    AutoChangeMetric.result(true, SystemClock.elapsedRealtime() - autoChangeStart, getKey());
+                    autoChangePending = false;
+                }
                 hideProgress();
                 checkControl();
                 refreshLyrics();
@@ -6160,8 +6171,14 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     }
 
     private void startFlow() {
-        if (!PlayerSetting.isAutoChange()) return;
-        if (!getSite().isChangeable()) return;
+        if (!PlayerSetting.isAutoChange() || !getSite().isChangeable()) {
+            if (autoChangePending) {
+                AutoChangeMetric.result(false, SystemClock.elapsedRealtime() - autoChangeStart, getKey());
+                autoChangePending = false;
+            }
+            return;
+        }
+        autoChangeReason = "play_error";
         if (isUseParse()) checkParse();
         else checkFlag();
     }
@@ -6182,7 +6199,10 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
 
     private void checkFlag() {
         int position = isGone(mBinding.flag) ? -1 : mFlagAdapter.getPosition();
-        if (position == mFlagAdapter.getItemCount() - 1) checkSearch(false);
+        if (position == mFlagAdapter.getItemCount() - 1) {
+            autoChangeReason = "flag_exhausted";
+            checkSearch(false);
+        }
         else nextFlag(position);
     }
 
@@ -6252,7 +6272,14 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     }
 
     private void nextSite() {
-        if (mQuickAdapter.isEmpty()) return;
+        String fromKey = getKey();
+        if (mQuickAdapter.isEmpty()) {
+            if (autoChangePending) {
+                AutoChangeMetric.result(false, SystemClock.elapsedRealtime() - autoChangeStart, fromKey);
+                autoChangePending = false;
+            }
+            return;
+        }
         int position = mQuickAdapter.getBestPosition();
         Vod item = mQuickAdapter.get(position);
         Notify.show(getString(R.string.play_switch_site, item.getSiteName()));
@@ -6260,6 +6287,9 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
         mBroken.add(getId());
         setInitAuto(false);
         applySearchArtwork(item);
+        AutoChangeMetric.attempt(autoChangeReason, fromKey, item.getSiteKey());
+        if (!autoChangePending) autoChangeStart = SystemClock.elapsedRealtime();
+        autoChangePending = true;
         getDetail(item);
     }
 

@@ -193,15 +193,15 @@ public class SettingFragment extends BaseFragment implements ConfigListener, Sit
     }
 
     private void onVod(View view) {
-        ConfigDialog.create().vod().show(this);
+        SourceManagerDialog.create(this).type(0).show(requireActivity());
     }
 
     private void onLive(View view) {
-        ConfigDialog.create().live().show(this);
+        SourceManagerDialog.create(this).type(1).show(requireActivity());
     }
 
     private void onWall(View view) {
-        ConfigDialog.create().wall().show(this);
+        SourceManagerDialog.create(this).type(2).show(requireActivity());
     }
 
     private boolean onVodEdit(View view) {

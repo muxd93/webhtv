@@ -22,6 +22,7 @@ public final class InterfaceOrderStore {
 
     public static final String KEY_VOD = "interface_order_vod";
     public static final String KEY_VOD_HEALTH = "interface_health_vod";
+    public static final String KEY_LIVE_HEALTH = "interface_health_live";
     private static final Type STRING_LIST = new TypeToken<List<String>>() {}.getType();
     private static final Type HEALTH_MAP = new TypeToken<Map<String, HealthEntry>>() {}.getType();
 
@@ -70,10 +71,19 @@ public final class InterfaceOrderStore {
         putVodOrder(order);
     }
 
-    /** 记录子源健康采样（同 url 以最新为准）；仓展开预检时调用。 */
+    /** 记录 VOD 子源健康采样（同 url 以最新为准）；仓展开预检时调用。 */
     public static void recordVodHealth(@Nullable List<HealthSample> samples) {
+        recordHealth(KEY_VOD_HEALTH, samples);
+    }
+
+    /** 记录 Live 子源健康采样（SRCUI2/P4）：仅用于源管理弹窗显示，不参与直播排序。 */
+    public static void recordLiveHealth(@Nullable List<HealthSample> samples) {
+        recordHealth(KEY_LIVE_HEALTH, samples);
+    }
+
+    private static void recordHealth(String key, @Nullable List<HealthSample> samples) {
         if (samples == null || samples.isEmpty()) return;
-        Map<String, HealthEntry> entries = readHealth();
+        Map<String, HealthEntry> entries = readHealth(key);
         long now = System.currentTimeMillis();
         for (HealthSample sample : samples) {
             if (sample == null || isEmpty(sample.url)) continue;
@@ -83,20 +93,28 @@ public final class InterfaceOrderStore {
             entry.ms = sample.ms;
             entries.put(sample.url, entry);
         }
-        Prefers.put(KEY_VOD_HEALTH, App.gson().toJson(entries));
+        Prefers.put(key, App.gson().toJson(entries));
     }
 
     /** 健康布尔视图（无记录视为健康/未知；仅显式 false 沉底）。 */
     @NonNull
     public static Map<String, Boolean> getVodHealth() {
+        return getHealth(0);
+    }
+
+    /** 按配置类型的健康历史视图（SRCUI2/P4）：0=VOD，1=Live，其余无档返回空。 */
+    @NonNull
+    public static Map<String, Boolean> getHealth(int type) {
+        String key = type == 0 ? KEY_VOD_HEALTH : type == 1 ? KEY_LIVE_HEALTH : null;
         Map<String, Boolean> result = new HashMap<>();
-        for (Map.Entry<String, HealthEntry> item : readHealth().entrySet()) result.put(item.getKey(), item.getValue().ok);
+        if (key == null) return result;
+        for (Map.Entry<String, HealthEntry> item : readHealth(key).entrySet()) result.put(item.getKey(), item.getValue().ok);
         return result;
     }
 
     @NonNull
-    private static Map<String, HealthEntry> readHealth() {
-        String json = Prefers.getString(KEY_VOD_HEALTH, "{}");
+    private static Map<String, HealthEntry> readHealth(String key) {
+        String json = Prefers.getString(key, "{}");
         if (isEmpty(json)) return new HashMap<>();
         try {
             Map<String, HealthEntry> map = App.gson().fromJson(json, HEALTH_MAP);

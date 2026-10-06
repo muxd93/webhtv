@@ -25,7 +25,8 @@ import okhttp3.Response;
 public final class DepotProbe {
 
     private static final String TAG = "depot_probe";
-    private static final int TIMEOUT_S = 4;
+    /** 注意：catvod OkHttp.client(long) 参数单位是毫秒（connect/read/write 均用 MILLISECONDS）。 */
+    private static final long TIMEOUT_MS = 4000;
     private static final long JOIN_MS = 6000;
 
     private static Handler mainHandler;
@@ -108,7 +109,7 @@ public final class DepotProbe {
             long begin = System.currentTimeMillis();
             Request request = new Request.Builder().url(url).tag(TAG).header("Range", "bytes=0-0").build();
             try {
-                OkHttp.client(TIMEOUT_S).newCall(request).enqueue(new okhttp3.Callback() {
+                OkHttp.client(TIMEOUT_MS).newCall(request).enqueue(new okhttp3.Callback() {
                     @Override
                     public void onResponse(okhttp3.Call call, Response response) {
                         boolean ok = response.isSuccessful();
