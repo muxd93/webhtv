@@ -225,6 +225,7 @@ public class LiveConfig extends BaseConfig {
         // 与 VodConfig 共用 BaseConfig.expandDepot：落库子源、对账、并发探测、首个健康子源
         Expansion ex = expandDepot(config, object, LIVE);
         InterfaceOrderStore.recordLiveHealth(samples(ex.probe));
+        collectDepotPool(ex.children);
         load(this.config = ex.chosen);
         this.config.update();
     }
@@ -264,9 +265,35 @@ public class LiveConfig extends BaseConfig {
     private void finishLive(Config config, String spider) {
         CustomCspSetting.inject(getLives(), spider);
         getLives().removeIf(Live::isEmpty);
+        appendPoolLives(config);
         Map<String, Live> items = Live.findAll().stream().collect(Collectors.toMap(Live::getName, Function.identity()));
         getLives().forEach(live -> live.sync(items.get(live.getName())));
         setHome(config, getLives().isEmpty() ? new Live() : getLives().stream().filter(item -> item.getName().equals(config.getHome())).findFirst().orElse(getLives().get(0)), false);
+    }
+
+    /**
+     * 多仓聚合并集追加（DEPOT3）：把池内直播条目接到当前列表尾部（开关门控）。
+     * 当前配置来源的仓不重复渲染（excludeUrl）；同名条目改名共存；追加发生在
+     * sync 循环之前，池条目与常规条目同样合并 DB keep/home 状态。
+     */
+    private void appendPoolLives(Config config) {
+        if (!LiveSetting.isPool()) return;
+        List<DepotPool.PoolLive> items = DepotPool.lives(config.getUrl(), true);
+        if (items.isEmpty()) return;
+        Set<String> used = getLives().stream().map(Live::getName).collect(Collectors.toSet());
+        for (DepotPool.PoolLive item : items) {
+            Live live;
+            try {
+                live = Live.objectFrom(Json.parse(item.raw()), item.spider());
+            } catch (Throwable e) {
+                continue;
+            }
+            if (live.isEmpty()) continue;
+            String name = DepotPool.resolveName(used, live.getName(), item.childName());
+            if (!name.equals(live.getName())) live.setName(name);
+            used.add(name);
+            getLives().add(live);
+        }
     }
 
     public void setKeep(Channel channel) {

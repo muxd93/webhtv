@@ -6,6 +6,7 @@ import android.text.TextUtils;
 import androidx.annotation.Nullable;
 import androidx.media3.exoplayer.hls.playlist.HlsAdsParser;
 
+import com.fongmi.android.tv.player.AdFilterController;
 import com.fongmi.android.tv.player.PlaybackAutoContext;
 import com.fongmi.android.tv.player.PlaybackRouteRegistry;
 import com.fongmi.android.tv.player.PlaybackResourceClassifier;
@@ -99,6 +100,7 @@ public final class MpvHlsProxy extends NanoHTTPD {
     private final MpvHlsUpstreamEstimator upstreamEstimator;
     private final PlaybackDiskBufferStore diskBufferStore;
     private final AtomicInteger activePreloadTransfers;
+    private final AtomicInteger preloadSessionSeq = new AtomicInteger();
     private ExecutorService preloadExecutor;
     private MpvHlsCacheCoordinator.ClientLease cacheClient;
     private PlaybackRouteRegistry.Registration routeRegistration;
@@ -177,6 +179,32 @@ public final class MpvHlsProxy extends NanoHTTPD {
         refreshCacheCoordinator();
         int id = ++this.sessionId;
         upstreamEstimator.reset();
+        Session session = registerSession(id, url, headers, mediaKey);
+        pruneExpiredSessions(session.createdAtMs);
+        pruneCache();
+        String proxyUrl = baseUrl() + "/mpv/index.m3u8?s=" + sessionId;
+        SpiderDebug.log(TAG, "enabled session=%d url=%s headers=%s proxy=%s", sessionId, shortUrl(url), session.headers.keySet(), proxyUrl);
+        return proxyUrl;
+    }
+
+    /**
+     * Creates a background preload session without touching the volatile
+     * current-session pointer. Advancing sessionId here (or running the TTL
+     * prune it exempts) would evict the still-playing session after three
+     * minutes and 404 every subsequent segment request, so preload sessions
+     * use their own id space and simply expire with the next real proxy()
+     * call. The upstream estimator is intentionally left alone so preload
+     * traffic does not reset playback throughput samples.
+     */
+    synchronized int startPreloadSession(String url, Map<String, String> headers, String mediaKey) throws IOException {
+        ensureStarted();
+        refreshCacheCoordinator();
+        int id = preloadSessionSeq.decrementAndGet();
+        registerSession(id, url, headers, mediaKey);
+        return id;
+    }
+
+    private Session registerSession(int id, String url, Map<String, String> headers, String mediaKey) {
         Session session = new Session(
                 url, sanitize(headers), System.currentTimeMillis(),
                 resolveMediaKey(mediaKey, url));
@@ -191,11 +219,7 @@ public final class MpvHlsProxy extends NanoHTTPD {
                 Map.of(),
                 null);
         sessionStats.put(id, stats);
-        pruneExpiredSessions(session.createdAtMs);
-        pruneCache();
-        String proxyUrl = baseUrl() + "/mpv/index.m3u8?s=" + sessionId;
-        SpiderDebug.log(TAG, "enabled session=%d url=%s headers=%s proxy=%s", sessionId, shortUrl(url), session.headers.keySet(), proxyUrl);
-        return proxyUrl;
+        return session;
     }
 
     public synchronized String proxyDash(String url, Map<String, String> headers) throws IOException {
@@ -451,26 +475,25 @@ public final class MpvHlsProxy extends NanoHTTPD {
         if (url == null || url.isBlank() || !isHttpUrl(url)) return false;
         try {
             ensureStarted();
-            synchronized (this) {
-                proxy(url, headers, mediaKey);
-            }
+            int id;
             Session session;
             SessionStats stats;
             synchronized (this) {
-                session = sessions.get(sessionId);
-                stats = sessionStats.get(sessionId);
+                id = startPreloadSession(url, headers, mediaKey);
+                session = sessions.get(id);
+                stats = sessionStats.get(id);
             }
             if (session == null || stats == null) return false;
-            if (stats.segments.isEmpty()) loadPlaylistForPreload(session, sessionId);
+            if (stats.segments.isEmpty()) loadPlaylistForPreload(session, id);
             synchronized (this) {
-                stats = sessionStats.get(sessionId);
+                stats = sessionStats.get(id);
                 if (stats == null || stats.segments.isEmpty() || !stats.vod) {
-                    SpiderDebug.log(TAG, "next-opening preload skipped session=%d segments=%d vod=%s url=%s", sessionId, stats == null ? 0 : stats.segments.size(), stats == null || !stats.vod, shortUrl(url));
+                    SpiderDebug.log(TAG, "next-opening preload skipped session=%d segments=%d vod=%s url=%s", id, stats == null ? 0 : stats.segments.size(), stats == null || !stats.vod, shortUrl(url));
                     return false;
                 }
                 preloadSegments(session, stats.segments, 0);
             }
-            SpiderDebug.log(TAG, "next-opening preload accepted session=%d url=%s", sessionId, shortUrl(url));
+            SpiderDebug.log(TAG, "next-opening preload accepted session=%d url=%s", id, shortUrl(url));
             return true;
         } catch (Throwable e) {
             SpiderDebug.log(TAG, "next-opening preload failed errorType=%s url=%s", e.getClass().getSimpleName(), shortUrl(url));
@@ -865,6 +888,12 @@ public final class MpvHlsProxy extends NanoHTTPD {
     private String applyAdblock(String text, int session, String url,
             @Nullable HlsPlaylistRewriter.Variant variant, boolean videoPlaylist) {
         if (!Setting.isAdblock() || !isVodPlaylist(text)) return text;
+        // A local AdFilterController route is already physically purified by
+        // M3u8Purifier; running the second detector on top would stack two
+        // uncoordinated heuristics (over-cut risk) and, for MPV, map skip
+        // ranges onto the shortened timeline. Exactly one detector acts per
+        // playback chain: route -> M3u8Purifier, otherwise -> HlsAdsParser.
+        if (AdFilterController.isRouteUrl(url)) return text;
         if (kernel == PlayerSetting.MPV && !videoPlaylist) return text;
         try {
             String filtered = HlsAdsParser.process(text);

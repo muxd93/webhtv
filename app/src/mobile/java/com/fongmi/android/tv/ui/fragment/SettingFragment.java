@@ -31,6 +31,7 @@ import com.fongmi.android.tv.ui.dialog.AboutDialog;
 import com.fongmi.android.tv.ui.dialog.AppearanceDialog;
 import com.fongmi.android.tv.ui.dialog.ChoiceDialog;
 import com.fongmi.android.tv.ui.dialog.ConfigDialog;
+import com.fongmi.android.tv.ui.dialog.DepotPoolDialog;
 import com.fongmi.android.tv.ui.dialog.HistoryDialog;
 import com.fongmi.android.tv.ui.dialog.SourceManagerDialog;
 import com.fongmi.android.tv.ui.dialog.LiveDialog;
@@ -129,6 +130,7 @@ public class SettingFragment extends BaseFragment implements ConfigListener, Sit
         mBinding.incognito.setOnClickListener(this::setIncognito);
         mBinding.vodHistory.setOnClickListener(this::onVodHistory);
         mBinding.liveHistory.setOnClickListener(this::onLiveHistory);
+        mBinding.livePool.setOnClickListener(this::onLivePool);
         mBinding.wallDefault.setOnClickListener(this::setWallDefault);
         mBinding.wallRefresh.setOnClickListener(this::setWallRefresh);
         mBinding.wallRefresh.setOnLongClickListener(this::onWallHistory);
@@ -232,6 +234,10 @@ public class SettingFragment extends BaseFragment implements ConfigListener, Sit
 
     private void onLiveHistory(View view) {
         HistoryDialog.create().live().show(this);
+    }
+
+    private void onLivePool(View view) {
+        DepotPoolDialog.show(requireActivity());
     }
 
     private void onPlayer(View view) {

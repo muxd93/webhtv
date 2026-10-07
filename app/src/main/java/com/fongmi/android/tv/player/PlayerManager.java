@@ -509,6 +509,7 @@ public class PlayerManager implements ParseCallback {
         if (retryMpvVulkanBackendTimeout()) return;
         if (retryMpvAutoVulkanToOpenGl("auto-vulkan-first-frame-timeout")) return;
         if (retryExoDv7FirstFrameTimeout()) return;
+        if (retryAdFilterOnTimeout()) return;
         callback.onError(ResUtil.getString(R.string.error_play_timeout));
     }
 
@@ -8338,8 +8339,18 @@ public class PlayerManager implements ParseCallback {
 
     private boolean retryAdFilter(PlaybackException e) {
         if (!adFilterActive || spec == null || !AdFilterController.isRouteUrl(spec.getUrl())) return false;
+        return poisonAndRetryDirect("playback failed on filtered playlist");
+    }
+
+    /** 起播卡死也会指向坏过滤清单：看门狗链与 FATAL 链共用 poison+直连重放自愈。 */
+    private boolean retryAdFilterOnTimeout() {
+        if (!adFilterActive || spec == null || !AdFilterController.isRouteUrl(spec.getUrl())) return false;
+        return poisonAndRetryDirect("playback timeout on filtered playlist");
+    }
+
+    private boolean poisonAndRetryDirect(String reason) {
         adFilterActive = false;
-        if (SpiderDebug.isEnabled()) SpiderDebug.log("adfilter", "playback failed on filtered playlist, poison route and retry direct url=%s", summarizeUrl(adFilterOriginalUrl));
+        if (SpiderDebug.isEnabled()) SpiderDebug.log("adfilter", "%s, poison route and retry direct url=%s", reason, summarizeUrl(adFilterOriginalUrl));
         AdFilterController.poison(adFilterOriginalUrl);
         App.removeCallbacks(runnable);
         playWhenReady = player == null || player.getPlayWhenReady();

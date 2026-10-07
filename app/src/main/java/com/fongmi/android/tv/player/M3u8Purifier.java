@@ -66,6 +66,10 @@ public final class M3u8Purifier {
         if (content == null || content.isEmpty() || !content.trim().startsWith("#EXTM3U")) return null;
         if (content.contains("#EXT-X-STREAM-INF")) return null;
         if (!hasExtInf(content)) return null;
+        // Dynamic/live playlists must never be purified: serving a snapshot
+        // through the local route would freeze the stream until the cache TTL
+        // expires. VOD-only scope, same ENDLIST convention as HlsAdsParser.
+        if (!hasEndList(content)) return null;
         M3u8Purifier purifier = new M3u8Purifier(baseUrl, configAds);
         String result = purifier.purify(content);
         return result == null ? null : new Result(result, purifier.removed);

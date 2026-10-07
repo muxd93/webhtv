@@ -38,6 +38,19 @@ public class M3u8PurifierTest {
     }
 
     @Test
+    public void dynamicLivePlaylistIsNeverPurified() {
+        // 直播/动态清单即使命中 CUE 广告标记也必须整体拒绝：经本地路由下发
+        // 快照会把直播冻结到缓存 TTL 过期（AD2）。
+        String content = "#EXTM3U\n#EXT-X-TARGETDURATION:10\n"
+                + segment("https://cdn.example.com/live/main01.ts", 6.0)
+                + "#EXT-X-CUE-OUT:DURATION=15\n"
+                + segment("https://cdn.example.com/live/ad01.ts", 5.0)
+                + "#EXT-X-CUE-IN\n"
+                + segment("https://cdn.example.com/live/main02.ts", 6.0) + "\n";
+        assertNull(M3u8Purifier.purify(BASE, content, List.of()));
+    }
+
+    @Test
     public void cueOutAdBreakIsRemoved() {
         String content = "#EXTM3U\n#EXT-X-TARGETDURATION:10\n"
                 + segment("https://cdn.example.com/live/main01.ts", 6.0)

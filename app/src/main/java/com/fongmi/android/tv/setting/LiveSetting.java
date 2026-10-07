@@ -47,6 +47,15 @@ public class LiveSetting {
         Prefers.put("auto_hop", hop);
     }
 
+    /** 多仓聚合池开关（DEPOT3）：收集子仓直播条目与广告规则；默认开，关闭即回退既有行为。 */
+    public static boolean isPool() {
+        return Prefers.getBoolean("depot_pool", true);
+    }
+
+    public static void putPool(boolean pool) {
+        Prefers.put("depot_pool", pool);
+    }
+
     /** 用户起播超时档位(毫秒);0=跟随直播源声明。 */
     public static int getTimeout() {
         return Prefers.getInt("live_timeout", 0);

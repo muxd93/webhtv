@@ -201,6 +201,7 @@ public class VodConfig extends BaseConfig {
         if (ex.children.size() > 1) {
             App.post(() -> Notify.show(ResUtil.getString(bad > 0 ? R.string.vod_depot_imported_bad : R.string.vod_depot_imported, ex.children.size(), bad)));
         }
+        collectDepotPool(ex.children);
         load(this.config = ex.chosen);
         // 子源加载成功后 bump time：保证重启恢复（findOne 按 time DESC）落到刚加载的源
         this.config.update();
