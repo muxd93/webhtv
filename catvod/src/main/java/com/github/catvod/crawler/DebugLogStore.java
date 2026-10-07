@@ -39,6 +39,11 @@ public class DebugLogStore {
         Prefers.put(PREF_CATEGORIES, categories);
         logCategories("category-changed");
     }
+    /** 用户显式“开启采集”时恢复完整诊断：覆盖降噪默认档并持久化，作为全量日志的恢复开关。 */
+    public static synchronized void setAllCategories() {
+        categories = DiagnosticCategories.ALL;
+        Prefers.put(PREF_CATEGORIES, categories);
+    }
     private static void logCategories(String reason) {
         event(new DiagnosticEvent("diag.session.begin", "none", "process", 0, 0)
                 .observed("reason", reason).observed("config", DiagnosticCategories.summary(categories))
@@ -84,7 +89,7 @@ public class DebugLogStore {
     }
 
     public static synchronized void setEnabled(boolean value) {
-        categories = Prefers.getInt(PREF_CATEGORIES, DiagnosticCategories.ALL) & DiagnosticCategories.ALL;
+        categories = Prefers.getInt(PREF_CATEGORIES, DiagnosticCategories.CAPTURE_DEFAULT) & DiagnosticCategories.ALL;
         if (!value) com.github.catvod.crawler.diagnostics.DiagnosticCapture.stop("diagnostics-disabled");
         if (value) create().start(false);
         enabled = value;
@@ -94,7 +99,7 @@ public class DebugLogStore {
     }
 
     public static synchronized void restoreEnabled() {
-        categories = Prefers.getInt(PREF_CATEGORIES, DiagnosticCategories.ALL) & DiagnosticCategories.ALL;
+        categories = Prefers.getInt(PREF_CATEGORIES, DiagnosticCategories.CAPTURE_DEFAULT) & DiagnosticCategories.ALL;
         enabled = Prefers.getBoolean(PREF_ENABLED);
         if (!enabled) return;
         create().start(true);

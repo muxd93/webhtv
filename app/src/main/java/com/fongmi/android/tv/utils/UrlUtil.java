@@ -21,6 +21,15 @@ public class UrlUtil {
         return scheme == null ? "" : scheme.toLowerCase().trim();
     }
 
+    /**
+     * 仅 Exo（SmbDataSource 等）可直连读取的内部资源协议。
+     * IJK/MPV 内核没有对应数据源，把这类 URL 交给它们必然起播失败，
+     * 必须在起播前约束到 EXO 直连，且不得进入嗅探/换 flag/换内核自愈链路。
+     */
+    public static boolean isExoOnlyDirect(String url) {
+        return "smb".equals(scheme(url));
+    }
+
     public static String host(String url) {
         return url == null ? "" : host(Uri.parse(url));
     }

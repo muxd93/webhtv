@@ -52,6 +52,7 @@ import com.fongmi.android.tv.ui.base.BaseActivity;
 import com.fongmi.android.tv.ui.dialog.DiscMenuDialog;
 import com.fongmi.android.tv.ui.custom.CustomSeekView;
 import com.fongmi.android.tv.utils.ResUtil;
+import com.fongmi.android.tv.utils.UrlUtil;
 import com.github.catvod.crawler.SpiderDebug;
 import com.google.common.util.concurrent.ListenableFuture;
 
@@ -343,8 +344,15 @@ public abstract class PlaybackActivity extends BaseActivity implements MediaCont
         } else if (result.getRealUrl().isEmpty()) {
             onError(ResUtil.getString(R.string.error_play_url));
         } else if (result.needParse() || useParse) {
-            attachSurface();
-            player().parse(key, result, useParse, metadata, PlayerSetting.isAutoPlay(), startPositionMs, timeout);
+            if (UrlUtil.isExoOnlyDirect(result.getUrl().v())) {
+                // 内部资源（smb:// 等）不经嗅探：嗅探链路无法访问内部协议，直接走 Exo 直连
+                SpiderDebug.log("playback-flow", "internal resource downgrade parse to direct");
+                attachSurface();
+                player().start(PlaySpec.from(result, key, metadata), timeout, PlayerSetting.isAutoPlay(), startPositionMs);
+            } else {
+                attachSurface();
+                player().parse(key, result, useParse, metadata, PlayerSetting.isAutoPlay(), startPositionMs, timeout);
+            }
         } else {
             attachSurface();
             player().start(PlaySpec.from(result, key, metadata), timeout, PlayerSetting.isAutoPlay(), startPositionMs);

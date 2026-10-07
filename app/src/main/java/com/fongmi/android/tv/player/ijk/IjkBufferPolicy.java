@@ -22,7 +22,9 @@ public final class IjkBufferPolicy {
     }
 
     public static Config safeInitialConfig() {
-        return new Config(BALANCED_BUFFER_MB, 100, 1_000, 3_000);
+        // 起步首水位 500ms：100ms 在供给速率≈实时的高码率/回环链路上几乎必然立刻欠载；
+        // 500ms 相比旧 Exo 起播门槛仍然很小，IJK 起播速度基本不变。
+        return new Config(BALANCED_BUFFER_MB, 500, 1_000, 3_000);
     }
 
     /** Single source of the supported buffer-tier normalization. */

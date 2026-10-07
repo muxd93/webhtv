@@ -25,6 +25,7 @@ public class CustomTitleView extends MaterialTextView {
     private Listener listener;
     private Animation flicker;
     private boolean coolDown;
+    private static final long FOCUS_COOLDOWN_MS = 800;
 
     private Site getHome() {
         return VodConfig.get().getHome();
@@ -55,8 +56,14 @@ public class CustomTitleView extends MaterialTextView {
     @Override
     protected void onFocusChanged(boolean focused, int direction, Rect previouslyFocusedRect) {
         super.onFocusChanged(focused, direction, previouslyFocusedRect);
-        if (focused) startAnimation(flicker);
-        else clearAnimation();
+        // 焦点刚落上来的第一颗“上”不触发整页刷新（与 CustomTypeView 同型守卫）
+        App.post(() -> coolDown = false, FOCUS_COOLDOWN_MS);
+        if (focused) {
+            coolDown = true;
+            startAnimation(flicker);
+        } else {
+            clearAnimation();
+        }
     }
 
     @Override

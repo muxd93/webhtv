@@ -151,7 +151,11 @@ public class SettingEnhanceActivity extends BaseActivity {
                 mBinding.siteHealthSort,
                 mBinding.debugLog,
                 mBinding.staleRefresh,
-                mBinding.playbackWebhook
+                mBinding.playbackWebhook,
+                mBinding.dlna,
+                mBinding.homeClean,
+                mBinding.powerSave,
+                mBinding.ttsFocus
         };
         for (View view : order) parent.removeView(view);
         for (View view : order) parent.addView(view);

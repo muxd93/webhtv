@@ -40,6 +40,7 @@ import com.fongmi.android.tv.setting.IjkPerformanceSetting;
 import com.fongmi.android.tv.setting.PlaybackPerformanceCatalog;
 import com.fongmi.android.tv.setting.PlaybackPerformanceSetting;
 import com.fongmi.android.tv.setting.PlayerSetting;
+import com.fongmi.android.tv.setting.PreloadSetting;
 import com.fongmi.android.tv.utils.Task;
 import com.github.catvod.crawler.SpiderDebug;
 import com.google.common.collect.ImmutableList;
@@ -888,6 +889,9 @@ class IjkSimplePlayer extends SimpleBasePlayer implements IMediaPlayer.Listener 
 
     /** Pre-fetches the opening of a not-yet-playing HLS VOD episode through the shared proxy. */
     public void preloadNextOpening(PlaySpec spec) {
+        // Same preload gate as the EXO next-episode pre-cache: opening
+        // prefetch is a preload-lane feature, not an always-on behavior.
+        if (!PreloadSetting.isPreload(PlayerSetting.IJK)) return;
         MediaItem item = ExoUtil.getMediaItem(spec, PlayerEngine.HARD);
         if (item.localConfiguration == null) return;
         String url = item.localConfiguration.uri.toString();

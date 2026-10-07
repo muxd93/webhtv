@@ -13,8 +13,10 @@ import com.fongmi.android.tv.source.SourceState;
 import com.fongmi.android.tv.impl.Callback;
 import com.fongmi.android.tv.server.Server;
 import com.fongmi.android.tv.setting.InterfaceOrderStore;
+import com.fongmi.android.tv.setting.LiveSetting;
 import com.fongmi.android.tv.setting.Setting;
 import com.fongmi.android.tv.utils.Notify;
+import com.fongmi.android.tv.utils.ResUtil;
 import com.fongmi.android.tv.utils.Task;
 import com.fongmi.android.tv.utils.UrlUtil;
 import com.github.catvod.bean.Header;
@@ -400,6 +402,32 @@ abstract class BaseConfig {
         if (config == null || !config.isDepot()) return;
         config.depot(false).save();
         for (Config child : Config.getChildren(config.getUrl(), config.getType())) child.delete();
+    }
+
+    /**
+     * 多仓聚合收集（DEPOT3）：仓展开后异步拉取全部子仓内容，聚合直播条目与广告规则进池。
+     * 只增不减、单飞闸门；开关关闭或收集路径失败均不影响配置本体加载。变更逐条广播 live 事件。
+     */
+    protected void collectDepotPool(List<Config> children) {
+        if (!LiveSetting.isPool() || children == null || children.isEmpty()) return;
+        List<DepotPool.Child> items = new ArrayList<>();
+        for (Config child : children) items.add(new DepotPool.Child(child.getUrl(), child.getName(), child.getType()));
+        DepotPool.collectAsync(items, new DepotPool.CollectCallback() {
+            private int changed;
+
+            @Override
+            public void onChildChanged() {
+                changed++;
+                App.post(ConfigEvent::live);
+            }
+
+            @Override
+            public void onDone(int done, int total) {
+                if (changed == 0) return;
+                int liveCount = DepotPool.liveCount(), adCount = DepotPool.adCount();
+                App.post(() -> Notify.show(ResUtil.getString(R.string.depot_pool_collected, done, total, liveCount, adCount)));
+            }
+        });
     }
 
     /** 首个健康且已启用的子源（保持仓内声明顺序）；全部不健康/被禁用时回退首个已启用源。 */

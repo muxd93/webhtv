@@ -9,6 +9,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ResolveInfo;
 import android.os.Bundle;
+import android.os.SystemClock;
 import android.text.TextUtils;
 import android.view.KeyEvent;
 import android.view.View;
@@ -140,9 +141,12 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
     private boolean webToolbarVisible = true;
     private boolean loadingHomeCategory;
     private boolean mConfigLoading;
+    private int mContentSelectedPosition;
+    private long mHomeRequestAt;
     private ActivityResultLauncher<Intent> smbDiscoverLauncher;
     private TtsSpeaker mTts;
     private static final long EXIT_DOUBLE_BACK_INTERVAL = 2000;
+    private static final long HOME_REQUEST_MIN_INTERVAL_MS = 1500;
     private long mLastBackPressedTime = 0;
 
     private Site getHome() {
@@ -277,6 +281,7 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
         mBinding.recycler.addOnChildViewHolderSelectedListener(new OnChildViewHolderSelectedListener() {
             @Override
             public void onChildViewHolderSelected(@NonNull RecyclerView parent, @Nullable RecyclerView.ViewHolder child, int position, int subposition) {
+                mContentSelectedPosition = position;
                 updateToolbarVisibility(isTopRow(position));
                 if (mPresenter.isDelete()) setHistoryDelete(false);
             }
@@ -566,6 +571,10 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
         hideWebOverlay();
         applyTvChrome(TV_NORMAL);
         mBinding.recycler.setVisibility(View.VISIBLE);
+        // 首页整页重载去抖：焦点/按键误触的短时重复触发不再清空重建；显式切源（forceNative）不受限
+        long now = SystemClock.elapsedRealtime();
+        if (now - mHomeRequestAt < HOME_REQUEST_MIN_INTERVAL_MS) return;
+        mHomeRequestAt = now;
         mResult = Result.empty();
         mHomeResult = Result.empty();
         loadingHomeCategory = false;
@@ -980,10 +989,15 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
         if (KeyUtil.isActionDown(event) & KeyUtil.isUpKey(event) && mBinding.typeRecycler.hasFocus()) return requestTitleFocus();
         if (KeyUtil.isActionDown(event) & KeyUtil.isDownKey(event) && mBinding.typeRecycler.hasFocus()) return requestContentFocus();
         if (KeyUtil.isActionDown(event) & KeyUtil.isUpKey(event) && mBinding.recycler.hasFocus() && mBinding.typeRecycler.getVisibility() == View.VISIBLE) {
+            // 内容列表未到顶时放行给列表正常上移，只有已在首行才把焦点交给顶栏
+            if (!isTopRow(mContentSelectedPosition)) {
+                if (!isToolbarVisible()) updateToolbarVisibility(true);
+                return super.dispatchKeyEvent(event);
+            }
             if (isToolbarVisible()) return requestTitleFocus();
             updateToolbarVisibility(true);
         }
-        if (KeyUtil.isActionDown(event) & KeyUtil.isUpKey(event) && mBinding.recycler.hasFocus() && mBinding.typeRecycler.getVisibility() != View.VISIBLE && isToolbarVisible()) {
+        if (KeyUtil.isActionDown(event) & KeyUtil.isUpKey(event) && mBinding.recycler.hasFocus() && mBinding.typeRecycler.getVisibility() != View.VISIBLE && isToolbarVisible() && isTopRow(mContentSelectedPosition)) {
             return requestTitleFocus();
         }
         if (KeyUtil.isActionDown(event) & KeyUtil.isDownKey(event) && getCurrentFocus() == mBinding.title) return requestHomeFocus();

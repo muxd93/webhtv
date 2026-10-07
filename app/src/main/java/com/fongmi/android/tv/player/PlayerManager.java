@@ -111,6 +111,7 @@ import com.fongmi.android.tv.utils.LocalProxyDebug;
 import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.ResUtil;
 import com.fongmi.android.tv.utils.Task;
+import com.fongmi.android.tv.utils.UrlUtil;
 import com.fongmi.android.tv.utils.Util;
 import com.github.catvod.crawler.SpiderDebug;
 import com.github.catvod.net.OkHttp;
@@ -274,6 +275,8 @@ public class PlayerManager implements ParseCallback {
     private boolean playbackForeground;
     private boolean exoDecoderResourceRecoveryInProgress;
     private int playerType;
+    /** 路由约束临时引擎覆盖：内部资源播放期间强制 EXO，离开后复位用户偏好，不写回设置 */
+    private boolean routeEngineOverridden;
     private int localProxyRetry;
     private long activeTimeout = Constant.TIMEOUT_PLAY;
     private long watchdogDeadlineMs;
@@ -509,6 +512,7 @@ public class PlayerManager implements ParseCallback {
         if (retryMpvVulkanBackendTimeout()) return;
         if (retryMpvAutoVulkanToOpenGl("auto-vulkan-first-frame-timeout")) return;
         if (retryExoDv7FirstFrameTimeout()) return;
+        if (retryAdFilterOnTimeout()) return;
         callback.onError(ResUtil.getString(R.string.error_play_timeout));
     }
 
@@ -5272,6 +5276,29 @@ public class PlayerManager implements ParseCallback {
         };
     }
 
+    /**
+     * 路由约束：内部资源（smb:// 等，见 UrlUtil#isExoOnlyDirect）仅 Exo（SmbDataSource）可直连读取，
+     * IJK/MPV 无对应数据源，起播必然失败并连带触发换 flag（嗅探）/换内核盲搜。
+     * 起播前强制本次播放使用 EXO；离开内部资源后复位回用户偏好。全程不写回用户设置。
+     */
+    private void applyRouteEngineConstraint(PlaySpec spec) {
+        boolean exoOnly = spec != null && UrlUtil.isExoOnlyDirect(spec.getUrl());
+        if (!exoOnly && !routeEngineOverridden) return;
+        int target = exoOnly ? PlayerSetting.EXO : PlayerSetting.getPlayer();
+        routeEngineOverridden = exoOnly;
+        if (target == playerType) return;
+        SpiderDebug.log("player", "route constraint engine %d->%d exoOnly=%s", playerType, target, exoOnly);
+        int decode = engine != null ? engine.getDecode() : PlayerEngine.HARD;
+        if (engine != null) {
+            stopNativeAudioSession();
+            engine.release();
+        }
+        playerType = target;
+        engine = buildEngine(playerType, decode);
+        player = engine.getPlayer();
+        callback.onPlayerRebuild(player, true);
+    }
+
     public void browse(PlaySpec spec) {
         reset();
         clear();
@@ -5293,6 +5320,7 @@ public class PlayerManager implements ParseCallback {
         clearPendingSwitchRestore();
         clearDanmaku("start");
         this.spec = spec;
+        applyRouteEngineConstraint(spec);
         pendingInitialStartPositionMs = positionMs > 0 ? positionMs : C.TIME_UNSET;
         prepareMpvOutputForNewItem();
         beginPlaybackTrace("start", false);
@@ -8338,8 +8366,18 @@ public class PlayerManager implements ParseCallback {
 
     private boolean retryAdFilter(PlaybackException e) {
         if (!adFilterActive || spec == null || !AdFilterController.isRouteUrl(spec.getUrl())) return false;
+        return poisonAndRetryDirect("playback failed on filtered playlist");
+    }
+
+    /** 起播卡死也会指向坏过滤清单：看门狗链与 FATAL 链共用 poison+直连重放自愈。 */
+    private boolean retryAdFilterOnTimeout() {
+        if (!adFilterActive || spec == null || !AdFilterController.isRouteUrl(spec.getUrl())) return false;
+        return poisonAndRetryDirect("playback timeout on filtered playlist");
+    }
+
+    private boolean poisonAndRetryDirect(String reason) {
         adFilterActive = false;
-        if (SpiderDebug.isEnabled()) SpiderDebug.log("adfilter", "playback failed on filtered playlist, poison route and retry direct url=%s", summarizeUrl(adFilterOriginalUrl));
+        if (SpiderDebug.isEnabled()) SpiderDebug.log("adfilter", "%s, poison route and retry direct url=%s", reason, summarizeUrl(adFilterOriginalUrl));
         AdFilterController.poison(adFilterOriginalUrl);
         App.removeCallbacks(runnable);
         playWhenReady = player == null || player.getPlayWhenReady();

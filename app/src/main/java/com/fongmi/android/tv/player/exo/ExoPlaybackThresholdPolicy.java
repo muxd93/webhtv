@@ -7,6 +7,9 @@ final class ExoPlaybackThresholdPolicy {
 
     static final int MIN_STREAMING_START_MS = 500;
     static final int MAX_STREAMING_START_MS = 8_000;
+    /** 分段对齐后 VOD 起播门槛的上限：对齐本身合理（整段度量吞吐），
+     *  但 6-10s 分片会把 1.5-3s 的门槛抬到 6-8s，直接造成“Exo 要缓冲很久才出画”。 */
+    static final int ALIGNED_START_CAP_MS = 4_000;
     static final int MIN_STREAMING_REBUFFER_MS = 1_000;
     static final int MAX_STREAMING_REBUFFER_MS = 15_000;
     static final long THROUGHPUT_MAX_AGE_MS = 65_000L;
@@ -114,7 +117,7 @@ final class ExoPlaybackThresholdPolicy {
         boolean segmented = segmented(protocol, transferUnit);
         if (segmented && boundaryMs > 0) {
             selected = new ThresholdPair(
-                    alignUp(selected.startMs(), boundaryMs, MAX_STREAMING_START_MS),
+                    alignStartup(selected.startMs(), boundaryMs),
                     alignUp(selected.rebufferMs(), boundaryMs, MAX_STREAMING_REBUFFER_MS));
         }
         ThresholdPair beforeLiveCap = selected;
@@ -509,6 +512,15 @@ final class ExoPlaybackThresholdPolicy {
         long units = ((long) value + boundaryMs - 1L) / boundaryMs;
         long aligned = units * boundaryMs;
         return (int) Math.min(maximumMs, aligned);
+    }
+
+    /**
+     * 起播门槛的分段对齐：只用于 START episode。对齐结果封顶 {@link #ALIGNED_START_CAP_MS}，
+     * 但永不低于策略选定的门槛（风险升级的 floor 不受影响）。
+     */
+    private static int alignStartup(int valueMs, int boundaryMs) {
+        int aligned = alignUp(valueMs, boundaryMs, MAX_STREAMING_START_MS);
+        return Math.max(valueMs, Math.min(aligned, ALIGNED_START_CAP_MS));
     }
 
     private static int saturatingMultiply(int value, int multiplier) {

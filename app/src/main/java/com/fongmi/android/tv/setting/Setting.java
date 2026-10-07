@@ -612,6 +612,8 @@ public class Setting {
 
     public static void putDebugLog(boolean debugLog) {
         DebugLogStore.setEnabled(debugLog);
+        // 日志页“开启采集”是降噪默认档之外的全量恢复开关：显式开启即写回全部分类
+        if (debugLog) DebugLogStore.setAllCategories();
         if (debugLog) logDebugEnvironment("enable");
     }
 

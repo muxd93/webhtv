@@ -9,6 +9,8 @@ public final class IjkBufferController {
     public static final long RELOAD_WINDOW_MS = 600_000L;
     public static final long EARLY_SCENE_WINDOW_MS = 20_000L;
     public static final int MAX_RELOAD_ATTEMPTS = 3;
+    /** 同一会话欠载达到该次数才允许重载扩容：首次欠载原地等待，避免每集起播必然黑屏重载 */
+    public static final int RELOAD_MIN_REBUFFERS = 2;
 
     private PlaybackAutoContext.SessionToken session =
             PlaybackAutoContext.SessionToken.none();
@@ -131,7 +133,10 @@ public final class IjkBufferController {
         // request: latch it and fire on the next observed buffering state.
         if (newRebuffer && expands) rebufferExpansionPending = true;
         if (!expands) rebufferExpansionPending = false;
-        boolean rebufferExpansion = rebufferExpansionPending && buffering;
+        // 首次欠载不重载：原地等待数据追上（正常 buffering 表现），
+        // 同一会话第 RELOAD_MIN_REBUFFERS 次欠载仍发生才升级为重载扩容。
+        boolean rebufferExpansion = rebufferExpansionPending && buffering
+                && rebufferCount >= RELOAD_MIN_REBUFFERS;
         if (rebufferExpansion) rebufferExpansionPending = false;
         boolean hardSafety = safe.liveLagHigh()
                 || (hardSafety(safe.reason()) && shrinks);

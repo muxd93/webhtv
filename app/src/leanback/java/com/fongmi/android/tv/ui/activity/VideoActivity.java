@@ -147,6 +147,7 @@ import com.fongmi.android.tv.ui.dialog.TitleDialog;
 import com.fongmi.android.tv.ui.dialog.TimerDialog;
 import com.fongmi.android.tv.ui.dialog.TrackDialog;
 import com.fongmi.android.tv.utils.Clock;
+import com.fongmi.android.tv.utils.UrlUtil;
 import com.fongmi.android.tv.utils.FileChooser;
 import com.fongmi.android.tv.utils.ImgUtil;
 import com.fongmi.android.tv.utils.KeyUtil;
@@ -5895,6 +5896,15 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
     }
 
     private void startFlow() {
+        // 内部资源（smb:// 等）只有 Exo 直连一条物理可行路径：失败即真失败，
+        // 禁止自动换 flag（会轮到对内部协议毫无意义的“嗅探”）与换源盲搜。
+        if (UrlUtil.isExoOnlyDirect(player().getUrl())) {
+            if (autoChangePending) {
+                AutoChangeMetric.result(false, SystemClock.elapsedRealtime() - autoChangeStart, getKey());
+                autoChangePending = false;
+            }
+            return;
+        }
         if (!PlayerSetting.isAutoChange() || !getSite().isChangeable()) {
             if (autoChangePending) {
                 AutoChangeMetric.result(false, SystemClock.elapsedRealtime() - autoChangeStart, getKey());

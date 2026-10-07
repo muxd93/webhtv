@@ -2,7 +2,7 @@ package com.github.catvod.crawler.diagnostics;
 
 import java.util.Locale;
 
-/** Stable persisted bits. A missing preference enables every category. */
+/** Stable persisted bits. A missing preference falls back to {@link #CAPTURE_DEFAULT}. */
 public final class DiagnosticCategories {
     public enum Category {
         PLAYBACK(1, "播放流程"), NETWORK(2, "网络请求"), VIDEO(4, "视频画面"),
@@ -12,6 +12,12 @@ public final class DiagnosticCategories {
         Category(int bit, String title) { this.bit = bit; this.title = title; }
     }
     public static final int ALL = 63;
+    /**
+     * 未设置分类偏好时的默认采集范围：播放流程 + 网络请求 + 视频画面。
+     * 音频/字幕/内核（mpv.runtime、env.native、collector.health 等高频重复事件）默认不采集，
+     * 生产档日志体积约降一半；在日志页“开启采集”会写回 ALL 恢复完整诊断。
+     */
+    public static final int CAPTURE_DEFAULT = Category.PLAYBACK.bit | Category.NETWORK.bit | Category.VIDEO.bit;
     private DiagnosticCategories() {}
 
     public static Category event(String name) {

@@ -37,7 +37,7 @@ import java.util.Objects;
 
 /**
  * 点播/直播/墙纸配置对话框的公共基类：type/edit 状态、URL 快捷补全、
- * 保存（含自动命名与直播聚合池删除联动）、推荐源导入、文件选择、推送回填。
+ * 保存（含自动命名）、推荐源导入、文件选择、推送回填。
  * 子类只负责布局装配（initView/initEvent）与配置交付（onConfigSaved）。
  */
 public abstract class BaseConfigDialog extends BaseAlertDialog {
