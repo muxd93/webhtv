@@ -105,17 +105,6 @@ public class MpvAutoOutputPolicyTest {
     }
 
     @Test
-    public void evaluatesFourKBeforeTracksAreComplete() {
-        assertTrue(MpvAutoOutputPolicy.canEvaluateWithoutTracks(3840, 1606));
-    }
-
-    @Test
-    public void evaluatesKnownSizeBeforeTracksAreComplete() {
-        assertTrue(MpvAutoOutputPolicy.canEvaluateWithoutTracks(1920, 1080));
-        assertTrue(MpvAutoOutputPolicy.canEvaluateWithoutTracks(3840, 2160));
-    }
-
-    @Test
     public void revealsSuccessfulDirectFrameBeforeTrackMetadataCompletes() {
         assertTrue(MpvAutoOutputPolicy.canRevealDirectFrame(
                 true, false, true, true, 3840, 2160));

@@ -86,10 +86,6 @@ public final class MpvAutoOutputPolicy {
         return currentlyDirect ? Transition.LEAVE_SURFACE_DIRECT : Transition.KEEP_GPU;
     }
 
-    public static boolean canEvaluateWithoutTracks(int width, int height) {
-        return width > 0 && height > 0;
-    }
-
     public static boolean canRevealDirectFrame(boolean automaticOutput,
                                                boolean outputEvaluated,
                                                boolean playbackReady,

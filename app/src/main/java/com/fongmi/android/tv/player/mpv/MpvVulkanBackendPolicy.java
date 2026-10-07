@@ -17,6 +17,8 @@ public final class MpvVulkanBackendPolicy {
     public static final String LEGACY = "legacy";
     public static final String STABLE = "stable";
     private static final String KEY_STABLE_ENVIRONMENT = "mpv_vulkan_stable_environment_v1";
+    /** Driver failures are re-probed after this TTL instead of being remembered forever. */
+    static final long STABLE_RECORD_TTL_MS = 3L * 24 * 60 * 60 * 1000;
 
     private MpvVulkanBackendPolicy() {
     }
@@ -41,11 +43,45 @@ public final class MpvVulkanBackendPolicy {
     }
 
     public static void rememberDirectFailure() {
-        Prefers.put(KEY_STABLE_ENVIRONMENT, currentEnvironment());
+        Prefers.put(KEY_STABLE_ENVIRONMENT,
+                encodeStableEnvironment(currentEnvironment(), System.currentTimeMillis()));
     }
 
     public static boolean isStableRemembered() {
-        return currentEnvironment().equals(Prefers.getString(KEY_STABLE_ENVIRONMENT));
+        return isStableRememberedAt(System.currentTimeMillis());
+    }
+
+    static boolean isStableRememberedAt(long nowMs) {
+        String stored = Prefers.getString(KEY_STABLE_ENVIRONMENT);
+        if (stored == null || stored.isEmpty()) return false;
+        int separator = stored.lastIndexOf('|');
+        if (separator < 0) {
+            // Legacy record without a timestamp: honor it for this app version;
+            // the next failure re-records it with a timestamp.
+            return currentEnvironment().equals(stored);
+        }
+        long recordedAtMs;
+        try {
+            recordedAtMs = Long.parseLong(stored.substring(separator + 1));
+        } catch (NumberFormatException ignored) {
+            return false;
+        }
+        return currentEnvironment().equals(stored.substring(0, separator))
+                && isStableRecordFresh(recordedAtMs, nowMs, STABLE_RECORD_TTL_MS);
+    }
+
+    static String encodeStableEnvironment(String environment, long recordedAtMs) {
+        return environment + '|' + recordedAtMs;
+    }
+
+    static String storedEnvironment(String stored) {
+        if (stored == null) return "";
+        int separator = stored.lastIndexOf('|');
+        return separator < 0 ? stored : stored.substring(0, separator);
+    }
+
+    static boolean isStableRecordFresh(long recordedAtMs, long nowMs, long ttlMs) {
+        return recordedAtMs > 0 && nowMs >= recordedAtMs && nowMs - recordedAtMs <= ttlMs;
     }
 
     static String resolve(String configured, boolean stableRemembered) {

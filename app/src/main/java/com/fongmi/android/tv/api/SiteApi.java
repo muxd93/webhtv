@@ -148,13 +148,28 @@ public class SiteApi {
 
     @NonNull
     public static Result playerContent(@NonNull String key, @NonNull String flag, @NonNull String id) throws Exception {
-        return playerContent(key, flag, id, PlayerSetting.getPlayer());
+        return resolvePlayerContent(key, flag, id, PlayerSetting.getPlayer(), true);
+    }
+
+    /**
+     * Same resolution as {@link #playerContent(String, String, String)} but
+     * without stopping running extractors, so it can run in the background
+     * while the current episode keeps playing.
+     */
+    @NonNull
+    public static Result playerContentQuiet(@NonNull String key, @NonNull String flag, @NonNull String id) throws Exception {
+        return resolvePlayerContent(key, flag, id, PlayerSetting.getPlayer(), false);
     }
 
     @NonNull
     public static Result playerContent(@NonNull String key, @NonNull String flag, @NonNull String id, int playerType) throws Exception {
+        return resolvePlayerContent(key, flag, id, playerType, true);
+    }
+
+    @NonNull
+    private static Result resolvePlayerContent(@NonNull String key, @NonNull String flag, @NonNull String id, int playerType, boolean stopSource) throws Exception {
         SpiderDebug.log("player", "key=%s,flag=%s,id=%s", key, flag, id);
-        Source.get().stop();
+        if (stopSource) Source.get().stop();
         if (WebHomeInlineVodStore.KEY.equals(key)) return WebHomeInlineVodStore.player(flag, id);
         Site site = VodConfig.get().getSite(key);
         if (site.getType() == 3) {

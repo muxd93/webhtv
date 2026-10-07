@@ -176,12 +176,13 @@ public final class PlaybackPerformanceCatalog {
         String scope = hlsOnly
                 ? "当前主动向前预载仅完整支持HLS点播；普通MP4/MKV直链和DASH仍由播放器内核或前台缓存处理。"
                 : "适用于可缓存的HTTP/HTTPS点播；直播和不可缓存资源会跳过。";
-        options.add(option(PRELOAD, PRELOAD_SECTION, "磁盘预载", "作用：在播放内存缓冲之外，提前把后续数据写入磁盘。" + scope + "计费网络、省电、过热、内存/存储压力或前台缓冲风险出现时会自动暂停。"));
-        options.add(option(PRELOAD_THREADS, PRELOAD_SECTION, "预载并发", "作用：控制同时执行的后台磁盘预载任务数，不是播放器解码线程。自动档按前台缓冲、吞吐和系统状态使用0～2条；手动通常1条最稳，过多可能挤占当前播放或触发服务器限流。"));
-        options.add(option(PRELOAD_SIZE, PRELOAD_SECTION, "磁盘预载配额", "作用：限制当前内核最多使用多少磁盘空间保存预载数据，范围128MB～32GB。它与内存缓冲上限完全独立；配额越大只代表允许保存更多，不代表会立即占满。"));
-        options.add(option(PRELOAD_TIME, PRELOAD_SECTION, "单次预载时长", "作用：限制每个后台任务一次向前准备多少媒体时长。自动档通常10～30秒；数值越大，单次连接和写盘持续越久，但不会改变总磁盘配额或向前目标。"));
-        options.add(option(PRELOAD_AHEAD, PRELOAD_SECTION, "向前预载目标", "作用：指定希望从当前播放位置向前保留多少可连续播放的数据，可选1～60分钟或整部影片。达到高水位后停止，消耗到低水位再补充，并始终受磁盘配额和系统保护限制。"));
-        options.add(option(PRELOAD_PAUSE, PRELOAD_SECTION, "暂停时继续预载", "作用：决定暂停后是否继续向前准备数据。默认“始终”；担心移动流量可选“仅 WiFi”。HLS会继续填充磁盘预载，MPV普通直链会临时扩大内存预读时长；存储、内存、过热或资源压力仍会限制实际长度。"));
+        String suffix = hlsOnly ? "（仅HLS生效）" : "";
+        options.add(option(PRELOAD, PRELOAD_SECTION, "磁盘预载" + suffix, "作用：在播放内存缓冲之外，提前把后续数据写入磁盘。" + scope + "计费网络、省电、过热、内存/存储压力或前台缓冲风险出现时会自动暂停。"));
+        options.add(option(PRELOAD_THREADS, PRELOAD_SECTION, "预载并发" + suffix, "作用：控制同时执行的后台磁盘预载任务数，不是播放器解码线程。自动档按前台缓冲、吞吐和系统状态使用0～2条；手动通常1条最稳，过多可能挤占当前播放或触发服务器限流。"));
+        options.add(option(PRELOAD_SIZE, PRELOAD_SECTION, "磁盘预载配额" + suffix, "作用：限制当前内核最多使用多少磁盘空间保存预载数据，范围128MB～32GB。它与内存缓冲上限完全独立；配额越大只代表允许保存更多，不代表会立即占满。"));
+        options.add(option(PRELOAD_TIME, PRELOAD_SECTION, "单次预载时长" + suffix, "作用：限制每个后台任务一次向前准备多少媒体时长。自动档通常10～30秒；数值越大，单次连接和写盘持续越久，但不会改变总磁盘配额或向前目标。"));
+        options.add(option(PRELOAD_AHEAD, PRELOAD_SECTION, "向前预载目标" + suffix, "作用：指定希望从当前播放位置向前保留多少可连续播放的数据，可选1～60分钟或整部影片。达到高水位后停止，消耗到低水位再补充，并始终受磁盘配额和系统保护限制。"));
+        options.add(option(PRELOAD_PAUSE, PRELOAD_SECTION, "暂停时继续预载" + suffix, "作用：决定暂停后是否继续向前准备数据。默认“始终”；担心移动流量可选“仅 WiFi”。HLS会继续填充磁盘预载，MPV普通直链会临时扩大内存预读时长；存储、内存、过热或资源压力仍会限制实际长度。"));
     }
 
     private static String profileDescription(

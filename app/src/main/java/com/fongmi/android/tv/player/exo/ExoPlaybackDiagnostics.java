@@ -122,10 +122,6 @@ final class ExoPlaybackDiagnostics {
                 videoBitrate, bitrateSource(video), audioBitrate, bitrateSource(audio), totalBitrate, effectiveCapacityBytes, capacityDurationMs(effectiveCapacityBytes, totalBitrate));
     }
 
-    static void logPreload(String format, Object... args) {
-        if (SpiderDebug.isEnabled()) SpiderDebug.log("exo-preload", format, args);
-    }
-
     static int formatBitrate(@Nullable Format format) {
         if (format == null) return 0;
         if (format.averageBitrate > 0) return format.averageBitrate;

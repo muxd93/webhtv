@@ -92,6 +92,58 @@ public class IjkBufferControllerTest {
     }
 
     @Test
+    public void rebufferEndedBetweenTicksStillExpandsOnNextStall() {
+        IjkBufferController controller = controller("rebuffer-latch", 22, 0);
+        PlaybackAutoContext.SessionToken token = controller.snapshot().session();
+
+        // Rebuffer observed and already recovered before this tick: the
+        // expansion request must latch instead of being lost.
+        IjkBufferController.Decision missed = controller.evaluate(
+                token, token, policy(FIFTEEN,
+                        IjkBufferPolicy.Reason.REBUFFER_HEADROOM), EIGHT,
+                IjkBufferController.Trigger.RUNTIME, false, true, 1, 30_000);
+        assertEquals(IjkBufferController.Action.STAGE, missed.action());
+
+        // Next buffering observation fires the latched expansion.
+        IjkBufferController.Decision fired = controller.evaluate(
+                token, token, policy(FIFTEEN,
+                        IjkBufferPolicy.Reason.REBUFFER_HEADROOM), EIGHT,
+                IjkBufferController.Trigger.RUNTIME, true, true, 1, 60_000);
+        assertTrue(fired.requestsReload());
+        assertFalse(fired.newRebuffer());
+        assertEquals(IjkBufferController.Reason.REBUFFER_RELOAD,
+                fired.reason());
+    }
+
+    @Test
+    public void rebufferLatchClearsWhenTargetStopsExpanding() {
+        IjkBufferController controller = controller("rebuffer-latch-clear", 23, 0);
+        PlaybackAutoContext.SessionToken token = controller.snapshot().session();
+
+        IjkBufferController.Decision missed = controller.evaluate(
+                token, token, policy(FIFTEEN,
+                        IjkBufferPolicy.Reason.REBUFFER_HEADROOM), EIGHT,
+                IjkBufferController.Trigger.RUNTIME, false, true, 1, 30_000);
+        assertEquals(IjkBufferController.Action.STAGE, missed.action());
+
+        // Policy returns to the applied config: the latched request expires.
+        IjkBufferController.Decision settled = controller.evaluate(
+                token, token, policy(EIGHT,
+                        IjkBufferPolicy.Reason.VOD_BASELINE), EIGHT,
+                IjkBufferController.Trigger.RUNTIME, true, true, 1, 60_000);
+        assertEquals(IjkBufferController.Reason.ALREADY_APPLIED,
+                settled.reason());
+
+        IjkBufferController.Decision later = controller.evaluate(
+                token, token, policy(FIFTEEN,
+                        IjkBufferPolicy.Reason.REBUFFER_HEADROOM), EIGHT,
+                IjkBufferController.Trigger.RUNTIME, true, true, 1, 90_000);
+        assertEquals(IjkBufferController.Action.STAGE, later.action());
+        assertEquals(IjkBufferController.Reason.HEALTHY_EXPANSION_DEFERRED,
+                later.reason());
+    }
+
+    @Test
     public void cooldownBlocksSecondNoncriticalReload() {
         IjkBufferController controller = controller("cooldown", 6, 0);
         PlaybackAutoContext.SessionToken token = controller.snapshot().session();

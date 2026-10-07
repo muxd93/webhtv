@@ -886,6 +886,16 @@ class IjkSimplePlayer extends SimpleBasePlayer implements IMediaPlayer.Listener 
         else hlsProxy.preloadWhilePaused(positionMs);
     }
 
+    /** Pre-fetches the opening of a not-yet-playing HLS VOD episode through the shared proxy. */
+    public void preloadNextOpening(PlaySpec spec) {
+        MediaItem item = ExoUtil.getMediaItem(spec, PlayerEngine.HARD);
+        if (item.localConfiguration == null) return;
+        String url = item.localConfiguration.uri.toString();
+        if (!shouldProxyHls(item, url)) return;
+        Map<String, String> headers = ExoUtil.extractHeaders(item);
+        hlsProxy.preloadNextOpening(url, headers, PlaybackDiskBufferStore.mediaKey(item));
+    }
+
     private void setVideoOutput(Object output) {
         detachSurfaceHolder();
         if (output instanceof SurfaceView view) {
@@ -969,7 +979,6 @@ class IjkSimplePlayer extends SimpleBasePlayer implements IMediaPlayer.Listener 
                         automaticBuffer,
                         automaticInputBufferConfig,
                         url,
-                        IjkPerformanceSetting.getScene(),
                         IjkPerformanceSetting.getBufferMb(),
                         PlayerSetting.getBufferBytes(PlayerSetting.IJK),
                         IjkPerformanceSetting.getFirstWaterMs(),

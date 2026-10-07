@@ -16,12 +16,20 @@ public final class IjkBufferPolicy {
     private static final long BALANCED_SYSTEM_SURPLUS_BYTES = 256L * MIB;
     private static final int MIN_WATER_MS = 100;
     private static final int MAX_WATER_MS = 5_000;
+    private static final int MAX_LAST_WATER_MS = 10_000;
 
     private IjkBufferPolicy() {
     }
 
     public static Config safeInitialConfig() {
         return new Config(BALANCED_BUFFER_MB, 100, 1_000, 3_000);
+    }
+
+    /** Single source of the supported buffer-tier normalization. */
+    public static int normalizeTierMb(int mb) {
+        return mb <= LOW_BUFFER_MB ? LOW_BUFFER_MB
+                : mb <= BALANCED_BUFFER_MB ? BALANCED_BUFFER_MB
+                : HIGH_BUFFER_MB;
     }
 
     public static Decision resolve(Request request) {
@@ -46,12 +54,26 @@ public final class IjkBufferPolicy {
                     watermarks.lastMs(), 120);
             targetMb = Math.max(targetMb, tierForBytes(demandBytes));
         }
-        if (input.rebufferUsable() && input.rebufferCount() > 0 && !lagHigh) {
+        if (input.rebufferRecent() && !lagHigh) {
             targetMb = nextTier(targetMb);
         }
         if (scene == Scene.UNKNOWN) targetMb = Math.min(targetMb, BALANCED_BUFFER_MB);
         if (lagHigh) targetMb = LOW_BUFFER_MB;
         targetMb = Math.min(targetMb, memory.ceilingMb());
+        if ((scene == Scene.VOD || scene == Scene.UNKNOWN)
+                && !lagHigh
+                && input.mediaBitrateUsable()
+                && input.mediaBitrateBitsPerSecond() > 0) {
+            long capacityMs = durationForBytesMs(
+                    (long) targetMb * MIB, input.mediaBitrateBitsPerSecond());
+            if (capacityMs > watermarks.lastMs()) {
+                int scaledLast = (int) Math.max(watermarks.lastMs(),
+                        Math.max(MIN_WATER_MS,
+                                Math.min(capacityMs, MAX_LAST_WATER_MS)));
+                watermarks = new Watermarks(watermarks.firstMs(),
+                        watermarks.nextMs(), scaledLast);
+            }
+        }
 
         Config target = new Config(targetMb, watermarks.firstMs(),
                 watermarks.nextMs(), watermarks.lastMs());
@@ -69,7 +91,7 @@ public final class IjkBufferPolicy {
             int targetMb) {
         if (memory.reason() != Reason.NORMAL_MEMORY) return memory.reason();
         if (lagHigh) return Reason.LIVE_LAG_HIGH;
-        if (input.rebufferUsable() && input.rebufferCount() > 0
+        if (input.rebufferRecent()
                 && targetMb > LOW_BUFFER_MB) return Reason.REBUFFER_HEADROOM;
         if (demandBytes > (long) BALANCED_BUFFER_MB * MIB
                 && targetMb == HIGH_BUFFER_MB) return Reason.MEDIA_DEMAND;
@@ -220,6 +242,13 @@ public final class IjkBufferPolicy {
         return multiplyDivideSaturated(bytes, percent, 100);
     }
 
+    private static long durationForBytesMs(long bytes, long bitsPerSecond) {
+        if (bytes <= 0 || bitsPerSecond <= 0) return 0;
+        long bits = bytes > Long.MAX_VALUE / 8 ? Long.MAX_VALUE : bytes * 8;
+        if (bits > Long.MAX_VALUE / 1_000) return Long.MAX_VALUE;
+        return bits * 1_000 / bitsPerSecond;
+    }
+
     private static int tierForBytes(long bytes) {
         if (bytes <= (long) LOW_BUFFER_MB * MIB) return LOW_BUFFER_MB;
         if (bytes <= (long) BALANCED_BUFFER_MB * MIB) return BALANCED_BUFFER_MB;
@@ -262,7 +291,7 @@ public final class IjkBufferPolicy {
 
     private static int clampWater(long value, int min, int max) {
         long safe = Math.max(min, Math.min(max, value));
-        return (int) Math.max(MIN_WATER_MS, Math.min(MAX_WATER_MS, safe));
+        return (int) Math.max(MIN_WATER_MS, Math.min(MAX_LAST_WATER_MS, safe));
     }
 
     private enum Scene {
@@ -318,12 +347,10 @@ public final class IjkBufferPolicy {
             int lastWaterMs) {
 
         public Config {
-            bufferMb = bufferMb <= LOW_BUFFER_MB ? LOW_BUFFER_MB
-                    : bufferMb <= BALANCED_BUFFER_MB ? BALANCED_BUFFER_MB
-                    : HIGH_BUFFER_MB;
+            bufferMb = normalizeTierMb(bufferMb);
             firstWaterMs = clampWater(firstWaterMs, MIN_WATER_MS, MAX_WATER_MS);
             nextWaterMs = clampWater(nextWaterMs, firstWaterMs, MAX_WATER_MS);
-            lastWaterMs = clampWater(lastWaterMs, nextWaterMs, MAX_WATER_MS);
+            lastWaterMs = clampWater(lastWaterMs, nextWaterMs, MAX_LAST_WATER_MS);
         }
 
         public long maxBufferBytes() {
@@ -353,6 +380,7 @@ public final class IjkBufferPolicy {
             long mediaBitrateBitsPerSecond,
             boolean rebufferUsable,
             int rebufferCount,
+            boolean rebufferRecent,
             boolean liveLagUsable,
             long liveLagMs) {
 
@@ -377,7 +405,7 @@ public final class IjkBufferPolicy {
                     PlaybackAutoContext.ManifestFacts.unknown(), false,
                     PlaybackAutoContext.MemoryPressure.UNKNOWN, false,
                     PlaybackAutoContext.MemorySnapshot.unknown(), false, 0,
-                    false, 0, false, -1);
+                    false, 0, false, false, -1);
         }
     }
 

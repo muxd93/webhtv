@@ -440,6 +440,62 @@ public final class MpvHlsProxy extends NanoHTTPD {
                 preloading.size(), activePreloadTransfers.get());
     }
 
+    /**
+     * Pre-fetches the opening segments of a VOD HLS URL that is not playing
+     * yet, so an auto episode switch serves its first frames from disk.
+     * Media playlists only: master playlists return false because the variant
+     * the player will select is unknown ahead of time. The network fetch runs
+     * without holding the proxy monitor so serving paths never wait on it.
+     */
+    public boolean preloadNextOpening(String url, Map<String, String> headers, String mediaKey) {
+        if (url == null || url.isBlank() || !isHttpUrl(url)) return false;
+        try {
+            ensureStarted();
+            synchronized (this) {
+                proxy(url, headers, mediaKey);
+            }
+            Session session;
+            SessionStats stats;
+            synchronized (this) {
+                session = sessions.get(sessionId);
+                stats = sessionStats.get(sessionId);
+            }
+            if (session == null || stats == null) return false;
+            if (stats.segments.isEmpty()) loadPlaylistForPreload(session, sessionId);
+            synchronized (this) {
+                stats = sessionStats.get(sessionId);
+                if (stats == null || stats.segments.isEmpty() || !stats.vod) {
+                    SpiderDebug.log(TAG, "next-opening preload skipped session=%d segments=%d vod=%s url=%s", sessionId, stats == null ? 0 : stats.segments.size(), stats == null || !stats.vod, shortUrl(url));
+                    return false;
+                }
+                preloadSegments(session, stats.segments, 0);
+            }
+            SpiderDebug.log(TAG, "next-opening preload accepted session=%d url=%s", sessionId, shortUrl(url));
+            return true;
+        } catch (Throwable e) {
+            SpiderDebug.log(TAG, "next-opening preload failed errorType=%s url=%s", e.getClass().getSimpleName(), shortUrl(url));
+            return false;
+        }
+    }
+
+    private void loadPlaylistForPreload(Session session, int id) {
+        try (okhttp3.Response response = fetch(session, session.url, null, false)) {
+            if (!response.isSuccessful()) {
+                recordPlaylistResponse(id, response.code(), session.url, null);
+                return;
+            }
+            ResponseBody body = response.body();
+            if (body == null) return;
+            String text = body.string();
+            recordPlaylistResponse(id, response.code(), session.url, text);
+            if (!looksLikePlaylist(text)) return;
+            text = applyAdblock(text, id, session.url, null, true);
+            rewritePlaylist(response.request().url().toString(), text, id, null);
+        } catch (Throwable e) {
+            SpiderDebug.log(TAG, "next-opening playlist failed errorType=%s", e.getClass().getSimpleName());
+        }
+    }
+
     PreloadRuntimeSnapshot preloadRuntimeSnapshot(long nowElapsedMs) {
         refreshCacheCoordinator();
         SessionStats stats = sessionStats.get(sessionId);

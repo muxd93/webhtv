@@ -143,6 +143,7 @@ public class IjkPlaybackScenarioMatrixTest {
                 scenario.averageBitrate(),
                 true,
                 scenario.rebufferCount(),
+                scenario.rebufferCount() > 0,
                 scenario.liveLagMs() >= 0,
                 scenario.liveLagMs()));
     }

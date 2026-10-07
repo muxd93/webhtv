@@ -127,14 +127,14 @@ public class MediaSourceFactory implements MediaSource.Factory {
         return decision.effectiveCapacityBytes();
     }
 
+    /** Resets the class-level priority wait diagnostics at a media boundary. */
+    public static void resetPriorityDiagnostics() {
+        PriorityTaskDataSource.resetDiagnostics();
+    }
+
     static synchronized long getCacheCapacityBytes() {
         DiskCacheCapacityPolicy.Decision decision = refreshPendingCacheCapacity();
         return cache == null ? initialCapacityBytes(decision) : CACHE_CAPACITY_STATE.actualCapacityBytes();
-    }
-
-    static synchronized long getPendingCacheCapacityBytes() {
-        refreshPendingCacheCapacity();
-        return CACHE_CAPACITY_STATE.pendingCapacityBytes();
     }
 
     static synchronized ExoCacheWritePolicy.Decision getCacheWriteDecision() {

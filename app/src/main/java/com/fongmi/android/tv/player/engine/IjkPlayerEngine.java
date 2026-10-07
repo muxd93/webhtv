@@ -113,6 +113,10 @@ public class IjkPlayerEngine implements PlayerEngine {
         return player.getAppliedInputBufferConfig();
     }
 
+    public void preloadNextEpisodeOpening(PlaySpec spec) {
+        player.preloadNextOpening(spec);
+    }
+
     public Long getLiveLagLowerBoundMs() {
         return player.getLiveLagLowerBoundSnapshot();
     }

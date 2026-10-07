@@ -96,7 +96,6 @@ public class ExoDecoderRuntimeSessionTest {
                 ELAPSED + 1,
                 EPOCH));
         assertFalse(session.prepareRuntimeFallback());
-        assertEquals(0, session.runtimeFallbackCount());
         assertEquals(0, profiles.failureKeys.size());
         assertEquals(0, profiles.fallbackResults.size());
     }
@@ -144,7 +143,6 @@ public class ExoDecoderRuntimeSessionTest {
         session.recordFatalFailure(evidence("decoder-b", format(3840, 2160)),
                 PlaybackException.ERROR_CODE_DECODING_FAILED, ELAPSED + 3, EPOCH + 1);
         assertFalse(session.prepareRuntimeFallback());
-        assertEquals(1, session.runtimeFallbackCount());
     }
 
     @Test
@@ -217,7 +215,6 @@ public class ExoDecoderRuntimeSessionTest {
 
         assertFalse(session.shouldExclude(
                 evidence.decoderName(), evidence.format(), false, SURFACE, EPOCH));
-        assertEquals(0, session.runtimeFallbackCount());
     }
 
     @Test

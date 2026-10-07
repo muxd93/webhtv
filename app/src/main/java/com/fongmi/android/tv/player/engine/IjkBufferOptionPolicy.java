@@ -12,7 +12,6 @@ final class IjkBufferOptionPolicy {
             boolean automatic,
             IjkBufferPolicy.Config stagedAutomatic,
             String url,
-            int scene,
             int fixedBufferMb,
             long configuredMaxBufferBytes,
             int fixedFirstWaterMs,
@@ -25,7 +24,7 @@ final class IjkBufferOptionPolicy {
                 fixedBufferMb, fixedFirstWaterMs,
                 fixedNextWaterMs, fixedLastWaterMs);
         IjkInputBufferPolicy.Decision finite = IjkInputBufferPolicy.resolve(
-                url, scene, selected.bufferMb(), configuredMaxBufferBytes);
+                url, selected.bufferMb(), configuredMaxBufferBytes);
         IjkBufferPolicy.Config applied = new IjkBufferPolicy.Config(
                 finite.bufferMb(), selected.firstWaterMs(),
                 selected.nextWaterMs(), selected.lastWaterMs());
@@ -39,7 +38,7 @@ final class IjkBufferOptionPolicy {
             IjkBufferPolicy.Config config,
             long configuredMaxBufferBytes) {
         Decision safe = decision == null
-                ? resolve(false, null, "", 0, config.bufferMb(),
+                ? resolve(false, null, "", config.bufferMb(),
                 configuredMaxBufferBytes, config.firstWaterMs(),
                 config.nextWaterMs(), config.lastWaterMs())
                 : decision;

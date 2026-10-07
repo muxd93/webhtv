@@ -45,12 +45,6 @@ public class PreCachePolicyTest {
     }
 
     @Test
-    public void repeatedPreloadFailuresOpenCircuitAtThreshold() {
-        assertFalse(PreCache.shouldOpenPreloadFailureCircuit(1));
-        assertTrue(PreCache.shouldOpenPreloadFailureCircuit(2));
-    }
-
-    @Test
     public void loadControlIdleFallbackStillKeepsAReserve() {
         assertFalse(PreCachePolicy.hasSafeBuffer(1_999, false, 5_000, false));
         assertTrue(PreCachePolicy.hasSafeBuffer(2_000, false, 5_000, false));

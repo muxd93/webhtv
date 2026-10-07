@@ -1,6 +1,6 @@
 package com.fongmi.android.tv.player.engine;
 
-import com.fongmi.android.tv.setting.IjkPerformanceSetting;
+import com.fongmi.android.tv.player.ijk.IjkBufferPolicy;
 
 import java.util.Locale;
 
@@ -14,18 +14,16 @@ final class IjkInputBufferPolicy {
 
     static Decision resolve(
             String url,
-            int scene,
             int configuredBufferMb,
             long configuredMaxBufferBytes) {
-        int normalizedScene = Math.min(Math.max(scene, IjkPerformanceSetting.SCENE_AUTO), IjkPerformanceSetting.SCENE_LIVE_LOW_LATENCY);
-        int bufferMb = configuredBufferMb <= 4 ? 4 : configuredBufferMb <= 8 ? 8 : 15;
+        int bufferMb = IjkBufferPolicy.normalizeTierMb(configuredBufferMb);
         boolean realtime = isRealtimeUrl(url);
         long baselineBytes = bufferMb * (long) MEBIBYTE;
         long maxBufferBytes = realtime || configuredMaxBufferBytes <= 0
                 ? baselineBytes
                 : Math.max(baselineBytes,
                 Math.min(configuredMaxBufferBytes, MAX_VOD_BUFFER_BYTES));
-        return new Decision(realtime, normalizedScene, bufferMb,
+        return new Decision(realtime, bufferMb,
                 maxBufferBytes, false);
     }
 
@@ -35,6 +33,6 @@ final class IjkInputBufferPolicy {
         return lower.startsWith("rtsp") || lower.startsWith("rtp") || lower.startsWith("udp") || lower.startsWith("rtmp");
     }
 
-    record Decision(boolean realtime, int scene, int bufferMb, long maxBufferBytes, boolean infiniteBuffer) {
+    record Decision(boolean realtime, int bufferMb, long maxBufferBytes, boolean infiniteBuffer) {
     }
 }

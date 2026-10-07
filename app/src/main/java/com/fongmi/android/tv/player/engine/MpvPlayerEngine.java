@@ -381,10 +381,6 @@ public class MpvPlayerEngine implements PlayerEngine {
         player.requestAutomaticHlsPreload(positionMs);
     }
 
-    public void stopAutomaticHlsPreload() {
-        player.updateAutomaticPreloadControl(true, false, false);
-    }
-
     public MpvPlayer.AutoHlsBitrateResult applyAutoHlsBitrate(
             String traceId, String option) {
         player.setPlaybackTraceId(traceId);

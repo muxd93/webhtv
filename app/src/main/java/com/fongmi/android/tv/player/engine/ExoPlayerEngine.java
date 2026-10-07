@@ -951,10 +951,6 @@ public class ExoPlayerEngine implements PlayerEngine {
         return dolbyVisionP81RuntimeFailureObserved;
     }
 
-    public void stopAutomaticPreload(String reason) {
-        preCache.stopAutomatic(reason);
-    }
-
     /** Discards the stale RTSP queue and seeks only when Media3 exposes a live default edge. */
     public boolean recoverRtspLiveEdge() {
         if (player == null
@@ -1015,6 +1011,7 @@ public class ExoPlayerEngine implements PlayerEngine {
         item = com.fongmi.android.tv.player.exo.ExoDiagnosticCollector.prepare(player, item, spec.getPlaybackTraceId());
         subtitleSession.reset();
         player.setMediaItem(item, position);
+        MediaSourceFactory.resetPriorityDiagnostics();
         preCache.start(player, item, spec.getPlaybackTraceId(), spec.getPlaybackRoute());
         player.prepare();
         if (playWhenReady) player.play();

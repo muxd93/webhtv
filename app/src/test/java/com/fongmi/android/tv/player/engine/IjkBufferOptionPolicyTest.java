@@ -1,7 +1,6 @@
 package com.fongmi.android.tv.player.engine;
 
 import com.fongmi.android.tv.player.ijk.IjkBufferPolicy;
-import com.fongmi.android.tv.setting.IjkPerformanceSetting;
 
 import org.junit.Test;
 
@@ -19,7 +18,6 @@ public class IjkBufferOptionPolicyTest {
         IjkBufferOptionPolicy.Decision decision =
                 IjkBufferOptionPolicy.resolve(
                         true, staged, "https://example.invalid/live.m3u8",
-                        IjkPerformanceSetting.SCENE_AUTO,
                         15, 0, 500, 2_000, 5_000);
 
         assertEquals(staged, decision.config());
@@ -33,7 +31,6 @@ public class IjkBufferOptionPolicyTest {
                 IjkBufferOptionPolicy.resolve(
                         false, IjkBufferPolicy.safeInitialConfig(),
                         "https://example.invalid/movie.mp4",
-                        IjkPerformanceSetting.SCENE_VOD,
                         15, 256L * IjkBufferPolicy.MIB,
                         500, 2_000, 5_000);
 
@@ -48,7 +45,6 @@ public class IjkBufferOptionPolicyTest {
         IjkBufferOptionPolicy.Decision decision =
                 IjkBufferOptionPolicy.resolve(
                         true, null, "rtsp://example.invalid/live",
-                        IjkPerformanceSetting.SCENE_AUTO,
                         15, 256L * IjkBufferPolicy.MIB,
                         500, 2_000, 5_000);
 

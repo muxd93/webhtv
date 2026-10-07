@@ -92,7 +92,9 @@ import com.fongmi.android.tv.playback.PlaybackEventCollector;
 import com.fongmi.android.tv.player.AutoChangeMetric;
 import com.fongmi.android.tv.player.PlayerHelper;
 import com.fongmi.android.tv.player.PlayerManager;
+import com.fongmi.android.tv.player.engine.PlaySpec;
 import com.fongmi.android.tv.player.engine.PlayerEngine;
+import com.fongmi.android.tv.player.exo.NextEpisodePreCache;
 import com.fongmi.android.tv.player.diagnostic.PanEndpointParser;
 import com.fongmi.android.tv.player.karaoke.KaraokeController;
 import com.fongmi.android.tv.player.karaoke.KaraokePitchTrackGenerator;
@@ -162,6 +164,11 @@ import com.google.android.material.bottomsheet.BottomSheetDialog;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.android.material.textfield.TextInputLayout;
+import com.google.common.util.concurrent.FluentFuture;
+import com.google.common.util.concurrent.FutureCallback;
+import com.google.common.util.concurrent.Futures;
+import com.google.common.util.concurrent.ListenableFuture;
+import com.google.common.util.concurrent.MoreExecutors;
 
 import org.greenrobot.eventbus.Subscribe;
 import org.greenrobot.eventbus.ThreadMode;
@@ -174,6 +181,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.TimeUnit;
 
 public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.Listener, TrackDialog.Listener, ControlDialog.Listener, ArrayAdapter.OnClickListener, FlagAdapter.OnClickListener, EpisodeAdapter.OnClickListener, QualityAdapter.OnClickListener, QuickAdapter.OnClickListener, ParseAdapter.OnClickListener, CastDialog.Listener, InfoDialog.Listener, Clock.Callback {
 
@@ -195,6 +203,8 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
     private static final int SHEET_TEXT_MUTED = 0x8CFFFFFF;
     private static final int SHEET_CONTROL_BG = 0x1FFFFFFF;
     private static final int SHEET_CONTROL_BG_SELECTED = 0x3DFFFFFF;
+    private static final long PRE_RESOLVE_TRIGGER_BEFORE_ENDING_MS = 120_000L;
+    private static final long PRE_RESOLVE_TIMEOUT_MS = 15_000L;
     private static final int SHEET_CONTROL_BG_SUBTLE = 0x12FFFFFF;
     private static final int SHEET_CONTROL_STROKE = 0x24FFFFFF;
     private static final int SHEET_CONTROL_STROKE_SELECTED = 0x4DFFFFFF;
@@ -244,6 +254,11 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
     private String mPlaybackEpisodeKey;
     private String mArtworkRequestOwner;
     private String mAudioArtworkColorKey;
+    private Result mPreResolvedNextResult;
+    private Episode mPreResolvedNextEpisode;
+    private String mPreResolvedNextFlag;
+    private boolean mPreResolveInFlight;
+    private int mPreResolveGeneration;
     private ObjectAnimator mAudioCoverAnimator;
     private int mAudioArtworkColor = Color.rgb(55, 45, 68);
     private int mAudioBackgroundRandomNonce;
@@ -1274,12 +1289,19 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
         if (shouldUseImmersiveAudio()) setAudioStageVisible(true);
         SpiderDebug.log("video-flow", "player audio stage cost=%dms visible=%s", System.currentTimeMillis() - step, isMusicLike());
         step = System.currentTimeMillis();
+        Result preResolved = takePreResolved(flag, episode);
+        NextEpisodePreCache.stop();
         mViewModel.cancelPlayerContent();
-        mViewModel.playerContent(getKey(), playFlag, episode.getUrl());
-        SpiderDebug.log("video-flow", "player content request dispatch cost=%dms", System.currentTimeMillis() - step);
         mBinding.widget.title.setSelected(true);
         updateHistory(episode);
         showProgress();
+        if (preResolved != null) {
+            SpiderDebug.log("video-flow", "player content pre-resolved hit key=%s flag=%s episode=%s cost=%dms", getKey(), playFlag, episode.getName(), System.currentTimeMillis() - playerStartTime);
+            setPlayer(preResolved);
+            return;
+        }
+        mViewModel.playerContent(getKey(), playFlag, episode.getUrl());
+        SpiderDebug.log("video-flow", "player content request dispatch cost=%dms", System.currentTimeMillis() - step);
     }
 
     private void setPlayer(Result result) {
@@ -3196,6 +3218,80 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
         Episode item = mEpisodeAdapter.getPrev();
         if (!item.isSelected()) onItemClick(item);
         else if (notify) Notify.show(mHistory.isRevPlay() ? R.string.error_play_next : R.string.error_play_prev);
+    }
+
+    private void maybePreResolveNextEpisode(long positionMs, long durationMs) {
+        if (!Setting.isAutoNextEps() || service() == null || mHistory == null) return;
+        if (durationMs <= 0 || positionMs < 0 || durationMs - positionMs > PRE_RESOLVE_TRIGGER_BEFORE_ENDING_MS) return;
+        Episode next = mHistory.isRevPlay() ? mEpisodeAdapter.getPrev() : mEpisodeAdapter.getNext();
+        if (next == null || next.isSelected()) return;
+        preResolveNextEpisode(getFlag(), next);
+    }
+
+    private void preResolveNextEpisode(Flag flag, Episode episode) {
+        if (mPreResolveInFlight || isPreResolvedFor(episode)) return;
+        String playFlag = getEpisodePlayFlag(flag, episode);
+        mPreResolveInFlight = true;
+        int generation = ++mPreResolveGeneration;
+        long start = System.currentTimeMillis();
+        SpiderDebug.log("video-flow", "pre-resolve start key=%s flag=%s episode=%s", getKey(), playFlag, episode.getName());
+        ListenableFuture<Result> future = FluentFuture.from(
+                        Task.executor().submit(() -> SiteApi.playerContentQuiet(getKey(), playFlag, episode.getUrl())))
+                .withTimeout(PRE_RESOLVE_TIMEOUT_MS, TimeUnit.MILLISECONDS, Task.scheduler());
+        Futures.addCallback(future, new FutureCallback<>() {
+            @Override
+            public void onSuccess(Result result) {
+                landPreResolve(generation, start, episode, playFlag, result);
+            }
+
+            @Override
+            public void onFailure(@NonNull Throwable error) {
+                SpiderDebug.log("video-flow", "pre-resolve error episode=%s error=%s", episode.getName(), error.getClass().getSimpleName());
+                landPreResolve(generation, start, episode, playFlag, null);
+            }
+        }, MoreExecutors.directExecutor());
+    }
+
+    private void landPreResolve(int generation, long start, Episode episode, String playFlag, Result result) {
+        runOnUiThread(() -> {
+            if (generation != mPreResolveGeneration) return;
+            mPreResolveInFlight = false;
+            boolean usable = result != null && !result.hasMsg() && !result.getRealUrl().isEmpty();
+            SpiderDebug.log("video-flow", "pre-resolve land cost=%dms episode=%s usable=%s", System.currentTimeMillis() - start, episode.getName(), usable);
+            if (!usable) return;
+            mPreResolvedNextResult = result;
+            mPreResolvedNextEpisode = episode;
+            mPreResolvedNextFlag = playFlag;
+            int kernel = PlayerSetting.getPlayer();
+            if (kernel == PlayerSetting.EXO) {
+                NextEpisodePreCache.preCache(PlaySpec.from(result, getHistoryKey(), buildMetadata()));
+            } else if (kernel == PlayerSetting.IJK) {
+                player().preCacheNextEpisodeOpening(PlaySpec.from(result, getHistoryKey(), buildMetadata()));
+            }
+        });
+    }
+
+    private boolean isPreResolvedFor(Episode episode) {
+        return mPreResolvedNextResult != null && mPreResolvedNextEpisode == episode;
+    }
+
+    private Result takePreResolved(Flag flag, Episode episode) {
+        String playFlag = getEpisodePlayFlag(flag, episode);
+        if (isPreResolvedFor(episode) && TextUtils.equals(mPreResolvedNextFlag, playFlag)) {
+            Result result = mPreResolvedNextResult;
+            cancelPreResolve();
+            return result;
+        }
+        cancelPreResolve();
+        return null;
+    }
+
+    private void cancelPreResolve() {
+        mPreResolveGeneration++;
+        mPreResolveInFlight = false;
+        mPreResolvedNextResult = null;
+        mPreResolvedNextEpisode = null;
+        mPreResolvedNextFlag = null;
     }
 
     private void onScale() {
@@ -5710,6 +5806,7 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
         if (mHistory.getEnding() > 0 && duration > 0 && mHistory.getEnding() + position >= duration) {
             checkEnded(false);
         }
+        maybePreResolveNextEpisode(position, duration);
     }
 
     private void updatePlaybackHistoryPosition() {

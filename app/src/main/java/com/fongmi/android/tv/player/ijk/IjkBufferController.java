@@ -6,6 +6,7 @@ import com.fongmi.android.tv.player.PlaybackAutoContext;
 public final class IjkBufferController {
 
     public static final long RELOAD_COOLDOWN_MS = 30_000L;
+    public static final long RELOAD_WINDOW_MS = 600_000L;
     public static final long EARLY_SCENE_WINDOW_MS = 20_000L;
     public static final int MAX_RELOAD_ATTEMPTS = 3;
 
@@ -13,11 +14,14 @@ public final class IjkBufferController {
             PlaybackAutoContext.SessionToken.none();
     private long startedAtElapsedMs;
     private long lastReloadAtElapsedMs = -1;
+    private long reloadWindowStartAtElapsedMs = -1;
     private int lastRebufferCount;
     private int evaluations;
     private int reloadAttempts;
+    private int reloadAttemptsInWindow;
     private int successfulReloads;
     private boolean applyInProgress;
+    private boolean rebufferExpansionPending;
     private boolean lastReloadSafety;
     private boolean lastReloadFailed;
     private IjkBufferPolicy.Config lastReloadTarget;
@@ -30,11 +34,14 @@ public final class IjkBufferController {
         this.session = session;
         this.startedAtElapsedMs = Math.max(0, startedAtElapsedMs);
         lastReloadAtElapsedMs = -1;
+        reloadWindowStartAtElapsedMs = -1;
+        reloadAttemptsInWindow = 0;
         lastRebufferCount = 0;
         evaluations = 0;
         reloadAttempts = 0;
         successfulReloads = 0;
         applyInProgress = false;
+        rebufferExpansionPending = false;
         lastReloadSafety = false;
         lastReloadFailed = false;
         lastReloadTarget = null;
@@ -48,8 +55,11 @@ public final class IjkBufferController {
         this.session = PlaybackAutoContext.SessionToken.none();
         startedAtElapsedMs = 0;
         lastReloadAtElapsedMs = -1;
+        reloadWindowStartAtElapsedMs = -1;
+        reloadAttemptsInWindow = 0;
         lastRebufferCount = 0;
         applyInProgress = false;
+        rebufferExpansionPending = false;
         lastReloadSafety = false;
         lastReloadFailed = false;
         lastReloadTarget = null;
@@ -105,6 +115,7 @@ public final class IjkBufferController {
         }
         IjkBufferPolicy.Config target = safe.target();
         if (target.equals(current)) {
+            rebufferExpansionPending = false;
             stagedConfig = target;
             return Decision.hold(current, target, safe, Reason.ALREADY_APPLIED,
                     0, newRebuffer);
@@ -116,12 +127,17 @@ public final class IjkBufferController {
 
         boolean shrinks = shrinks(current, target);
         boolean expands = expands(current, target);
+        // A rebuffer that ends between ticks must not lose its expansion
+        // request: latch it and fire on the next observed buffering state.
+        if (newRebuffer && expands) rebufferExpansionPending = true;
+        if (!expands) rebufferExpansionPending = false;
+        boolean rebufferExpansion = rebufferExpansionPending && buffering;
+        if (rebufferExpansion) rebufferExpansionPending = false;
         boolean hardSafety = safe.liveLagHigh()
                 || (hardSafety(safe.reason()) && shrinks);
         boolean earlySceneShrink = trigger == Trigger.MANIFEST
                 && shrinks
                 && now - startedAtElapsedMs <= EARLY_SCENE_WINDOW_MS;
-        boolean rebufferExpansion = newRebuffer && expands && buffering;
         boolean reload = hardSafety || earlySceneShrink || rebufferExpansion;
         if (!reload) {
             stagedConfig = target;
@@ -132,7 +148,7 @@ public final class IjkBufferController {
             return new Decision(Action.STAGE, current, target, safe, reason,
                     cooldownRemaining(now), newRebuffer);
         }
-        if (reloadAttempts >= MAX_RELOAD_ATTEMPTS) {
+        if (reloadWindowExhausted(now)) {
             stagedConfig = current;
             return Decision.hold(current, target, safe, Reason.RELOAD_LIMIT,
                     cooldownRemaining(now), newRebuffer);
@@ -213,7 +229,7 @@ public final class IjkBufferController {
             return Decision.hold(current, current, policy,
                     Reason.APPLY_IN_PROGRESS, 0, false);
         }
-        if (reloadAttempts >= MAX_RELOAD_ATTEMPTS) {
+        if (reloadWindowExhausted(Math.max(0, nowElapsedMs))) {
             return Decision.hold(current, current, policy,
                     Reason.RELOAD_LIMIT, cooldownRemaining(nowElapsedMs),
                     false);
@@ -235,6 +251,7 @@ public final class IjkBufferController {
                 || decision.action() != Action.RELOAD || applyInProgress) return false;
         applyInProgress = true;
         reloadAttempts++;
+        reloadAttemptsInWindow++;
         stagedConfig = decision.targetConfig();
         return true;
     }
@@ -296,6 +313,16 @@ public final class IjkBufferController {
         if (lastReloadAtElapsedMs < 0) return 0;
         long elapsed = Math.max(0, nowElapsedMs - lastReloadAtElapsedMs);
         return Math.max(0, RELOAD_COOLDOWN_MS - elapsed);
+    }
+
+    private boolean reloadWindowExhausted(long nowElapsedMs) {
+        if (reloadWindowStartAtElapsedMs < 0
+                || nowElapsedMs - reloadWindowStartAtElapsedMs >= RELOAD_WINDOW_MS) {
+            reloadWindowStartAtElapsedMs = nowElapsedMs;
+            reloadAttemptsInWindow = 0;
+            return false;
+        }
+        return reloadAttemptsInWindow >= MAX_RELOAD_ATTEMPTS;
     }
 
     private static boolean shrinks(

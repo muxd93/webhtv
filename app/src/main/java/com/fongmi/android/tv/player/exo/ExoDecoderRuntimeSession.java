@@ -166,14 +166,6 @@ public final class ExoDecoderRuntimeSession {
         return excluded;
     }
 
-    synchronized int runtimeFallbackCount() {
-        return runtimeFallbackCount;
-    }
-
-    synchronized boolean isQuarantined(ExoDecoderRuntimeKey.Key key) {
-        return key != null && quarantined.contains(key);
-    }
-
     @Nullable
     private ExoDecoderRuntimeKey.Key key(Evidence evidence) {
         if (evidence == null) return null;

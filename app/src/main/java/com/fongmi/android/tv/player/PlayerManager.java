@@ -199,6 +199,11 @@ public class PlayerManager implements ParseCallback {
     private final IjkBufferController ijkBufferController;
     private final IjkDecodePressureController ijkDecodePressureController;
     private final IjkRealtimeRecoveryController ijkRealtimeRecoveryController;
+    private static final long IJK_REBUFFER_RECENT_WINDOW_MS = 600_000L;
+    private PlaybackAutoContext.SessionToken ijkRebufferTrackingSession =
+            PlaybackAutoContext.SessionToken.none();
+    private int lastIjkRebufferCount;
+    private long lastIjkRebufferAtElapsedMs = -1;
     private final IjkRuntimeProfileController ijkRuntimeProfileController;
     private final ForwardBufferTrend networkProtectionTrend;
     private final LiveDanmakuBatcher liveDanmakuBatcher;
@@ -919,6 +924,12 @@ public class PlayerManager implements ParseCallback {
 
     public boolean isIjk() {
         return playerType == PlayerSetting.IJK;
+    }
+
+    /** Background pre-fetch of a not-yet-playing episode's opening; no-op outside IJK. */
+    public void preCacheNextEpisodeOpening(PlaySpec spec) {
+        if (!(engine instanceof IjkPlayerEngine ijk)) return;
+        Task.execute(() -> ijk.preloadNextEpisodeOpening(spec));
     }
 
     public boolean isMpv() {
@@ -2096,6 +2107,12 @@ public class PlayerManager implements ParseCallback {
             long nowElapsedMs) {
         if (!(engine instanceof IjkPlayerEngine ijk)
                 || !playbackAutoSession.active()) return;
+        // A user pause must not trigger managed reloads: rebuilding the player
+        // discards buffered data. Memory-driven evaluations stay allowed so
+        // pressure can still shrink the buffer while paused.
+        boolean paused = player == null || !player.getPlayWhenReady();
+        if (paused && (trigger == IjkBufferController.Trigger.RUNTIME
+                || trigger == IjkBufferController.Trigger.MANIFEST)) return;
         long now = Math.max(0, nowElapsedMs);
         PlaybackAutoContext context = playbackAutoContextStore.snapshot();
         IjkBufferPolicy.Request request = buildIjkBufferRequest(
@@ -2237,8 +2254,28 @@ public class PlayerManager implements ParseCallback {
                 bitrateFact.isUsable(now) ? bitrateFact.value() : 0,
                 rebufferFact.isUsable(now),
                 rebufferFact.isUsable(now) ? rebufferFact.value() : 0,
+                trackIjkRebufferRecency(rebufferFact, now),
                 liveLagFact.isUsable(now) && liveLagFact.value() >= 0,
                 liveLagFact.isUsable(now) ? liveLagFact.value() : -1);
+    }
+
+    private boolean trackIjkRebufferRecency(
+            PlaybackAutoContext.Fact<Integer> rebufferFact,
+            long now) {
+        if (!playbackAutoSession.equals(ijkRebufferTrackingSession)) {
+            ijkRebufferTrackingSession = playbackAutoSession;
+            lastIjkRebufferCount = 0;
+            lastIjkRebufferAtElapsedMs = -1;
+        }
+        if (rebufferFact.isUsable(now)) {
+            int count = Math.max(0, rebufferFact.value());
+            if (count > lastIjkRebufferCount) {
+                lastIjkRebufferCount = count;
+                lastIjkRebufferAtElapsedMs = now;
+            }
+        }
+        return lastIjkRebufferAtElapsedMs >= 0
+                && now - lastIjkRebufferAtElapsedMs < IJK_REBUFFER_RECENT_WINDOW_MS;
     }
 
     private IjkBufferPolicy.Config mergeIjkBufferConfig(

@@ -263,10 +263,7 @@ public final class MpvPlayer extends SimpleBasePlayer implements MPVLib.EventObs
     private long cachedCacheUnderrunCount;
     private long cachedSelectedHlsBitrate;
     private long effectiveDemuxerMaxBytes;
-    private long preloadCacheBaselineBytes;
-    private long preloadCacheTargetBytes;
-    private int preloadCacheBaselineSeconds;
-    private int preloadCacheTargetSeconds;
+    private final MpvPreloadOverlayState preloadOverlayState = new MpvPreloadOverlayState();
     private long textOffsetMs;
     private long audioOffsetMs;
     private float subtitleTextSize;
@@ -297,7 +294,6 @@ public final class MpvPlayer extends SimpleBasePlayer implements MPVLib.EventObs
     private boolean idleActive;
     private boolean currentLikelyHls;
     private boolean currentLikelyDash;
-    private boolean preloadCacheOverlayApplied;
     private boolean sawNoAvData;
     private boolean sawInvalidData;
     private boolean sawPngVideo;
@@ -1325,10 +1321,6 @@ public final class MpvPlayer extends SimpleBasePlayer implements MPVLib.EventObs
     /** Cached values from mpv runtime property observers; never falls back to requested config. */
     public String getObservedCurrentVideoOutput() {
         return !observedCurrentVo || cachedCurrentVo == null ? "" : cachedCurrentVo;
-    }
-
-    public boolean hasObservedCurrentVideoOutput() {
-        return observedCurrentVo;
     }
 
     public boolean isAndroidFelActive() {
@@ -4313,8 +4305,10 @@ public final class MpvPlayer extends SimpleBasePlayer implements MPVLib.EventObs
                 && progressive;
         boolean directoryApplied = !enable || setRuntimeStringChecked(
                 "demuxer-cache-dir", preloadCacheDir.getAbsolutePath());
+        boolean requested = enable && directoryApplied;
         boolean applied = setRuntimeStringChecked(
-                "cache-on-disk", enable && directoryApplied ? "yes" : "no");
+                "cache-on-disk", requested ? "yes" : "no");
+        preloadOverlayState.setDiskModeApplied(requested && applied);
         PlaybackTrace.log("mpv-preload-cache", playbackTraceId,
                 "action=disk-mode requested=%s result=%s capacityBytes=%d protocol=%s path=%s hls=%s dash=%s",
                 enable, applied ? "applied" : "failed",
@@ -4369,10 +4363,21 @@ public final class MpvPlayer extends SimpleBasePlayer implements MPVLib.EventObs
     }
 
     private void updatePreloadCacheOverlay() {
-        int baselineSeconds = preloadCacheOverlayApplied
-                ? preloadCacheBaselineSeconds : cacheTimeState.snapshot().cacheSeconds();
-        long baselineBytes = preloadCacheOverlayApplied
-                ? preloadCacheBaselineBytes : effectiveDemuxerMaxBytes;
+        if (preloadOverlayState.applied()
+                && preloadOverlayState.bytesLeaseBroken(effectiveDemuxerMaxBytes)) {
+            long brokenTargetBytes = preloadOverlayState.targetBytes();
+            long brokenBaselineBytes = preloadOverlayState.baselineBytes();
+            preloadOverlayState.beginYield();
+            restoreOverlayCacheSecs();
+            PlaybackTrace.log("mpv-preload-cache", playbackTraceId,
+                    "action=stand-down reason=bytes-lease-broken nativeBytes=%d targetBytes=%d yieldBaselineBytes=%d",
+                    effectiveDemuxerMaxBytes, brokenTargetBytes, brokenBaselineBytes);
+            return;
+        }
+        if (preloadOverlayState.yielded()
+                && !preloadOverlayState.maybeRecover(effectiveDemuxerMaxBytes)) {
+            return;
+        }
         PlaybackResourceClassifier.Classification classification = resourceClassification;
         PlaybackAutoContext.Protocol protocol = classification == null
                 ? PlaybackAutoContext.Protocol.UNKNOWN : classification.protocol();
@@ -4384,6 +4389,9 @@ public final class MpvPlayer extends SimpleBasePlayer implements MPVLib.EventObs
                 playWhenReady,
                 PreloadSetting.getPausePreloadPolicy(PlayerSetting.MPV),
                 PlaybackSystemConditionMonitor.process().currentNetworkSnapshot()).allowed();
+        int baselineSeconds = preloadOverlayState.applied()
+                ? preloadOverlayState.baselineSeconds() : cacheTimeState.snapshot().cacheSeconds();
+        long baselineBytes = effectiveDemuxerMaxBytes;
         long capacityBytes = config.automaticCacheTime()
                 ? baselineBytes : preloadCacheCapacityBytes;
         MpvPreloadCachePolicy.Decision decision =
@@ -4408,20 +4416,15 @@ public final class MpvPlayer extends SimpleBasePlayer implements MPVLib.EventObs
             return;
         }
         if (!initialized || !fileLoaded) return;
-        if (!preloadCacheOverlayApplied) {
-            preloadCacheBaselineSeconds = baselineSeconds;
-            preloadCacheBaselineBytes = baselineBytes;
-            preloadCacheOverlayApplied = true;
-        }
-        int targetSeconds = Math.max(
-                preloadCacheTargetSeconds, decision.targetSeconds());
-        long targetBytes = Math.max(
-                preloadCacheTargetBytes, decision.targetBytes());
+        preloadOverlayState.begin(baselineSeconds, baselineBytes);
+        int targetSeconds = decision.targetSeconds();
+        long targetBytes = preloadOverlayState.diskModeApplied()
+                ? decision.targetBytes() : baselineBytes;
         boolean secondsCurrent = cacheTimeState.snapshot().cacheSeconds() == targetSeconds;
-        boolean bytesCurrent = effectiveDemuxerMaxBytes == targetBytes;
+        boolean bytesCurrent = !preloadOverlayState.diskModeApplied()
+                || effectiveDemuxerMaxBytes == targetBytes;
         if (secondsCurrent && bytesCurrent) {
-            preloadCacheTargetSeconds = targetSeconds;
-            preloadCacheTargetBytes = targetBytes;
+            preloadOverlayState.commit(targetSeconds, targetBytes);
             return;
         }
         boolean bytesAccepted = bytesCurrent
@@ -4441,65 +4444,81 @@ public final class MpvPlayer extends SimpleBasePlayer implements MPVLib.EventObs
                     protocol.label(), streamKind.label(), playerPath.label());
             return;
         }
-        preloadCacheTargetSeconds = targetSeconds;
-        preloadCacheTargetBytes = targetBytes;
+        preloadOverlayState.commit(targetSeconds, targetBytes);
         PlaybackTrace.log("mpv-preload-cache", playbackTraceId,
                 "action=extend result=applied mode=%s baselineSeconds=%d targetSeconds=%d baselineBytes=%d targetBytes=%d disk=%s protocol=%s stream=%s path=%s",
                 playWhenReady ? "playing" : "paused",
-                preloadCacheBaselineSeconds, targetSeconds,
-                preloadCacheBaselineBytes, targetBytes,
-                preloadCacheCapacityBytes > 0,
+                preloadOverlayState.baselineSeconds(), targetSeconds,
+                preloadOverlayState.baselineBytes(), targetBytes,
+                preloadOverlayState.diskModeApplied(),
                 protocol.label(), streamKind.label(), playerPath.label());
     }
 
     private void rollbackPreloadCacheOverlay(
             boolean restoreSeconds,
             boolean restoreBytes) {
+        int baselineSeconds = preloadOverlayState.baselineSeconds();
+        long baselineBytes = resolveOverlayBaselineBytes();
         boolean secondsRestored = !restoreSeconds
                 || setRuntimeStringChecked("cache-secs",
-                String.valueOf(preloadCacheBaselineSeconds));
+                String.valueOf(baselineSeconds));
         if (secondsRestored && restoreSeconds) {
             cacheTimeState.recordAccepted("cache-secs",
-                    String.valueOf(preloadCacheBaselineSeconds));
+                    String.valueOf(baselineSeconds));
         }
         boolean bytesRestored = !restoreBytes
                 || setRuntimeStringChecked("demuxer-max-bytes",
-                String.valueOf(preloadCacheBaselineBytes));
+                String.valueOf(baselineBytes));
         if (bytesRestored && restoreBytes) {
-            effectiveDemuxerMaxBytes = preloadCacheBaselineBytes;
+            effectiveDemuxerMaxBytes = baselineBytes;
         }
-        if (secondsRestored && bytesRestored) clearPreloadCacheOverlay();
+        if (secondsRestored && bytesRestored) preloadOverlayState.clear();
+    }
+
+    private void restoreOverlayCacheSecs() {
+        if (!initialized) return;
+        int baselineSeconds = preloadOverlayState.baselineSeconds();
+        if (setRuntimeStringChecked("cache-secs", String.valueOf(baselineSeconds))) {
+            cacheTimeState.recordAccepted("cache-secs", String.valueOf(baselineSeconds));
+        }
     }
 
     private void restorePreloadCacheOverlay() {
-        if (!preloadCacheOverlayApplied) return;
-        if (!initialized) {
-            clearPreloadCacheOverlay();
-            return;
-        }
+        if (!preloadOverlayState.applied()) return;
+        int baselineSeconds = preloadOverlayState.baselineSeconds();
+        long baselineBytes = resolveOverlayBaselineBytes();
+        boolean previousDiskMode = preloadOverlayState.diskModeApplied();
+        int previousTargetSeconds = preloadOverlayState.targetSeconds();
+        long previousTargetBytes = preloadOverlayState.targetBytes();
+        preloadOverlayState.clear();
+        if (!initialized) return;
         boolean secondsRestored = setRuntimeStringChecked(
-                "cache-secs", String.valueOf(preloadCacheBaselineSeconds));
+                "cache-secs", String.valueOf(baselineSeconds));
         if (secondsRestored) {
             cacheTimeState.recordAccepted("cache-secs",
-                    String.valueOf(preloadCacheBaselineSeconds));
+                    String.valueOf(baselineSeconds));
         }
-        boolean bytesRestored = setRuntimeStringChecked(
-                "demuxer-max-bytes", String.valueOf(preloadCacheBaselineBytes));
-        if (bytesRestored) effectiveDemuxerMaxBytes = preloadCacheBaselineBytes;
-        if (!secondsRestored || !bytesRestored) return;
+        boolean bytesRestored = !previousDiskMode
+                || setRuntimeStringChecked("demuxer-max-bytes", String.valueOf(baselineBytes));
+        if (bytesRestored && previousDiskMode) effectiveDemuxerMaxBytes = baselineBytes;
         PlaybackTrace.log("mpv-preload-cache", playbackTraceId,
-                "action=restore baselineSeconds=%d baselineBytes=%d previousTargetSeconds=%d previousTargetBytes=%d",
-                preloadCacheBaselineSeconds, preloadCacheBaselineBytes,
-                preloadCacheTargetSeconds, preloadCacheTargetBytes);
-        clearPreloadCacheOverlay();
+                "action=restore result=%s baselineSeconds=%d baselineBytes=%d previousTargetSeconds=%d previousTargetBytes=%d",
+                secondsRestored && bytesRestored ? "restored" : "partial",
+                baselineSeconds, baselineBytes,
+                previousTargetSeconds, previousTargetBytes);
     }
 
-    private void clearPreloadCacheOverlay() {
-        preloadCacheOverlayApplied = false;
-        preloadCacheBaselineSeconds = 0;
-        preloadCacheBaselineBytes = 0;
-        preloadCacheTargetSeconds = 0;
-        preloadCacheTargetBytes = 0;
+    private long resolveOverlayBaselineBytes() {
+        String autoCacheBytes = autoCacheBaselineState.snapshot().get("demuxer-max-bytes");
+        if (autoCacheBytes != null) {
+            try {
+                long parsed = Long.parseLong(autoCacheBytes);
+                if (parsed >= 0) return parsed;
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        long captured = preloadOverlayState.baselineBytes();
+        return captured > 0 ? captured : Math.max(0, config.demuxerMaxBytes());
     }
 
     private boolean isNetworkFailureLog(String lower) {

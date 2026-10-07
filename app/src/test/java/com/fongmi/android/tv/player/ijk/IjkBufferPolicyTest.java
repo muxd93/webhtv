@@ -33,7 +33,7 @@ public class IjkBufferPolicyTest {
                         PlaybackAutoContext.ManifestFacts.unknown(), false,
                         PlaybackAutoContext.MemoryPressure.UNKNOWN, false,
                         PlaybackAutoContext.MemorySnapshot.unknown(), false, 0,
-                        false, 0, false, -1));
+                        false, 0, false, false, -1));
 
         assertTrue(decision.managed());
         assertEquals(8, decision.target().bufferMb());
@@ -198,8 +198,34 @@ public class IjkBufferPolicyTest {
         assertEquals(8, config.bufferMb());
         assertEquals(100, config.firstWaterMs());
         assertEquals(100, config.nextWaterMs());
-        assertEquals(5_000, config.lastWaterMs());
+        assertEquals(10_000, config.lastWaterMs());
         assertEquals(8L * MIB, config.maxBufferBytes());
+    }
+
+    @Test
+    public void staleRebufferNoLongerHoldsExpandedTier() {
+        IjkBufferPolicy.Decision stale = IjkBufferPolicy.resolve(
+                new IjkBufferPolicy.Request(true, true, true,
+                        PlaybackAutoContext.Protocol.HLS, true,
+                        PlaybackAutoContext.StreamKind.VOD, false,
+                        PlaybackAutoContext.ManifestFacts.unknown(),
+                        true, normalMemory().pressure(), true,
+                        normalMemory().snapshot(), false, 0,
+                        true, 3, false, false, -1));
+
+        assertEquals(8, stale.target().bufferMb());
+        assertEquals(IjkBufferPolicy.Reason.VOD_BASELINE, stale.reason());
+    }
+
+    @Test
+    public void vodWatermarkScalesWithBitrateDemand() {
+        IjkBufferPolicy.Decision decision = IjkBufferPolicy.resolve(
+                request(true, PlaybackAutoContext.StreamKind.VOD,
+                        PlaybackAutoContext.ManifestFacts.none(), normalMemory(),
+                        8_000_000, 0, -1));
+
+        assertEquals(8, decision.target().bufferMb());
+        assertEquals(8_388, decision.target().lastWaterMs());
     }
 
     private static IjkBufferPolicy.Request request(
@@ -213,7 +239,8 @@ public class IjkBufferPolicyTest {
         return new IjkBufferPolicy.Request(automatic, true, true,
                 PlaybackAutoContext.Protocol.HLS, true, stream, true, manifest,
                 true, memory.pressure(), true, memory.snapshot(), bitrate > 0,
-                bitrate, true, rebufferCount, liveLagMs >= 0, liveLagMs);
+                bitrate, true, rebufferCount, rebufferCount > 0,
+                liveLagMs >= 0, liveLagMs);
     }
 
     private static Memory normalMemory() {

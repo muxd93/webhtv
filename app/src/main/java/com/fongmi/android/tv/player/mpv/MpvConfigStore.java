@@ -488,23 +488,11 @@ public final class MpvConfigStore {
         return profile.id;
     }
 
-    public static boolean hasHistory(String target) {
-        return !getAvailableHistory(target).isEmpty();
-    }
-
     public static CharSequence[] historyLabels(String target) {
         List<History> items = getAvailableHistory(target);
         CharSequence[] labels = new CharSequence[items.size()];
         for (int i = 0; i < items.size(); i++) labels[i] = label(items.get(i));
         return labels;
-    }
-
-    public static void applyHistory(String target, int index) throws IOException {
-        List<History> items = getAvailableHistory(target);
-        if (index < 0 || index >= items.size()) throw new IOException(App.get().getString(R.string.mpv_config_history_empty));
-        History item = items.get(index);
-        if (TYPE_FILE.equals(item.type)) applyFile(target, item.source, item.name);
-        else if (TYPE_URL.equals(item.type)) applyUrl(target, item.source, item.name);
     }
 
     public static boolean removeHistory(String target, int index) {
