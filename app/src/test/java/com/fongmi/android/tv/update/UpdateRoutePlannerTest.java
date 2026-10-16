@@ -79,4 +79,17 @@ public class UpdateRoutePlannerTest {
         assertEquals(1, routes.size());
         assertEquals(UpdateTarget.Kind.OCI, routes.get(0).kind);
     }
+
+    @Test
+    public void proxySelectionAddsFallbackRoutes() {
+        GithubProxy.Config selected = GithubProxy.resolve(GithubProxy.DEFAULT, "", GithubProxy.MODE_FULL_URL);
+        List<UpdateTarget> routes = UpdateRoutePlanner.plan(
+                UpdateSource.GITHUB,
+                "https://github.com/muxd93/webhtv/releases/download/v1/app.apk",
+                null,
+                selected,
+                "");
+        assertEquals(1 + GithubProxy.fallbacks(GithubProxy.DEFAULT).size(), routes.size());
+        for (UpdateTarget route : routes) assertEquals(UpdateTarget.Kind.GITHUB, route.kind);
+    }
 }

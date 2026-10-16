@@ -1,6 +1,10 @@
 name: Android Release
 
 on:
+  push:
+    tags:
+      # 仅 tag 触发全量发布：日常 push（含每日上游同步合并）不触发构建，避免噪音与配额浪费
+      - "v*"
   workflow_dispatch:
     inputs:
       release_tag:
@@ -8,7 +12,7 @@ on:
         required: false
         type: string
       release_channel:
-        description: "Release channel, auto uses beta on fongmi-sync"
+        description: "Release channel, auto uses beta on fongmi-sync or *-beta-* tags"
         required: false
         default: auto
         type: choice
@@ -43,8 +47,8 @@ env:
   TZ: Asia/Shanghai
   CNB_API_ENDPOINT: https://api.cnb.cool
   CNB_WEB_ENDPOINT: https://cnb.cool
-  CNB_REPO_SLUG: fish2035/webhtv-release
-  CNB_REPO_URL: https://cnb.cool/fish2035/webhtv-release.git
+  CNB_REPO_SLUG: muxd93/webhtv-release
+  CNB_REPO_URL: https://cnb.cool/muxd93/webhtv-release.git
 
 jobs:
   release:
@@ -82,22 +86,32 @@ jobs:
         run: |
           sdkmanager "platform-tools" "platforms;android-37.0" "build-tools;37.0.0"
 
-      - name: Run WebSocket danmaku tests
+      - name: Run WebSocket danmaku tests (leanback)
         run: |
           chmod +x ./gradlew
-          ./gradlew \
-            :app:testMobileArm64_v8aDebugUnitTest \
-            --tests 'com.fongmi.android.tv.player.danmaku.*' \
-            --no-daemon
+          ./gradlew :app:testLeanbackArm64_v8aDebugUnitTest --tests 'com.fongmi.android.tv.player.danmaku.*' --no-daemon
+
+      - name: Run WebSocket danmaku tests (mobile)
+        run: |
+          chmod +x ./gradlew
+          ./gradlew :app:testMobileArm64_v8aDebugUnitTest --tests 'com.fongmi.android.tv.player.danmaku.*' --no-daemon
 
       - name: Resolve release tag
         id: meta
         run: |
           VERSION_NAME="$(sed -n 's/^[[:space:]]*versionName[[:space:]]*"\([^"]*\)".*/\1/p' app/build.gradle | head -1)"
-          VERSION_CODE="$(sed -n 's/^[[:space:]]*versionCode[[:space:]]*\([0-9][0-9]*\).*/\1/p' app/build.gradle | head -1)"
+          # versionCode 用 yyMMddHH（8 位）：人读即知日期与小时（如 26093014 = 2026-09-30 14 时），
+          # 与上游 FongMi 同源方案一致，最大约 99M 远低于 21 亿上限。
+          # 同小时内二次发布会复用同一 code（开发期可接受；真实产物仍以 WebHTV-<tag> 文件名 + OCI tag 唯一区分）。
+          VERSION_CODE="$(date +%y%m%d%H)"
+          if [ "$VERSION_CODE" -le 112 ]; then
+            echo "::error title=Invalid version code::$VERSION_CODE is not greater than the baseline 112"
+            exit 1
+          fi
           CHANNEL="${{ inputs.release_channel }}"
           if [ "$CHANNEL" = "auto" ] || [ -z "$CHANNEL" ]; then
-            if [ "${{ github.ref_name }}" = "fongmi-sync" ]; then
+            # 自动判定：fongmi-sync 分支或 *-beta-* tag 走 beta，其余 stable
+            if [ "${{ github.ref_name }}" = "fongmi-sync" ] || printf '%s' "${{ github.ref_name }}" | grep -q -- '-beta-'; then
               CHANNEL="beta"
             else
               CHANNEL="stable"
@@ -116,15 +130,22 @@ jobs:
           fi
           TAG="${{ inputs.release_tag }}"
           if [ -z "$TAG" ]; then
-            TAG="$TAG_DEFAULT"
+            if [ "${{ startsWith(github.ref, 'refs/tags/') }}" = "true" ]; then
+              # tag 推送触发：直接使用推送的 tag，不重新生成
+              TAG="${{ github.ref_name }}"
+            else
+              TAG="$TAG_DEFAULT"
+            fi
           fi
           if ! printf '%s' "$TAG" | grep -Eq "$TAG_PATTERN"; then
             echo "::error title=Invalid release tag::Expected $TAG_EXPECT, got: $TAG"
             exit 1
           fi
-          if git rev-parse "$TAG" >/dev/null 2>&1; then
-            echo "::error title=Release tag exists::$TAG already exists"
-            exit 1
+          if [ "${{ startsWith(github.ref, 'refs/tags/') }}" != "true" ]; then
+            if git rev-parse "$TAG" >/dev/null 2>&1; then
+              echo "::error title=Release tag exists::$TAG already exists"
+              exit 1
+            fi
           fi
           {
             echo "tag=$TAG"
@@ -164,26 +185,42 @@ jobs:
           } > local.properties
           echo "Release signing configured"
 
-      - name: Build four release APKs
+      - name: Build release APKs
         env:
           WEBHTV_RELEASE_TAG: ${{ steps.meta.outputs.tag }}
           WEBHTV_APK_SUFFIX: ${{ steps.meta.outputs.apk_suffix }}
+          WEBHTV_VERSION_CODE: ${{ steps.meta.outputs.version_code }}
         run: |
           chmod +x ./gradlew
           rm -rf Release/apk
           ./gradlew \
-            :app:assembleMobileArm64_v8aRelease \
-            :app:assembleMobileArmeabi_v7aRelease \
             :app:assembleLeanbackArm64_v8aRelease \
-            :app:assembleLeanbackArmeabi_v7aRelease \
+            :app:assembleLeanbackArm64_v8aDebug \
+            :app:assembleMobileArm64_v8aRelease \
+            :app:assembleMobileArm64_v8aDebug \
             --no-daemon
 
       - name: Collect artifacts
+        env:
+          RELEASE_TAG: ${{ steps.meta.outputs.tag }}
         run: |
-          rm -rf dist
-          mkdir -p dist
-          cp Release/apk/*.apk dist/
-          ls -lh dist/
+          rm -rf dist dist-extra
+          mkdir -p dist dist-extra
+          for apk in Release/apk/*.apk; do
+            base="$(basename "$apk" .apk)"
+            mode="$(printf '%s' "$base" | cut -d- -f1)"
+            case "$mode" in
+              leanback) role="tv" ;;
+              mobile)   role="mobile" ;;
+              *) echo "::error title=Unknown APK flavor::$apk" && exit 1 ;;
+            esac
+            if [ "${base%-debug}" != "$base" ]; then
+              cp "$apk" "dist-extra/WebHTV-${RELEASE_TAG#v}-${role}-debug.apk"
+            else
+              cp "$apk" "dist/WebHTV-${RELEASE_TAG#v}-${role}.apk"
+            fi
+          done
+          ls -lh dist/ dist-extra/
 
       - name: Set up ORAS
         id: oras
@@ -215,19 +252,65 @@ jobs:
         id: release_notes
         env:
           RELEASE_NOTES_RAW: ${{ inputs.release_notes }}
+          CHANNEL: ${{ steps.meta.outputs.channel }}
+          RELEASE_TAG: ${{ steps.meta.outputs.tag }}
         run: |
           python3 - <<'PY'
-          import os
+          import os, subprocess, re
 
-          raw = os.environ.get("RELEASE_NOTES_RAW", "").strip()
-          notes = (
-              raw
-              .replace("\\r\\n", "\n")
-              .replace("\\n", "\n")
-              .replace("\\t", "\t")
-              .replace('\\"', '"')
-              .replace("\\'", "'")
-          )
+          raw = (os.environ.get("RELEASE_NOTES_RAW", "").strip()
+                 .replace("\\r\\n", "\n").replace("\\n", "\n")
+                 .replace("\\t", "\t").replace('\\"', '"').replace("\\'", "'"))
+
+          if raw:
+              # 手动填写优先，保持覆盖能力
+              notes = raw
+          else:
+              # 按同渠道上一个发布标签为基线，自动生成更新记录
+              channel = os.environ.get("CHANNEL", "stable")
+              current = os.environ.get("RELEASE_TAG", "")
+              pat = (r"^v\d+\.\d+\.\d+-beta-\d{12}$" if channel == "beta"
+                     else r"^v\d+\.\d+\.\d+-\d{12}$")
+              tags = [t for t in subprocess.check_output(
+                  ["git", "tag", "--list"], encoding="utf-8").split()
+                  if re.match(pat, t) and t != current]
+              tags.sort(key=lambda t: tuple(int(x) for x in re.findall(r"\d+", t)))
+              prev = tags[-1] if tags else ""
+              if prev and subprocess.run(
+                  ["git", "merge-base", "--is-ancestor", prev, "HEAD"],
+                  capture_output=True).returncode == 0:
+                  range_spec = [f"{prev}..HEAD"]
+                  header = f"自 {prev} 起的更新："
+              else:
+                  range_spec = ["-30", "HEAD"]
+                  header = "最近提交：" if prev else "本次更新："
+                  prev = ""
+              log = subprocess.check_output(
+                  ["git", "log", *range_spec, "--pretty=format:%h%x09%s"],
+                  encoding="utf-8").strip()
+              groups = {"feat": [], "fix": [], "其他": []}
+              conv = re.compile(
+                  r"^(feat|fix|refactor|perf|chore|docs|style|test|build|ci)"
+                  r"(\([^)]*\))?!?:\s*(.*)$", re.I)
+              for line in log.splitlines():
+                  if not line.strip():
+                      continue
+                  h, _, s = line.partition("\t")
+                  m = conv.match(s.strip())
+                  if m:
+                      kind = m.group(1).lower()
+                      title = m.group(3).strip() or s.strip()
+                      label = "feat" if kind == "feat" else ("fix" if kind == "fix" else "其他")
+                  else:
+                      label, title = "其他", s.strip()
+                  groups[label].append(f"- {h.strip()} {title}")
+              parts = [header]
+              for k, title in (("feat", "### 新功能"), ("fix", "### 修复"), ("其他", "### 其他")):
+                  if groups[k]:
+                      parts.append(title)
+                      parts.extend(groups[k])
+              notes = "\n".join(parts)
+
           delimiter = "RELEASE_NOTES_EOF"
           while delimiter in notes:
               delimiter += "_"
@@ -243,6 +326,7 @@ jobs:
       - name: Generate update manifests
         env:
           RELEASE_NOTES: ${{ steps.release_notes.outputs.notes }}
+          RELEASE_CHANNEL: ${{ steps.meta.outputs.channel }}
           GITHUB_RELEASE_DOWNLOAD_BASE: https://github.com/${{ github.repository }}/releases/download/${{ steps.meta.outputs.tag }}
           OCI_PUBLISH_OUTCOME: ${{ steps.oci.outcome }}
         run: |
@@ -253,38 +337,47 @@ jobs:
           import os
 
           tag = "${{ steps.meta.outputs.tag }}"
+          channel = os.environ["RELEASE_CHANNEL"]
           notes = os.environ.get("RELEASE_NOTES", "").strip()
           release_download_base = os.environ["GITHUB_RELEASE_DOWNLOAD_BASE"]
+          role_to_mode = {"tv": "leanback", "mobile": "mobile"}
+          beta_suffix = "-beta" if channel == "beta" else ""
           oci = {}
           oci_metadata = "build/oci-metadata.json"
           if os.environ.get("OCI_PUBLISH_OUTCOME") == "success" and os.path.isfile(oci_metadata):
               with open(oci_metadata, encoding="utf-8") as fh:
                   oci = json.load(fh)
-          for apk in glob.glob("dist/*.apk"):
-              base = os.path.splitext(os.path.basename(apk))[0]
+          for apk in sorted(glob.glob("dist/*.apk")):
+              filename = os.path.basename(apk)
+              stem = os.path.splitext(filename)[0]
+              role = stem.rsplit("-", 1)[-1]
+              if role not in role_to_mode:
+                  raise SystemExit(f"Cannot resolve flavor from APK filename: {filename}")
+              mode = role_to_mode[role]
               with open(apk, "rb") as fh:
                   content = fh.read()
               data = {
                   "name": tag,
                   "versionName": "${{ steps.meta.outputs.version_name }}",
                   "desc": f"{tag} - ${{ steps.meta.outputs.short_sha }}",
-                  "channel": "${{ steps.meta.outputs.channel }}",
+                  "channel": channel,
                   "code": int("${{ steps.meta.outputs.version_code }}"),
-                  "apk": f"{release_download_base}/{base}.apk",
+                  "apk": f"{release_download_base}/{filename}",
                   "size": len(content),
                   "sha256": hashlib.sha256(content).hexdigest(),
                   "downloads": {
-                      "github": {"url": f"{release_download_base}/{base}.apk"},
+                      "github": {"url": f"{release_download_base}/{filename}"},
                   },
               }
-              if base in oci:
-                  descriptor = oci[base]
+              if stem in oci:
+                  descriptor = oci[stem]
                   if descriptor.get("size") != len(content) or descriptor.get("layerDigest") != "sha256:" + data["sha256"]:
-                      raise SystemExit(f"OCI descriptor does not match {base}.apk")
+                      raise SystemExit(f"OCI descriptor does not match {filename}")
                   data["downloads"]["oci"] = descriptor
               if notes:
                   data["notes"] = notes
-              with open(f"dist/{base}.json", "w", encoding="utf-8") as fh:
+              manifest_name = f"{mode}-arm64_v8a{beta_suffix}.json"
+              with open(f"dist/{manifest_name}", "w", encoding="utf-8") as fh:
                   json.dump(data, fh, ensure_ascii=False, indent=2)
                   fh.write("\n")
           PY
@@ -299,13 +392,13 @@ jobs:
           if [ "${{ inputs.prerelease }}" = "true" ] || [ "${{ steps.meta.outputs.channel }}" = "beta" ]; then
             PRERELEASE_FLAG="--prerelease"
           fi
-          NOTES="${RELEASE_NOTES:-手动触发 GitHub Actions 构建发布。}"
+          NOTES="${RELEASE_NOTES:-${{ steps.meta.outputs.tag }} 由 GitHub Actions 构建发布。}"
           gh release create "${{ steps.meta.outputs.tag }}" \
             --target "$GITHUB_SHA" \
             --title "${{ steps.meta.outputs.title }}" \
             --notes "$NOTES" \
             $PRERELEASE_FLAG \
-            dist/*.apk dist/*.json
+            dist/*.apk dist/*.json dist-extra/*.apk
 
       - name: Sync to CNB
         if: ${{ inputs.sync_cnb }}
@@ -323,6 +416,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: webhtv-${{ steps.meta.outputs.tag }}
-          path: dist/*
+          path: |
+            dist/*
+            dist-extra/*
           if-no-files-found: error
           retention-days: 30

@@ -43,8 +43,8 @@ import com.google.gson.JsonObject;
 
 public class SettingEnhanceFragment extends BaseFragment {
 
-    private static final String URL_GITHUB = "https://github.com/fish2018/webhtv";
-    private static final String URL_CNB = "https://cnb.cool/fish2035/ext";
+    private static final String URL_GITHUB = "https://github.com/muxd93/webhtv";
+    private static final String URL_CNB = "https://cnb.cool/muxd93/ext";
 
     private FragmentSettingEnhanceBinding mBinding;
 

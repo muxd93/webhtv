@@ -21,7 +21,14 @@ public final class UpdateRoutePlanner {
         return routes;
     }
 
-    private static void addGithub(List<UpdateTarget> routes, String githubUrl, GithubProxy.Config proxy) {
+    private static void addGithub(List<UpdateTarget> routes, String githubUrl, GithubProxy.Config selected) {
+        if (githubUrl == null || githubUrl.trim().isEmpty()) return;
+        addGithubRoute(routes, githubUrl, selected);
+        if (GithubProxy.DIRECT.equals(selected.id)) return;
+        for (GithubProxy.Config fallback : GithubProxy.fallbacks(selected.id)) addGithubRoute(routes, githubUrl, fallback);
+    }
+
+    private static void addGithubRoute(List<UpdateTarget> routes, String githubUrl, GithubProxy.Config proxy) {
         if (githubUrl == null || githubUrl.trim().isEmpty()) return;
         try {
             routes.add(UpdateTarget.github(proxy.rewrite(githubUrl)));

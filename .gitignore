@@ -30,3 +30,5 @@ third_party/sources/
 plans/
 .codex/task-state/
 docs/
+app/.cxx
+.zcodeignore
