@@ -5,6 +5,7 @@
     <string name="home_live">Live</string>
     <string name="home_search">Search</string>
     <string name="home_keep">Keep</string>
+    <string name="home_view_all">View all (%1$d)</string>
     <string name="home_push">Push</string>
     <string name="home_setting">Setting</string>
     <string name="control_speed">Speed</string>
@@ -33,4 +34,5 @@
     <string name="timer_60">1 hour</string>
     <string name="timer_delay">Delay 5 minutes</string>
     <string name="timer_cancel">Cancel timer</string>
+    <string name="exit_press_again">Press back again to exit</string>
 </resources>

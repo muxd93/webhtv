@@ -25,9 +25,6 @@
     <string name="keep">Keep</string>
     <string name="keep_add">Added</string>
     <string name="keep_del">Removed</string>
-    <string name="exit_confirm_title">Exit app?</string>
-    <string name="exit_confirm_message">The current page will close. Background playback will continue if it is running.</string>
-    <string name="exit_confirm_positive">Exit</string>
 
     <!-- Play -->
     <string name="play">Play</string>
@@ -666,6 +663,7 @@
     <string name="setting_one_key_sync">One-key sync</string>
     <string name="setting_incognito">Incognito mode</string>
     <string name="auto_next_eps">Auto next episode</string>
+    <string name="double_back_exit">Double back to exit</string>
     <string name="setting_drive_check">Drive link check</string>
     <string name="setting_theme_color">Theme color</string>
     <string name="setting_appearance">Appearance &amp; language</string>

@@ -499,8 +499,9 @@ public class Setting {
         Prefers.put("web_home_extension", extension);
     }
 
+    /** 网页主页全屏模式，默认关闭：节省内存、提升启动速度，需要时在设置中手动开启 */
     public static boolean isWebHomeFullscreen() {
-        return Prefers.getBoolean("web_home_fullscreen", true);
+        return Prefers.getBoolean("web_home_fullscreen", false);
     }
 
     public static void putWebHomeFullscreen(boolean fullscreen) {
@@ -767,6 +768,15 @@ public class Setting {
 
     public static void putAutoNextEps(boolean autoNext) {
         Prefers.put("auto_next_eps", autoNext);
+    }
+
+    /** 首页双击返回退出，默认开启；关闭后单击返回直接退出 */
+    public static boolean isDoubleBackExit() {
+        return Prefers.getBoolean("double_back_exit", true);
+    }
+
+    public static void putDoubleBackExit(boolean doubleBackExit) {
+        Prefers.put("double_back_exit", doubleBackExit);
     }
 
     public static boolean hasFileManager() {

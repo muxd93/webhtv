@@ -5,6 +5,7 @@
     <string name="home_live">直播</string>
     <string name="home_search">搜尋</string>
     <string name="home_keep">收藏</string>
+    <string name="home_view_all">查看全部（%1$d）</string>
     <string name="home_push">推送</string>
     <string name="home_setting">設定</string>
     <string name="control_speed">倍速</string>
@@ -33,4 +34,5 @@
     <string name="timer_60">1 小時</string>
     <string name="timer_delay">延長 5 分鐘</string>
     <string name="timer_cancel">取消定時器</string>
+    <string name="exit_press_again">再按一次返回鍵退出</string>
 </resources>
