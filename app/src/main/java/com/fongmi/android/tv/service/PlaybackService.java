@@ -36,6 +36,7 @@ import com.fongmi.android.tv.player.lyrics.DesktopLyricsWindow;
 import com.fongmi.android.tv.player.lyrics.LyricsLine;
 import com.fongmi.android.tv.player.lyrics.LyricsResult;
 import com.fongmi.android.tv.server.Server;
+import com.fongmi.android.tv.setting.Setting;
 import com.fongmi.android.tv.utils.Task;
 import com.github.catvod.crawler.SpiderDebug;
 import com.google.common.collect.ImmutableList;
@@ -573,6 +574,8 @@ public class PlaybackService extends MediaLibraryService implements MediaLibrary
             if (state == Player.STATE_ENDED) {
                 boolean ownerHandlesNavigation = hasNavigationCallback() && isNavigationOwner();
                 if (SpiderDebug.isEnabled()) SpiderDebug.log("audio-auto-next", "service ended owner=%s navigation=%s key=%s navigationKey=%s action=%s", isNavigationOwner(), hasNavigationCallback(), player.getKey(), navigationKey, ownerHandlesNavigation ? "defer-to-owner" : "browse-next");
+                // 自动下一集默认关闭（避免儿童连续观看），开启后恢复原有连播行为
+                if (!Setting.isAutoNextEps()) return;
                 if (!ownerHandlesNavigation) navigateItem(1);
             }
         }

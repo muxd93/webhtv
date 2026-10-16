@@ -5611,7 +5611,9 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
     }
 
     private void checkEnded(boolean notify) {
-        if (showKaraokeResultIfNeeded(() -> checkNext(notify))) return;
+        // 自动下一集默认关闭（避免儿童连续观看）：K 歌结果面板仍展示，但不再自动连播/切集
+        if (showKaraokeResultIfNeeded(() -> { if (Setting.isAutoNextEps()) checkNext(notify); })) return;
+        if (!Setting.isAutoNextEps()) return;
         checkNext(notify);
     }
 

@@ -760,6 +760,15 @@ public class Setting {
         return ContextCompat.checkSelfPermission(App.get(), Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED && ContextCompat.checkSelfPermission(App.get(), Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED;
     }
 
+    /** 播放结束后自动下一集，默认关闭：避免儿童连续观看，需要时在设置中手动开启 */
+    public static boolean isAutoNextEps() {
+        return Prefers.getBoolean("auto_next_eps");
+    }
+
+    public static void putAutoNextEps(boolean autoNext) {
+        Prefers.put("auto_next_eps", autoNext);
+    }
+
     public static boolean hasFileManager() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return false;
         return new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:" + App.get().getPackageName())).resolveActivity(App.get().getPackageManager()) != null || new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION).resolveActivity(App.get().getPackageManager()) != null;

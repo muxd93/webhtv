@@ -95,6 +95,7 @@ public class SettingFragment extends BaseFragment implements ConfigListener, Sit
     private void setOtherText() {
         mBinding.dohText.setText(getDohList()[getDohIndex()]);
         mBinding.incognitoText.setText(getSwitch(Setting.isIncognito()));
+        mBinding.autoNextText.setText(getSwitch(Setting.isAutoNextEps()));
     }
 
     private void setCacheText() {
@@ -126,6 +127,7 @@ public class SettingFragment extends BaseFragment implements ConfigListener, Sit
         mBinding.liveHome.setOnClickListener(this::onLiveHome);
         mBinding.wall.setOnLongClickListener(this::onWallEdit);
         mBinding.incognito.setOnClickListener(this::setIncognito);
+        mBinding.autoNext.setOnClickListener(this::setAutoNext);
         mBinding.vodHistory.setOnClickListener(this::onVodHistory);
         mBinding.liveHistory.setOnClickListener(this::onLiveHistory);
         mBinding.wallDefault.setOnClickListener(this::setWallDefault);
@@ -274,6 +276,11 @@ public class SettingFragment extends BaseFragment implements ConfigListener, Sit
     private void setIncognito(View view) {
         Setting.putIncognito(!Setting.isIncognito());
         mBinding.incognitoText.setText(getSwitch(Setting.isIncognito()));
+    }
+
+    private void setAutoNext(View view) {
+        Setting.putAutoNextEps(!Setting.isAutoNextEps());
+        mBinding.autoNextText.setText(getSwitch(Setting.isAutoNextEps()));
     }
 
     private void setDoh(View view) {

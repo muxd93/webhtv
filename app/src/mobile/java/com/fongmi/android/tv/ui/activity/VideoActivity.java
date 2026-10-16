@@ -5992,7 +5992,12 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     }
 
     private void checkEnded(boolean notify) {
-        if (SpiderDebug.isEnabled()) SpiderDebug.log("audio-auto-next", "checkEnded notify=%s audioStage=%s adapter=%d", notify, mAudioStageVisible, mEpisodeAdapter.getItemCount());
+        if (SpiderDebug.isEnabled()) SpiderDebug.log("audio-auto-next", "checkEnded notify=%s audioStage=%s adapter=%d autoNext=%s", notify, mAudioStageVisible, mEpisodeAdapter.getItemCount(), Setting.isAutoNextEps());
+        // 自动下一集默认关闭（避免儿童连续观看）：K 歌结果面板仍展示，但不再自动连播/切集
+        if (!Setting.isAutoNextEps()) {
+            if (showKaraokeResultIfNeeded(KARAOKE_RESULT_ACTION_FINISH)) return;
+            return;
+        }
         if (showKaraokeResultIfNeeded(notify ? KARAOKE_RESULT_ACTION_NEXT : KARAOKE_RESULT_ACTION_NEXT_SILENT)) return;
         if (mAudioStageVisible && playNextAudioPlaylistEntry()) return;
         checkNext(notify);
