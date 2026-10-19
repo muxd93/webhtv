@@ -646,6 +646,7 @@
     <string name="setting_incognito">無痕模式</string>
     <string name="auto_next_eps">自動播放下一集</string>
     <string name="double_back_exit">雙擊返回退出</string>
+    <string name="setting_personal">個人化</string>
     <string name="setting_drive_check">網盤檢測</string>
     <string name="setting_theme_color">主題色彩</string>
     <string name="setting_appearance">外觀與語言</string>

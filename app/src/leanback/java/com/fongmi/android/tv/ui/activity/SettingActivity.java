@@ -128,6 +128,7 @@ public class SettingActivity extends BaseActivity implements ConfigListener, Sit
         mBinding.liveHome.setOnClickListener(this::onLiveHome);
         mBinding.wall.setOnLongClickListener(this::onWallEdit);
         mBinding.incognito.setOnClickListener(this::setIncognito);
+        mBinding.personal.setOnClickListener(this::onPersonal);
         mBinding.autoNext.setOnClickListener(this::setAutoNext);
         mBinding.doubleBack.setOnClickListener(this::setDoubleBack);
         mBinding.vodHistory.setOnClickListener(this::onVodHistory);
@@ -243,6 +244,10 @@ public class SettingActivity extends BaseActivity implements ConfigListener, Sit
 
     private void onEnhance(View view) {
         SettingEnhanceActivity.start(this);
+    }
+
+    private void onPersonal(View view) {
+        SettingPersonalActivity.start(this);
     }
 
     private void onDanmaku(View view) {
