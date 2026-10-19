@@ -17,10 +17,12 @@ import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.db.AppDatabase;
 import com.fongmi.android.tv.impl.Diffable;
 import com.fongmi.android.tv.playback.PlaybackProgressWriter;
+import com.fongmi.android.tv.setting.Setting;
 import com.google.gson.annotations.SerializedName;
 import com.google.gson.reflect.TypeToken;
 
 import java.lang.reflect.Type;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
@@ -114,6 +116,12 @@ public class History implements Diffable<History> {
     }
 
     public static List<History> get() {
+        // 全局历史开启时跨所有配置聚合，按观看时间倒序；否则仅当前配置
+        if (Setting.isGlobalHistoryEnabled()) {
+            List<History> items = new ArrayList<>(AppDatabase.get().getHistoryDao().findAll());
+            items.sort((a, b) -> Long.compare(b.getCreateTime(), a.getCreateTime()));
+            return items;
+        }
         return get(VodConfig.getCid());
     }
 

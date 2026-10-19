@@ -648,6 +648,9 @@
     <string name="double_back_exit">雙擊返回退出</string>
     <string name="setting_personal">個人化</string>
     <string name="setting_power_save">省電啟動</string>
+    <string name="setting_global_history">全域歷史</string>
+    <string name="global_history_auto">自動切換</string>
+    <string name="global_history_search">全域搜尋</string>
     <string name="config_preset_filled">已回填預設源，再次點擊確定儲存</string>
     <string name="config_preset_exhausted">已無更多預設源</string>
     <string name="setting_drive_check">網盤檢測</string>

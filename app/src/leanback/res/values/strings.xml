@@ -35,4 +35,7 @@
     <string name="timer_delay">Delay 5 minutes</string>
     <string name="timer_cancel">Cancel timer</string>
     <string name="exit_press_again">Press back again to exit</string>
+    <string name="app_history">History</string>
+    <string name="dialog_delete_record">Delete all records?</string>
+    <string name="dialog_delete_history">All history records will be removed.</string>
 </resources>

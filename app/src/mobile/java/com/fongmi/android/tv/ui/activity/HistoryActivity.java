@@ -14,12 +14,14 @@ import androidx.viewbinding.ViewBinding;
 
 import com.fongmi.android.tv.Product;
 import com.fongmi.android.tv.R;
+import com.fongmi.android.tv.bean.Config;
 import com.fongmi.android.tv.bean.History;
 import com.fongmi.android.tv.databinding.ActivityHistoryBinding;
 import com.fongmi.android.tv.event.RefreshEvent;
 import com.fongmi.android.tv.ui.adapter.HistoryAdapter;
 import com.fongmi.android.tv.ui.base.BaseActivity;
 import com.fongmi.android.tv.ui.dialog.SyncDialog;
+import com.fongmi.android.tv.utils.HistoryResume;
 import com.fongmi.android.tv.utils.MobileWindow;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
@@ -62,6 +64,7 @@ public class HistoryActivity extends BaseActivity implements HistoryAdapter.OnCl
     }
 
     private void getHistory() {
+        mAdapter.setConfigNames(Config.nameMap());
         mAdapter.setItems(History.get(), (hasChange) -> {
             mBinding.progressLayout.showContent(true, mAdapter.getItemCount());
             if (hasChange) mBinding.recycler.scrollToPosition(0);
@@ -87,7 +90,17 @@ public class HistoryActivity extends BaseActivity implements HistoryAdapter.OnCl
 
     @Override
     public void onItemClick(History item) {
-        VideoActivity.start(this, item.getSiteKey(), item.getVodId(), item.getVodName(), item.getVodPic(), null, item.getWallPic());
+        HistoryResume.open(this, item, new HistoryResume.Opener() {
+            @Override
+            public void openVideo(Activity activity, History history) {
+                VideoActivity.start(activity, history.getSiteKey(), history.getVodId(), history.getVodName(), history.getVodPic(), null, history.getWallPic());
+            }
+
+            @Override
+            public void openSearch(Activity activity, String keyword) {
+                SearchActivity.start(activity, keyword);
+            }
+        });
     }
 
     @Override

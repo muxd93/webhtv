@@ -664,6 +664,9 @@
     <string name="double_back_exit">双击返回退出</string>
     <string name="setting_personal">个性化</string>
     <string name="setting_power_save">省电启动</string>
+    <string name="setting_global_history">全局历史</string>
+    <string name="global_history_auto">自动切换</string>
+    <string name="global_history_search">全局搜索</string>
     <string name="config_preset_filled">已回填预设源，再次点击确定保存</string>
     <string name="config_preset_exhausted">已无更多预设源</string>
     <string name="setting_drive_check">网盘检测</string>

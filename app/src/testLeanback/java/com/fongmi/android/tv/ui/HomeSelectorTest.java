@@ -11,7 +11,7 @@ import com.fongmi.android.tv.bean.Keep;
 
 import org.junit.Test;
 
-public class KeepSelectorTest {
+public class HomeSelectorTest {
 
     private static Presenter dummy() {
         return new Presenter() {
@@ -36,7 +36,7 @@ public class KeepSelectorTest {
     public void dispatchesRegisteredChildTypes() {
         Presenter keep = dummy();
         Presenter more = dummy();
-        HomeRows.KeepSelector selector = new HomeRows.KeepSelector(keep);
+        HomeRows.HomeSelector selector = new HomeRows.HomeSelector(keep);
         selector.add(Keep.class, keep);
         selector.add(HomeMore.class, more);
         assertSame(keep, selector.getPresenter(new Keep()));
@@ -46,7 +46,7 @@ public class KeepSelectorTest {
     @Test
     public void fallsBackForUnregisteredProbeItems() {
         Presenter keep = dummy();
-        HomeRows.KeepSelector selector = new HomeRows.KeepSelector(keep);
+        HomeRows.HomeSelector selector = new HomeRows.HomeSelector(keep);
         selector.add(Keep.class, keep);
         // CustomSelector 用 ListRow 本身探测行适配器；ClassPresenterSelector 原样会返回 null，
         // 导致顶层 ItemBridgeAdapter 拿到 null Presenter 崩溃（回归锁）

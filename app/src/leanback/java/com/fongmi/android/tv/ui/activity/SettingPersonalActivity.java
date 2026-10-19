@@ -9,6 +9,7 @@ import androidx.viewbinding.ViewBinding;
 
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.databinding.ActivitySettingPersonalBinding;
+import com.fongmi.android.tv.event.RefreshEvent;
 import com.fongmi.android.tv.setting.Setting;
 import com.fongmi.android.tv.ui.base.BaseActivity;
 
@@ -39,12 +40,22 @@ public class SettingPersonalActivity extends BaseActivity {
         mBinding.autoNext.setOnClickListener(this::setAutoNext);
         mBinding.doubleBack.setOnClickListener(this::setDoubleBack);
         mBinding.powerSave.setOnClickListener(this::setPowerSave);
+        mBinding.globalHistory.setOnClickListener(this::setGlobalHistory);
+        mBinding.history.setOnClickListener(this::onHistory);
     }
 
     private void refreshTexts() {
         mBinding.autoNextText.setText(getSwitch(Setting.isAutoNextEps()));
         mBinding.doubleBackText.setText(getSwitch(Setting.isDoubleBackExit()));
         mBinding.powerSaveText.setText(getSwitch(Setting.isPowerSaveStartup()));
+        mBinding.globalHistoryText.setText(getGlobalHistoryModeText());
+    }
+
+    private String getGlobalHistoryModeText() {
+        int mode = Setting.getGlobalHistoryMode();
+        if (mode == Setting.GLOBAL_HISTORY_AUTO) return getString(R.string.global_history_auto);
+        if (mode == Setting.GLOBAL_HISTORY_SEARCH) return getString(R.string.global_history_search);
+        return getString(R.string.setting_off);
     }
 
     private void setAutoNext(View view) {
@@ -60,5 +71,16 @@ public class SettingPersonalActivity extends BaseActivity {
     private void setPowerSave(View view) {
         Setting.putPowerSaveStartup(!Setting.isPowerSaveStartup());
         mBinding.powerSaveText.setText(getSwitch(Setting.isPowerSaveStartup()));
+    }
+
+    private void setGlobalHistory(View view) {
+        Setting.putGlobalHistoryMode(Setting.nextGlobalHistoryMode());
+        mBinding.globalHistoryText.setText(getGlobalHistoryModeText());
+        // 模式变化影响主页历史/收藏行的聚合范围，通知主页重载
+        RefreshEvent.history();
+    }
+
+    private void onHistory(View view) {
+        HistoryActivity.start(this);
     }
 }

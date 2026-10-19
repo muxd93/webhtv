@@ -40,6 +40,7 @@ import java.util.Objects;
 public class HomeRows {
 
     public static final int KEEP_LIMIT = 10;
+    public static final int HISTORY_LIMIT = 10;
 
     public interface OnMoreClickListener {
         void onMoreClick(HomeMore.Kind kind);
@@ -62,11 +63,14 @@ public class HomeRows {
     private List<History> mHistory = Collections.emptyList();
     private List<Keep> mKeeps = Collections.emptyList();
     private int mKeepTotal;
+    private int mHistoryTotal;
     private Map<String, History> mProgress = Collections.emptyMap();
+    private Map<Integer, String> mConfigNames = Collections.emptyMap();
     private List<Vod> mVodItems = Collections.emptyList();
     private Style mVodStyle = Style.list();
     private boolean mVodLoading;
     private Map<String, History> mAppliedProgress = Collections.emptyMap();
+    private Map<Integer, String> mAppliedConfigNames = Collections.emptyMap();
 
     public HomeRows(VodPresenter.OnClickListener vod, HistoryPresenter.OnClickListener history, FuncPresenter.OnClickListener func, KeepPresenter.OnClickListener keep, OnMoreClickListener more) {
         mVodListener = vod;
@@ -80,9 +84,12 @@ public class HomeRows {
     private void init() {
         mFuncAdapter = new ArrayObjectAdapter(new FuncPresenter(mFuncListener));
         mHistoryPresenter = new HistoryPresenter(mHistoryListener);
-        mHistoryAdapter = new ArrayObjectAdapter(mHistoryPresenter);
+        HomeSelector historySelector = new HomeSelector(mHistoryPresenter);
+        historySelector.add(History.class, mHistoryPresenter);
+        historySelector.add(HomeMore.class, new HomeMorePresenter(mMoreListener));
+        mHistoryAdapter = new ArrayObjectAdapter(historySelector);
         mKeepPresenter = new KeepPresenter(mKeepListener);
-        KeepSelector keepSelector = new KeepSelector(mKeepPresenter);
+        HomeSelector keepSelector = new HomeSelector(mKeepPresenter);
         keepSelector.add(Keep.class, mKeepPresenter);
         keepSelector.add(HomeMore.class, new HomeMorePresenter(mMoreListener));
         mKeepAdapter = new ArrayObjectAdapter(keepSelector);
@@ -98,7 +105,7 @@ public class HomeRows {
         mAdapter = new ArrayObjectAdapter(selector);
         mFuncAdapter.setItems(mFuncItems, new BaseDiffCallback<>());
         mHistoryAdapter.setItems(mHistory, new BaseDiffCallback<>());
-        submitKeepItems(mProgress);
+        submitKeepItems(mProgress, mConfigNames);
         apply();
     }
 
@@ -126,11 +133,13 @@ public class HomeRows {
 
     public void submitFeed(HomeFeed feed) {
         mHistory = feed.getHistory();
+        mHistoryTotal = feed.getHistoryTotal();
         mKeeps = feed.getKeeps();
         mKeepTotal = feed.getKeepTotal();
         mProgress = feed.getProgress();
-        mHistoryAdapter.setItems(mHistory, new BaseDiffCallback<>());
-        submitKeepItems(mProgress);
+        mConfigNames = feed.getConfigNames();
+        submitHistoryItems();
+        submitKeepItems(mProgress, mConfigNames);
         apply();
     }
 
@@ -149,16 +158,32 @@ public class HomeRows {
         return true;
     }
 
-    private void submitKeepItems(Map<String, History> progress) {
+    private void submitHistoryItems() {
+        List<Object> items = new ArrayList<>(mHistory.subList(0, Math.min(mHistory.size(), HISTORY_LIMIT)));
+        if (mHistoryTotal > HISTORY_LIMIT) items.add(new HomeMore(HomeMore.Kind.HISTORY, mHistoryTotal));
+        if (sameItems(mHistoryAdapter, items)) {
+            if (mHistoryAdapter.size() > 0 && !mConfigNames.equals(mAppliedConfigNames)) mHistoryAdapter.notifyArrayItemRangeChanged(0, mHistoryAdapter.size());
+            mAppliedConfigNames = mConfigNames;
+            return;
+        }
+        mAppliedConfigNames = mConfigNames;
+        mHistoryAdapter.clear();
+        mHistoryAdapter.addAll(0, items);
+    }
+
+    private void submitKeepItems(Map<String, History> progress, Map<Integer, String> configNames) {
         mKeepPresenter.setProgress(progress);
+        mKeepPresenter.setConfigNames(configNames);
         List<Object> items = new ArrayList<>(mKeeps.subList(0, Math.min(mKeeps.size(), KEEP_LIMIT)));
         if (mKeepTotal > KEEP_LIMIT) items.add(new HomeMore(HomeMore.Kind.KEEP, mKeepTotal));
         if (sameItems(mKeepAdapter, items)) {
-            if (mKeepAdapter.size() > 0 && !progress.equals(mAppliedProgress)) mKeepAdapter.notifyArrayItemRangeChanged(0, mKeepAdapter.size());
+            if (mKeepAdapter.size() > 0 && (!progress.equals(mAppliedProgress) || !configNames.equals(mAppliedConfigNames))) mKeepAdapter.notifyArrayItemRangeChanged(0, mKeepAdapter.size());
             mAppliedProgress = progress;
+            mAppliedConfigNames = configNames;
             return;
         }
         mAppliedProgress = progress;
+        mAppliedConfigNames = configNames;
         mKeepAdapter.clear();
         mKeepAdapter.addAll(0, items);
     }
@@ -259,18 +284,18 @@ public class HomeRows {
     }
 
     /**
-     * 收藏行子适配器：Keep 与 HomeMore 双 Presenter。
+     * 行子适配器：主 Presenter 与 HomeMore 双 Presenter。
      * CustomSelector 的嵌套路径会用 ListRow 本身探测行适配器的子 Presenter
      * （row.getAdapter().getPresenter(row)），ClassPresenterSelector 对未注册的
      * ListRow 返回 null，会让顶层 ItemBridgeAdapter 拿到 null Presenter 而崩溃；
-     * 回退到 KeepPresenter 保证探测永远非空（行内子项仍按各自类型分发）。
+     * 回退到主 Presenter 保证探测永远非空（行内子项仍按各自类型分发）。
      */
-    static class KeepSelector extends PresenterSelector {
+    static class HomeSelector extends PresenterSelector {
 
         private final ClassPresenterSelector mDelegate;
         private final Presenter mFallback;
 
-        KeepSelector(Presenter fallback) {
+        HomeSelector(Presenter fallback) {
             mFallback = fallback;
             mDelegate = new ClassPresenterSelector();
         }

@@ -7,7 +7,8 @@ import java.util.Objects;
 public class HomeMore {
 
     public enum Kind {
-        KEEP
+        KEEP,
+        HISTORY
     }
 
     private final Kind kind;

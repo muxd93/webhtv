@@ -788,6 +788,40 @@ public class Setting {
         Prefers.put("power_save_startup", powerSave);
     }
 
+    // 全局历史模式：OFF 仅当前配置；AUTO 跨配置聚合、点击时切配置直开（配置缺失则按名搜索）；
+    // SEARCH 跨配置聚合展示、点击一律全局按名搜索
+    public static final int GLOBAL_HISTORY_OFF = 0;
+    public static final int GLOBAL_HISTORY_AUTO = 1;
+    public static final int GLOBAL_HISTORY_SEARCH = 2;
+
+    public static int getGlobalHistoryMode() {
+        return clampGlobalHistoryMode(Prefers.getInt("global_history_mode", GLOBAL_HISTORY_OFF));
+    }
+
+    public static void putGlobalHistoryMode(int mode) {
+        Prefers.put("global_history_mode", clampGlobalHistoryMode(mode));
+    }
+
+    public static int nextGlobalHistoryMode() {
+        return (getGlobalHistoryMode() + 1) % 3;
+    }
+
+    public static boolean isGlobalHistoryEnabled() {
+        return getGlobalHistoryMode() != GLOBAL_HISTORY_OFF;
+    }
+
+    public static boolean isGlobalHistoryAuto() {
+        return getGlobalHistoryMode() == GLOBAL_HISTORY_AUTO;
+    }
+
+    public static boolean isGlobalHistorySearch() {
+        return getGlobalHistoryMode() == GLOBAL_HISTORY_SEARCH;
+    }
+
+    private static int clampGlobalHistoryMode(int mode) {
+        return mode == GLOBAL_HISTORY_AUTO || mode == GLOBAL_HISTORY_SEARCH ? mode : GLOBAL_HISTORY_OFF;
+    }
+
     public static boolean hasFileManager() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return false;
         return new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:" + App.get().getPackageName())).resolveActivity(App.get().getPackageManager()) != null || new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION).resolveActivity(App.get().getPackageManager()) != null;

@@ -17,7 +17,9 @@ import com.google.gson.reflect.TypeToken;
 
 import java.lang.reflect.Type;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Entity(indices = @Index(value = {"url", "type"}, unique = true))
 public class Config {
@@ -110,6 +112,13 @@ public class Config {
 
     public static Config find(int id) {
         return AppDatabase.get().getConfigDao().findById(id);
+    }
+
+    /** 全部配置的 id→名称映射，供跨配置历史/收藏标注来源配置 */
+    public static Map<Integer, String> nameMap() {
+        Map<Integer, String> names = new HashMap<>();
+        for (Config config : AppDatabase.get().getConfigDao().findAll()) names.put(config.getId(), config.getName());
+        return names;
     }
 
     public static Config find(String url, int type) {

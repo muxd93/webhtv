@@ -14,12 +14,16 @@ import com.fongmi.android.tv.databinding.AdapterVodBinding;
 import com.fongmi.android.tv.utils.HistoryProgressFormatter;
 import com.fongmi.android.tv.utils.ImgUtil;
 
+import java.util.Collections;
+import java.util.Map;
+
 public class HistoryAdapter extends BaseDiffAdapter<History, HistoryAdapter.ViewHolder> {
 
     private final OnClickListener listener;
     private int width, height;
     private boolean animate;
     private boolean delete;
+    private Map<Integer, String> configNames = Collections.emptyMap();
 
     public HistoryAdapter(OnClickListener listener) {
         this.listener = listener;
@@ -38,6 +42,10 @@ public class HistoryAdapter extends BaseDiffAdapter<History, HistoryAdapter.View
     public void setSize(int[] size) {
         this.width = size[0];
         this.height = size[1];
+    }
+
+    public void setConfigNames(Map<Integer, String> configNames) {
+        this.configNames = configNames == null ? Collections.emptyMap() : configNames;
     }
 
     public boolean isDelete() {
@@ -71,7 +79,9 @@ public class HistoryAdapter extends BaseDiffAdapter<History, HistoryAdapter.View
         History item = getItem(position);
         boolean same = item.getVodName().equals(item.getVodRemarks());
         holder.binding.name.setText(item.getVodName());
-        holder.binding.site.setText(item.getSiteName());
+        // 跨配置的历史在站点名后标注来源配置，便于区分
+        String configName = item.getCid() != VodConfig.getCid() ? configNames.get(item.getCid()) : null;
+        holder.binding.site.setText(configName == null || configName.isEmpty() ? item.getSiteName() : item.getSiteName() + " · " + configName);
         holder.binding.remark.setText(item.getVodRemarks());
         holder.binding.site.setVisibility(item.getSiteVisible());
         int duration = (int) Math.min(Integer.MAX_VALUE, Math.max(0, item.getDuration()));

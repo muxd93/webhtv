@@ -10,6 +10,7 @@ import androidx.leanback.widget.Presenter;
 import com.bumptech.glide.Glide;
 import com.fongmi.android.tv.Product;
 import com.fongmi.android.tv.R;
+import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.bean.History;
 import com.fongmi.android.tv.bean.Keep;
 import com.fongmi.android.tv.databinding.AdapterVodBinding;
@@ -26,6 +27,7 @@ public class KeepPresenter extends Presenter {
     private final int width;
     private final int height;
     private Map<String, History> mProgress = Collections.emptyMap();
+    private Map<Integer, String> mConfigNames = Collections.emptyMap();
 
     public KeepPresenter(OnClickListener listener) {
         mListener = listener;
@@ -42,6 +44,10 @@ public class KeepPresenter extends Presenter {
 
     public void setProgress(Map<String, History> progress) {
         mProgress = progress == null ? Collections.emptyMap() : progress;
+    }
+
+    public void setConfigNames(Map<Integer, String> configNames) {
+        mConfigNames = configNames == null ? Collections.emptyMap() : configNames;
     }
 
     private void setClickListener(View root, Keep item) {
@@ -63,7 +69,9 @@ public class KeepPresenter extends Presenter {
         ViewHolder holder = (ViewHolder) viewHolder;
         setClickListener(holder.view, item);
         holder.binding.name.setText(item.getVodName());
-        holder.binding.site.setText(item.getSiteName());
+        // 跨配置的收藏在站点名后标注来源配置，便于区分
+        String configName = item.getCid() != VodConfig.getCid() ? mConfigNames.get(item.getCid()) : null;
+        holder.binding.site.setText(configName == null || configName.isEmpty() ? item.getSiteName() : item.getSiteName() + " · " + configName);
         holder.binding.site.setVisibility(View.VISIBLE);
         holder.binding.remark.setVisibility(View.GONE);
         holder.binding.delete.setVisibility(View.GONE);

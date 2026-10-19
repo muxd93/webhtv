@@ -1,6 +1,7 @@
 package com.fongmi.android.tv.ui.activity;
 
 import android.annotation.SuppressLint;
+import android.app.Activity;
 import android.app.SearchManager;
 import android.content.Intent;
 import android.content.res.Configuration;
@@ -60,6 +61,7 @@ import com.fongmi.android.tv.ui.presenter.HistoryPresenter;
 import com.fongmi.android.tv.ui.presenter.VodPresenter;
 import com.fongmi.android.tv.utils.Clock;
 import com.fongmi.android.tv.utils.FileChooser;
+import com.fongmi.android.tv.utils.HistoryResume;
 import com.fongmi.android.tv.utils.ImgUtil;
 import com.fongmi.android.tv.utils.KeyUtil;
 import com.fongmi.android.tv.utils.Notify;
@@ -482,6 +484,7 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
 
     private void onMoreClick(HomeMore.Kind kind) {
         if (kind == HomeMore.Kind.KEEP) KeepActivity.start(this);
+        else if (kind == HomeMore.Kind.HISTORY) HistoryActivity.start(this);
     }
 
     private void setLogo() {
@@ -607,7 +610,17 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
 
     @Override
     public void onItemClick(History item) {
-        VideoActivity.start(this, item.getSiteKey(), item.getVodId(), item.getVodName(), item.getVodPic(), null, item.getWallPic());
+        HistoryResume.open(this, item, new HistoryResume.Opener() {
+            @Override
+            public void openVideo(Activity activity, History history) {
+                VideoActivity.start(activity, history.getSiteKey(), history.getVodId(), history.getVodName(), history.getVodPic(), null, history.getWallPic());
+            }
+
+            @Override
+            public void openSearch(Activity activity, String keyword) {
+                SearchActivity.start(activity, keyword);
+            }
+        });
     }
 
     @Override
@@ -615,7 +628,7 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
         mRows.historyAdapter().remove(item.deleteAndSync());
         if (mRows.historyAdapter().size() > 0) return;
         mRows.historyPresenter().setDelete(false);
-        onFeed(new HomeFeed(Collections.emptyList(), 0, mFeed.getKeeps(), mFeed.getKeepTotal(), mFeed.getProgress()));
+        onFeed(new HomeFeed(Collections.emptyList(), 0, mFeed.getKeeps(), mFeed.getKeepTotal(), mFeed.getProgress(), mFeed.getConfigNames()));
     }
 
     @Override
