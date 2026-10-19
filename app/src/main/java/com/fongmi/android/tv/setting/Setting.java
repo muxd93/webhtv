@@ -779,6 +779,15 @@ public class Setting {
         Prefers.put("double_back_exit", doubleBackExit);
     }
 
+    /** 省电启动：开启后启动不自动拉起远程托管、观影记录同步与 mDNS，默认关闭 */
+    public static boolean isPowerSaveStartup() {
+        return Prefers.getBoolean("power_save_startup");
+    }
+
+    public static void putPowerSaveStartup(boolean powerSave) {
+        Prefers.put("power_save_startup", powerSave);
+    }
+
     public static boolean hasFileManager() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return false;
         return new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:" + App.get().getPackageName())).resolveActivity(App.get().getPackageManager()) != null || new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION).resolveActivity(App.get().getPackageManager()) != null;

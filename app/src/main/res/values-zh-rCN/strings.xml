@@ -663,6 +663,7 @@
     <string name="auto_next_eps">自动播放下一集</string>
     <string name="double_back_exit">双击返回退出</string>
     <string name="setting_personal">个性化</string>
+    <string name="setting_power_save">省电启动</string>
     <string name="setting_drive_check">网盘检测</string>
     <string name="setting_theme_color">主题色彩</string>
     <string name="setting_appearance">外观与语言</string>

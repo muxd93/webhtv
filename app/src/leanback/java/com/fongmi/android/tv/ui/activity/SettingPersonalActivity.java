@@ -38,11 +38,13 @@ public class SettingPersonalActivity extends BaseActivity {
     protected void initEvent() {
         mBinding.autoNext.setOnClickListener(this::setAutoNext);
         mBinding.doubleBack.setOnClickListener(this::setDoubleBack);
+        mBinding.powerSave.setOnClickListener(this::setPowerSave);
     }
 
     private void refreshTexts() {
         mBinding.autoNextText.setText(getSwitch(Setting.isAutoNextEps()));
         mBinding.doubleBackText.setText(getSwitch(Setting.isDoubleBackExit()));
+        mBinding.powerSaveText.setText(getSwitch(Setting.isPowerSaveStartup()));
     }
 
     private void setAutoNext(View view) {
@@ -53,5 +55,10 @@ public class SettingPersonalActivity extends BaseActivity {
     private void setDoubleBack(View view) {
         Setting.putDoubleBackExit(!Setting.isDoubleBackExit());
         mBinding.doubleBackText.setText(getSwitch(Setting.isDoubleBackExit()));
+    }
+
+    private void setPowerSave(View view) {
+        Setting.putPowerSaveStartup(!Setting.isPowerSaveStartup());
+        mBinding.powerSaveText.setText(getSwitch(Setting.isPowerSaveStartup()));
     }
 }
