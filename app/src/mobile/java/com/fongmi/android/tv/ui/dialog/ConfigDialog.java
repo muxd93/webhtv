@@ -28,6 +28,7 @@ import com.fongmi.android.tv.ui.custom.CustomTextListener;
 import com.fongmi.android.tv.utils.FileChooser;
 import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.ResUtil;
+import com.fongmi.android.tv.utils.UrlUtil;
 import com.github.catvod.utils.Path;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
@@ -38,6 +39,7 @@ public class ConfigDialog extends BaseAlertDialog {
     private boolean edit;
     private String ori;
     private int type;
+    private int presetIndex;
 
     public static ConfigDialog create() {
         return new ConfigDialog();
@@ -91,6 +93,7 @@ public class ConfigDialog extends BaseAlertDialog {
     protected void initEvent() {
         binding.negative.setOnClickListener(v -> dismiss());
         binding.positive.setOnClickListener(v -> onPositive());
+        binding.positive.setOnLongClickListener(v -> onPositiveLongClick());
         binding.choose.setEndIconOnClickListener(this::onChoose);
         binding.url.addTextChangedListener(new CustomTextListener() {
             @Override
@@ -166,6 +169,20 @@ public class ConfigDialog extends BaseAlertDialog {
         } else if (s.isEmpty()) {
             append = true;
         }
+    }
+
+    private boolean onPositiveLongClick() {
+        if (type != 0) return false;
+        if (presetIndex >= Config.DEFAULT_VOD_URLS.length) {
+            Notify.show(R.string.config_preset_exhausted);
+            return true;
+        }
+        String preset = Config.DEFAULT_VOD_URLS[presetIndex++];
+        binding.url.setText(preset);
+        binding.url.setSelection(preset.length());
+        if (binding.name.getText().toString().trim().isEmpty()) binding.name.setText(UrlUtil.getName(preset));
+        Notify.show(R.string.config_preset_filled);
+        return true;
     }
 
     private void onPositive() {

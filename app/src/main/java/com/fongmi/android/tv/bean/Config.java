@@ -22,6 +22,12 @@ import java.util.List;
 @Entity(indices = @Index(value = {"url", "type"}, unique = true))
 public class Config {
 
+    /** 点播源预设：设置-点播源对话框中长按确定依次回填 */
+    public static final String[] DEFAULT_VOD_URLS = {
+            "http://z.qiqiv.cn/123.txt",
+            "https://www.iyouhun.com/tv/dc"
+    };
+
     @PrimaryKey(autoGenerate = true)
     @SerializedName("id")
     private int id;

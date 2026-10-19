@@ -666,6 +666,8 @@
     <string name="double_back_exit">Double back to exit</string>
     <string name="setting_personal">Personal</string>
     <string name="setting_power_save">Power-save startup</string>
+    <string name="config_preset_filled">Preset source filled in; press OK again to save</string>
+    <string name="config_preset_exhausted">No more preset sources</string>
     <string name="setting_drive_check">Drive link check</string>
     <string name="setting_theme_color">Theme color</string>
     <string name="setting_appearance">Appearance &amp; language</string>
