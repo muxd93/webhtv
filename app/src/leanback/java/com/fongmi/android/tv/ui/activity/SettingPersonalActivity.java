@@ -44,6 +44,7 @@ public class SettingPersonalActivity extends BaseActivity {
         mBinding.globalHistory.setOnClickListener(this::setGlobalHistory);
         mBinding.history.setOnClickListener(this::onHistory);
         mBinding.searchThreads.setOnClickListener(this::setSearchThreads);
+        mBinding.startupPage.setOnClickListener(this::setStartupPage);
     }
 
     private void refreshTexts() {
@@ -52,6 +53,15 @@ public class SettingPersonalActivity extends BaseActivity {
         mBinding.powerSaveText.setText(getSwitch(Setting.isPowerSaveStartup()));
         mBinding.globalHistoryText.setText(getGlobalHistoryModeText());
         mBinding.searchThreadsText.setText(String.valueOf(Setting.getSearchThreads()));
+        mBinding.startupPageText.setText(getStartupPageLabel());
+    }
+
+    private int getStartupPageLabel() {
+        int page = Setting.getStartupPage();
+        if (page == Setting.STARTUP_LIVE) return R.string.startup_page_live;
+        if (page == Setting.STARTUP_HISTORY) return R.string.startup_page_history;
+        if (page == Setting.STARTUP_KEEP) return R.string.startup_page_keep;
+        return R.string.startup_page_home;
     }
 
     private String getGlobalHistoryModeText() {
@@ -93,5 +103,10 @@ public class SettingPersonalActivity extends BaseActivity {
         // 立即调整共享搜索池，下一次搜索即按新线程数执行
         Task.newSearchExecutor(threads);
         mBinding.searchThreadsText.setText(String.valueOf(threads));
+    }
+
+    private void setStartupPage(View view) {
+        Setting.putStartupPage(Setting.nextStartupPage());
+        mBinding.startupPageText.setText(getStartupPageLabel());
     }
 }

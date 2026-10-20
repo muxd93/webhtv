@@ -98,6 +98,15 @@ public class SettingFragment extends BaseFragment implements ConfigListener, Sit
         mBinding.incognitoText.setText(getSwitch(Setting.isIncognito()));
         mBinding.autoNextText.setText(getSwitch(Setting.isAutoNextEps()));
         mBinding.searchThreadsText.setText(String.valueOf(Setting.getSearchThreads()));
+        mBinding.startupPageText.setText(getStartupPageLabel());
+    }
+
+    private int getStartupPageLabel() {
+        int page = Setting.getStartupPage();
+        if (page == Setting.STARTUP_LIVE) return R.string.startup_page_live;
+        if (page == Setting.STARTUP_HISTORY) return R.string.startup_page_history;
+        if (page == Setting.STARTUP_KEEP) return R.string.startup_page_keep;
+        return R.string.startup_page_home;
     }
 
     private void setCacheText() {
@@ -131,6 +140,7 @@ public class SettingFragment extends BaseFragment implements ConfigListener, Sit
         mBinding.incognito.setOnClickListener(this::setIncognito);
         mBinding.autoNext.setOnClickListener(this::setAutoNext);
         mBinding.searchThreads.setOnClickListener(this::setSearchThreads);
+        mBinding.startupPage.setOnClickListener(this::setStartupPage);
         mBinding.vodHistory.setOnClickListener(this::onVodHistory);
         mBinding.liveHistory.setOnClickListener(this::onLiveHistory);
         mBinding.wallDefault.setOnClickListener(this::setWallDefault);
@@ -292,6 +302,11 @@ public class SettingFragment extends BaseFragment implements ConfigListener, Sit
         // 立即调整共享搜索池，下一次搜索即按新线程数执行
         Task.newSearchExecutor(threads);
         mBinding.searchThreadsText.setText(String.valueOf(threads));
+    }
+
+    private void setStartupPage(View view) {
+        Setting.putStartupPage(Setting.nextStartupPage());
+        mBinding.startupPageText.setText(getStartupPageLabel());
     }
 
     private void setDoh(View view) {

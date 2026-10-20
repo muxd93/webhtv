@@ -14,7 +14,9 @@ import com.fongmi.android.tv.databinding.AdapterVodBinding;
 import com.fongmi.android.tv.utils.HistoryProgressFormatter;
 import com.fongmi.android.tv.utils.ImgUtil;
 
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 
 public class HistoryAdapter extends BaseDiffAdapter<History, HistoryAdapter.ViewHolder> {
@@ -60,9 +62,12 @@ public class HistoryAdapter extends BaseDiffAdapter<History, HistoryAdapter.View
 
     @Override
     public void clear() {
+        // 全局模式下列表含多配置历史，按去重 cid 逐个清空（本地+同步）；本地模式等价于清当前配置
+        List<Integer> cids = new ArrayList<>();
+        for (History item : getItems()) if (!cids.contains(item.getCid())) cids.add(item.getCid());
         super.clear();
         setDelete(false);
-        History.deleteAndSync(VodConfig.getCid());
+        for (int cid : cids) History.deleteAndSync(cid);
     }
 
     @NonNull

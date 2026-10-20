@@ -85,7 +85,20 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         setTheme(R.style.Theme_App);
+        // super.onCreate 必须调用（框架强校验），路由放在其后；本页留在栈底，从目标页返回可回主页
         super.onCreate(savedInstanceState);
+        routeStartupPage(savedInstanceState);
+    }
+
+    private void routeStartupPage(Bundle savedInstanceState) {
+        // 进程重建（恢复栈）不重复路由；仅 launcher 冷启动路由，应用内 CLEAR_TOP 拉起不跳转
+        if (savedInstanceState != null) return;
+        android.content.Intent intent = getIntent();
+        if (intent == null || !Intent.ACTION_MAIN.equals(intent.getAction()) || !intent.hasCategory(Intent.CATEGORY_LAUNCHER)) return;
+        int page = Setting.getStartupPage();
+        if (page == Setting.STARTUP_LIVE) LiveActivity.start(this);
+        else if (page == Setting.STARTUP_HISTORY) HistoryActivity.start(this);
+        else if (page == Setting.STARTUP_KEEP) KeepActivity.start(this);
     }
 
     @Override

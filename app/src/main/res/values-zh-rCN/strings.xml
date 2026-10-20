@@ -666,6 +666,11 @@
     <string name="setting_power_save">省电启动</string>
     <string name="setting_global_history">全局历史</string>
     <string name="setting_search_thread">搜索线程数</string>
+    <string name="setting_startup_page">启动页面</string>
+    <string name="startup_page_home">首页</string>
+    <string name="startup_page_live">直播</string>
+    <string name="startup_page_history">历史</string>
+    <string name="startup_page_keep">收藏</string>
     <string name="global_history_auto">自动切换</string>
     <string name="global_history_search">全局搜索</string>
     <string name="config_preset_filled">已回填预设源，再次点击确定保存</string>

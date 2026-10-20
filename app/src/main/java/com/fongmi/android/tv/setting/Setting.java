@@ -844,6 +844,29 @@ public class Setting {
         return Math.max(1, Math.min(threads, 100));
     }
 
+    // 默认启动页面：0 首页（现状）/ 1 直播 / 2 历史 / 3 收藏
+    public static final int STARTUP_HOME = 0;
+    public static final int STARTUP_LIVE = 1;
+    public static final int STARTUP_HISTORY = 2;
+    public static final int STARTUP_KEEP = 3;
+    public static final int STARTUP_PAGE_COUNT = 4;
+
+    public static int getStartupPage() {
+        return clampStartupPage(Prefers.getInt("startup_page", STARTUP_HOME));
+    }
+
+    public static void putStartupPage(int page) {
+        Prefers.put("startup_page", clampStartupPage(page));
+    }
+
+    public static int nextStartupPage() {
+        return (getStartupPage() + 1) % STARTUP_PAGE_COUNT;
+    }
+
+    private static int clampStartupPage(int page) {
+        return page >= STARTUP_HOME && page < STARTUP_PAGE_COUNT ? page : STARTUP_HOME;
+    }
+
     public static boolean hasFileManager() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return false;
         return new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:" + App.get().getPackageName())).resolveActivity(App.get().getPackageManager()) != null || new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION).resolveActivity(App.get().getPackageManager()) != null;
