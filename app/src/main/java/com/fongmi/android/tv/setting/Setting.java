@@ -822,6 +822,28 @@ public class Setting {
         return mode == GLOBAL_HISTORY_AUTO || mode == GLOBAL_HISTORY_SEARCH ? mode : GLOBAL_HISTORY_OFF;
     }
 
+    /** 多站搜索并发线程数，默认 20（保持既有行为）；弱设备可调低，站点多的配置可调高 */
+    public static final int SEARCH_THREADS_DEFAULT = 20;
+    public static final int[] SEARCH_THREADS_OPTIONS = {4, 8, 16, 20, 32, 48, 64};
+
+    public static int getSearchThreads() {
+        return clampSearchThreads(Prefers.getInt("search_threads", SEARCH_THREADS_DEFAULT));
+    }
+
+    public static void putSearchThreads(int threads) {
+        Prefers.put("search_threads", clampSearchThreads(threads));
+    }
+
+    public static int nextSearchThreads() {
+        int current = getSearchThreads();
+        for (int option : SEARCH_THREADS_OPTIONS) if (option > current) return option;
+        return SEARCH_THREADS_OPTIONS[0];
+    }
+
+    private static int clampSearchThreads(int threads) {
+        return Math.max(1, Math.min(threads, 100));
+    }
+
     public static boolean hasFileManager() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return false;
         return new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:" + App.get().getPackageName())).resolveActivity(App.get().getPackageManager()) != null || new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION).resolveActivity(App.get().getPackageManager()) != null;

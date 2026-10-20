@@ -167,6 +167,9 @@ public class CollectActivity extends BaseActivity implements CollectAdapter.OnCl
         mViewModel = new ViewModelProvider(this).get(SiteViewModel.class).init();
         mViewModel.getSearch().observe(this, this::setCollect);
         mViewModel.getResult().observe(this, this::setSearch);
+        mViewModel.getSearchProgress().observe(this, progress -> {
+            if (progress != null) mCollectAdapter.setProgress(progress.current(), progress.total());
+        });
     }
 
     private void saveKeyword() {

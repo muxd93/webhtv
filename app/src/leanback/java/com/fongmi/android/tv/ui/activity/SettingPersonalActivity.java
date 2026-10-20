@@ -12,6 +12,7 @@ import com.fongmi.android.tv.databinding.ActivitySettingPersonalBinding;
 import com.fongmi.android.tv.event.RefreshEvent;
 import com.fongmi.android.tv.setting.Setting;
 import com.fongmi.android.tv.ui.base.BaseActivity;
+import com.fongmi.android.tv.utils.Task;
 
 public class SettingPersonalActivity extends BaseActivity {
 
@@ -42,6 +43,7 @@ public class SettingPersonalActivity extends BaseActivity {
         mBinding.powerSave.setOnClickListener(this::setPowerSave);
         mBinding.globalHistory.setOnClickListener(this::setGlobalHistory);
         mBinding.history.setOnClickListener(this::onHistory);
+        mBinding.searchThreads.setOnClickListener(this::setSearchThreads);
     }
 
     private void refreshTexts() {
@@ -49,6 +51,7 @@ public class SettingPersonalActivity extends BaseActivity {
         mBinding.doubleBackText.setText(getSwitch(Setting.isDoubleBackExit()));
         mBinding.powerSaveText.setText(getSwitch(Setting.isPowerSaveStartup()));
         mBinding.globalHistoryText.setText(getGlobalHistoryModeText());
+        mBinding.searchThreadsText.setText(String.valueOf(Setting.getSearchThreads()));
     }
 
     private String getGlobalHistoryModeText() {
@@ -82,5 +85,13 @@ public class SettingPersonalActivity extends BaseActivity {
 
     private void onHistory(View view) {
         HistoryActivity.start(this);
+    }
+
+    private void setSearchThreads(View view) {
+        int threads = Setting.nextSearchThreads();
+        Setting.putSearchThreads(threads);
+        // 立即调整共享搜索池，下一次搜索即按新线程数执行
+        Task.newSearchExecutor(threads);
+        mBinding.searchThreadsText.setText(String.valueOf(threads));
     }
 }

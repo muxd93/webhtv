@@ -40,6 +40,7 @@ import com.fongmi.android.tv.utils.AppVersion;
 import com.fongmi.android.tv.utils.FileUtil;
 import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.PermissionUtil;
+import com.fongmi.android.tv.utils.Task;
 import com.github.catvod.bean.Doh;
 import com.github.catvod.net.OkHttp;
 
@@ -96,6 +97,7 @@ public class SettingFragment extends BaseFragment implements ConfigListener, Sit
         mBinding.dohText.setText(getDohList()[getDohIndex()]);
         mBinding.incognitoText.setText(getSwitch(Setting.isIncognito()));
         mBinding.autoNextText.setText(getSwitch(Setting.isAutoNextEps()));
+        mBinding.searchThreadsText.setText(String.valueOf(Setting.getSearchThreads()));
     }
 
     private void setCacheText() {
@@ -128,6 +130,7 @@ public class SettingFragment extends BaseFragment implements ConfigListener, Sit
         mBinding.wall.setOnLongClickListener(this::onWallEdit);
         mBinding.incognito.setOnClickListener(this::setIncognito);
         mBinding.autoNext.setOnClickListener(this::setAutoNext);
+        mBinding.searchThreads.setOnClickListener(this::setSearchThreads);
         mBinding.vodHistory.setOnClickListener(this::onVodHistory);
         mBinding.liveHistory.setOnClickListener(this::onLiveHistory);
         mBinding.wallDefault.setOnClickListener(this::setWallDefault);
@@ -281,6 +284,14 @@ public class SettingFragment extends BaseFragment implements ConfigListener, Sit
     private void setAutoNext(View view) {
         Setting.putAutoNextEps(!Setting.isAutoNextEps());
         mBinding.autoNextText.setText(getSwitch(Setting.isAutoNextEps()));
+    }
+
+    private void setSearchThreads(View view) {
+        int threads = Setting.nextSearchThreads();
+        Setting.putSearchThreads(threads);
+        // 立即调整共享搜索池，下一次搜索即按新线程数执行
+        Task.newSearchExecutor(threads);
+        mBinding.searchThreadsText.setText(String.valueOf(threads));
     }
 
     private void setDoh(View view) {

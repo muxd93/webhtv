@@ -667,6 +667,7 @@
     <string name="setting_personal">Personal</string>
     <string name="setting_power_save">Power-save startup</string>
     <string name="setting_global_history">Global history</string>
+    <string name="setting_search_thread">Search threads</string>
     <string name="global_history_auto">Auto switch</string>
     <string name="global_history_search">Global search</string>
     <string name="config_preset_filled">Preset source filled in; press OK again to save</string>

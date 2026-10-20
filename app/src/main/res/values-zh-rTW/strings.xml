@@ -649,6 +649,7 @@
     <string name="setting_personal">個人化</string>
     <string name="setting_power_save">省電啟動</string>
     <string name="setting_global_history">全域歷史</string>
+    <string name="setting_search_thread">搜尋執行緒數</string>
     <string name="global_history_auto">自動切換</string>
     <string name="global_history_search">全域搜尋</string>
     <string name="config_preset_filled">已回填預設源，再次點擊確定儲存</string>
