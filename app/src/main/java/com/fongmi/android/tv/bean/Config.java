@@ -10,6 +10,8 @@ import androidx.room.Index;
 import androidx.room.PrimaryKey;
 
 import com.fongmi.android.tv.App;
+import com.fongmi.android.tv.api.config.ConfigRepository;
+import com.fongmi.android.tv.api.config.ConfigService;
 import com.fongmi.android.tv.db.AppDatabase;
 import com.github.catvod.utils.Prefers;
 import com.google.gson.annotations.SerializedName;
@@ -21,8 +23,24 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 「一个源条目」：点播源(type=0)/直播源(type=1)/壁纸源(type=2)，一行一个 URL。
+ * 注意与 api.config 包下的 VodConfig/LiveConfig/WallConfig（已加载的配置运行态）区分：
+ * 本类只是源清单中的一行数据，加载后的 sites/lives/parses 等在那些类里。
+ *
+ * kind=SINGLE 为普通单源；kind=DEPOT 为多仓入口，其子源平铺为本类型的其他行，
+ * 父子关系持久化在 ConfigDepot 表，可整组刷新/删除。
+ * active 为显式激活标记（每 type 至多一个），替代早期依赖 time DESC 的隐式推断。
+ */
 @Entity(indices = @Index(value = {"url", "type"}, unique = true))
 public class Config {
+
+    public static final int VOD = 0;
+    public static final int LIVE = 1;
+    public static final int WALL = 2;
+
+    public static final int SINGLE = 0;
+    public static final int DEPOT = 1;
 
     /** 点播源预设：设置-点播源对话框中长按确定依次回填 */
     public static final String[] DEFAULT_VOD_URLS = {
@@ -49,6 +67,14 @@ public class Config {
     private String home;
     @SerializedName("parse")
     private String parse;
+    @SerializedName("kind")
+    private int kind;
+    @SerializedName("active")
+    private boolean active;
+    @SerializedName("etag")
+    private String etag;
+    @SerializedName("lastModified")
+    private String lastModified;
 
     @Ignore
     @SerializedName("notice")
@@ -72,11 +98,11 @@ public class Config {
     }
 
     public static Config create(int type, String url) {
-        return new Config().type(type).url(url).insert();
+        return new Config().type(type).url(url);
     }
 
     public static Config create(int type, String url, String name) {
-        return new Config().type(type).url(url).name(name).insert();
+        return new Config().type(type).url(url).name(name);
     }
 
     public static List<Config> getAll(int type) {
@@ -87,31 +113,25 @@ public class Config {
         return AppDatabase.get().getConfigDao().findUrlByType(0);
     }
 
-    public static void delete(String url) {
-        AppDatabase.get().getConfigDao().delete(url);
-    }
-
-    public static void delete(String url, int type) {
-        AppDatabase.get().getConfigDao().delete(url, type);
-    }
-
     public static Config vod() {
-        Config item = AppDatabase.get().getConfigDao().findOne(0);
-        return item == null ? create(0) : item;
+        return ConfigRepository.getActiveOrEmpty(VOD);
     }
 
     public static Config live() {
-        Config item = AppDatabase.get().getConfigDao().findOne(1);
-        return item == null ? create(1) : item;
+        return ConfigRepository.getActiveOrEmpty(LIVE);
     }
 
     public static Config wall() {
-        Config item = AppDatabase.get().getConfigDao().findOne(2);
-        return item == null ? create(2) : item;
+        return ConfigRepository.getActiveOrEmpty(WALL);
     }
 
     public static Config find(int id) {
         return AppDatabase.get().getConfigDao().findById(id);
+    }
+
+    /** 按规范化 URL 查找；不存在时返回未落库的空 id 对象（不再隐式 insert） */
+    public static Config find(String url, int type) {
+        return ConfigRepository.findByUrl(url, type);
     }
 
     /** 全部配置的 id→名称映射，供跨配置历史/收藏标注来源配置 */
@@ -119,30 +139,6 @@ public class Config {
         Map<Integer, String> names = new HashMap<>();
         for (Config config : AppDatabase.get().getConfigDao().findAll()) names.put(config.getId(), config.getName());
         return names;
-    }
-
-    public static Config find(String url, int type) {
-        Config item = AppDatabase.get().getConfigDao().find(url, type);
-        return item == null ? create(type, url) : item.type(type);
-    }
-
-    public static Config find(String url, String name, int type) {
-        Config item = AppDatabase.get().getConfigDao().find(url, type);
-        return item == null ? create(type, url, name) : item.type(type).name(name);
-    }
-
-    public static Config find(Config config) {
-        return find(config, config.getType());
-    }
-
-    public static Config find(Config config, int type) {
-        Config item = AppDatabase.get().getConfigDao().find(config.getUrl(), type);
-        return item == null ? create(type, config.getUrl(), config.getName()) : item.type(type).name(config.getName());
-    }
-
-    public static Config find(Depot depot, int type) {
-        Config item = AppDatabase.get().getConfigDao().find(depot.getUrl(), type);
-        return item == null ? create(type, depot.getUrl(), depot.getName()) : item.type(type).name(depot.getName());
     }
 
     public int getId() {
@@ -159,6 +155,34 @@ public class Config {
 
     public void setType(int type) {
         this.type = type;
+    }
+
+    public int getKind() {
+        return kind;
+    }
+
+    public void setKind(int kind) {
+        this.kind = kind;
+    }
+
+    public boolean isActive() {
+        return active;
+    }
+
+    public void setActive(boolean active) {
+        this.active = active;
+    }
+
+    public boolean isDepot() {
+        return kind == DEPOT;
+    }
+
+    public long getTime() {
+        return time;
+    }
+
+    public void setTime(long time) {
+        this.time = time;
     }
 
     public String getUrl() {
@@ -209,12 +233,20 @@ public class Config {
         this.parse = parse;
     }
 
-    public long getTime() {
-        return time;
+    public String getEtag() {
+        return etag;
     }
 
-    public void setTime(long time) {
-        this.time = time;
+    public void setEtag(String etag) {
+        this.etag = etag;
+    }
+
+    public String getLastModified() {
+        return lastModified;
+    }
+
+    public void setLastModified(String lastModified) {
+        this.lastModified = lastModified;
     }
 
     public String getNotice() {
@@ -236,6 +268,15 @@ public class Config {
     public Config type(int type) {
         setType(type);
         return this;
+    }
+
+    public Config kind(int kind) {
+        setKind(kind);
+        return this;
+    }
+
+    public Config depot() {
+        return kind(DEPOT);
     }
 
     public Config url(String url) {
@@ -263,29 +304,19 @@ public class Config {
         return "";
     }
 
-    public Config insert() {
-        if (isEmpty()) return this;
-        setId(Math.toIntExact(AppDatabase.get().getConfigDao().insert(this)));
-        return this;
-    }
-
+    /** 落库或更新（唯一键 url+type 冲突时回查补齐 id，杜绝 id=-1 静默丢失） */
     public Config save() {
-        if (isEmpty()) return this;
-        AppDatabase.get().getConfigDao().insertOrUpdate(this);
-        return this;
+        return ConfigRepository.upsert(this);
     }
 
+    /** 激活并成为当前源（显式 active + Prefers 镜像） */
     public Config update() {
-        if (isEmpty()) return this;
-        setTime(System.currentTimeMillis());
-        Prefers.put("config_" + getType(), getUrl());
-        return save();
+        return ConfigRepository.activate(this);
     }
 
+    /** 删除配置：多仓级联删子配置与关系；历史/收藏保留，由 UI 标注来源已失效 */
     public void delete() {
-        AppDatabase.get().getConfigDao().delete(getUrl(), getType());
-        History.delete(getId());
-        Keep.delete(getId());
+        ConfigService.delete(this);
     }
 
     @NonNull

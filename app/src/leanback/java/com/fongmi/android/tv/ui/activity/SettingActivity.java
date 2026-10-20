@@ -92,8 +92,6 @@ public class SettingActivity extends BaseActivity implements ConfigListener, Sit
     private void setOtherText() {
         mBinding.dohText.setText(getDohList()[getDohIndex()]);
         mBinding.incognitoText.setText(getSwitch(Setting.isIncognito()));
-        mBinding.autoNextText.setText(getSwitch(Setting.isAutoNextEps()));
-        mBinding.doubleBackText.setText(getSwitch(Setting.isDoubleBackExit()));
         mBinding.languageText.setText((language = ResUtil.getStringArray(R.array.select_language))[Setting.getLanguageIndex()]);
         mBinding.sizeText.setText((size = ResUtil.getStringArray(R.array.select_size))[PlayerSetting.getSize()]);
     }
@@ -129,10 +127,10 @@ public class SettingActivity extends BaseActivity implements ConfigListener, Sit
         mBinding.wall.setOnLongClickListener(this::onWallEdit);
         mBinding.incognito.setOnClickListener(this::setIncognito);
         mBinding.personal.setOnClickListener(this::onPersonal);
-        mBinding.autoNext.setOnClickListener(this::setAutoNext);
-        mBinding.doubleBack.setOnClickListener(this::setDoubleBack);
         mBinding.vodHistory.setOnClickListener(this::onVodHistory);
+        mBinding.vodRefresh.setOnClickListener(this::onVodRefresh);
         mBinding.liveHistory.setOnClickListener(this::onLiveHistory);
+        mBinding.liveRefresh.setOnClickListener(this::onLiveRefresh);
         mBinding.wallDefault.setOnClickListener(this::setWallDefault);
         mBinding.wallRefresh.setOnClickListener(this::setWallRefresh);
         mBinding.wallRefresh.setOnLongClickListener(this::onWallHistory);
@@ -238,6 +236,14 @@ public class SettingActivity extends BaseActivity implements ConfigListener, Sit
         HistoryDialog.create().live().show(this);
     }
 
+    private void onVodRefresh(View view) {
+        VodConfig.get().init().load(getCallback());
+    }
+
+    private void onLiveRefresh(View view) {
+        LiveConfig.get().init().load(getCallback());
+    }
+
     private void onPlayer(View view) {
         SettingPlayerActivity.start(this);
     }
@@ -278,16 +284,6 @@ public class SettingActivity extends BaseActivity implements ConfigListener, Sit
     private void setIncognito(View view) {
         Setting.putIncognito(!Setting.isIncognito());
         mBinding.incognitoText.setText(getSwitch(Setting.isIncognito()));
-    }
-
-    private void setAutoNext(View view) {
-        Setting.putAutoNextEps(!Setting.isAutoNextEps());
-        mBinding.autoNextText.setText(getSwitch(Setting.isAutoNextEps()));
-    }
-
-    private void setDoubleBack(View view) {
-        Setting.putDoubleBackExit(!Setting.isDoubleBackExit());
-        mBinding.doubleBackText.setText(getSwitch(Setting.isDoubleBackExit()));
     }
 
     private void setSize(View view) {

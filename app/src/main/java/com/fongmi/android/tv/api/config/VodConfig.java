@@ -103,6 +103,11 @@ public class VodConfig extends BaseConfig {
     }
 
     @Override
+    protected int getType() {
+        return VOD;
+    }
+
+    @Override
     protected Config defaultConfig() {
         return Config.vod();
     }
@@ -117,6 +122,20 @@ public class VodConfig extends BaseConfig {
     protected void load(Config config) throws Throwable {
         String json = Decoder.getJson(UrlUtil.convert(config.getUrl()), TAG);
         checkJson(config, Json.parse(json).getAsJsonObject());
+        config.setJson(json);
+    }
+
+    @Override
+    protected boolean loadFromCache(Config config, Callback callback) {
+        try {
+            JsonObject object = Json.parse(config.getJson()).getAsJsonObject();
+            if (object.has("urls") || object.has("msg")) return false;
+            checkJson(config, object);
+            App.post(callback::success);
+            return true;
+        } catch (Throwable e) {
+            return false;
+        }
     }
 
     @Override
@@ -146,11 +165,11 @@ public class VodConfig extends BaseConfig {
 
     private void parseDepot(Config config, JsonObject object) throws Throwable {
         List<Depot> items = Depot.arrayFrom(object.getAsJsonArray("urls").toString());
-        List<Config> configs = new ArrayList<>();
-        for (Depot item : items) configs.add(Config.find(item, VOD));
-        if (configs.isEmpty()) throw new Exception("Depot urls is empty");
-        load(this.config = configs.get(0));
-        Config.delete(config.getUrl());
+        // 多仓入口本身保留为 Config(kind=DEPOT)，子源平铺但可溯源、可整组刷新/删除
+        Config depot = ConfigRepository.upsert(new Config().type(VOD).depot().url(config.getUrl()).name(config.getName()));
+        List<Config> children = ConfigService.registerDepot(depot, items);
+        Config target = children.stream().filter(Config::isActive).findFirst().orElse(children.get(0));
+        load(this.config = target);
     }
 
     private void parseConfig(Config config, JsonObject object) {
@@ -178,24 +197,24 @@ public class VodConfig extends BaseConfig {
 
     private void initLive(Config config, JsonObject object) {
         if (Json.isEmpty(object, "lives")) return;
-        Config temp = Config.find(config, LIVE).save();
+        Config temp = ConfigRepository.upsert(new Config().type(LIVE).url(config.getUrl()).name(config.getName()));
         boolean sync = LiveConfig.get().needSync(config.getUrl());
-        if (sync) LiveConfig.get().config(temp.update()).parse(object);
+        if (sync) LiveConfig.get().config(ConfigRepository.activate(temp)).parse(object);
     }
 
     private void initWall(Config config, JsonObject object) {
         if (Json.isEmpty(object, "wallpaper")) return;
         this.wall = Json.safeString(object, "wallpaper");
-        Config temp = Config.find(wall, config.getName(), WALL).save();
+        Config temp = ConfigRepository.upsert(new Config().type(WALL).url(wall).name(config.getName()));
         boolean sync = WallConfig.get().needSync(wall);
-        if (sync) WallConfig.get().config(temp.update());
+        if (sync) WallConfig.get().config(ConfigRepository.activate(temp));
     }
 
     private void initSite(Config config, JsonObject object) {
         String spider = Json.safeString(object, "spider");
         BaseLoader.get().parseJar(spider, true);
-        setSites(Json.safeListElement(object, "sites").stream().map(e -> Site.objectFrom(e, spider)).distinct().collect(Collectors.toCollection(ArrayList::new)));
-        Map<String, Site> items = Site.findAll().stream().collect(Collectors.toMap(Site::getKey, Function.identity()));
+        setSites(Json.safeListElement(object, "sites").stream().map(e -> Site.objectFrom(e, spider).sourceId(config.getId())).distinct().collect(Collectors.toCollection(ArrayList::new)));
+        Map<String, Site> items = Site.findBySource(config.getId()).stream().collect(Collectors.toMap(Site::getKey, Function.identity()));
         getSites().forEach(site -> site.sync(items.get(site.getKey())));
         CustomCspSetting.Result custom = CustomCspSetting.inject(getSites());
         Site home = !custom.home().isEmpty() ? custom.home() : getSites().stream().filter(item -> item.getKey().equals(config.getHome())).findFirst().orElse(getSites().isEmpty() ? new Site() : getSites().get(0));

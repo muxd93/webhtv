@@ -1370,7 +1370,7 @@ public class LiveActivity extends PlaybackActivity implements CustomKeyDown.List
 
     @Override
     protected void onError(String msg) {
-        Track.delete(player().getKey());
+        Track.delete(player().getCid(), player().getKey());
         player().resetTrack();
         player().reset();
         player().stop();

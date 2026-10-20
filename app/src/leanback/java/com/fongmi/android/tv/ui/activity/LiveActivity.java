@@ -527,7 +527,7 @@ public class LiveActivity extends PlaybackActivity implements GroupAdapter.OnCli
 
     @Override
     protected void onError(String msg) {
-        Track.delete(player().getKey());
+        Track.delete(player().getCid(), player().getKey());
         player().resetTrack();
         player().reset();
         player().stop();

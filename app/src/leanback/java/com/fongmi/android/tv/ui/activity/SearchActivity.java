@@ -15,6 +15,7 @@ import androidx.viewbinding.ViewBinding;
 
 import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.R;
+import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.bean.Word;
 import com.fongmi.android.tv.databinding.ActivitySearchBinding;
 import com.fongmi.android.tv.impl.Callback;
@@ -150,6 +151,10 @@ public class SearchActivity extends BaseActivity implements WordAdapter.OnClickL
         mBinding.recordRecycler.setHasFixedSize(false);
         mBinding.recordRecycler.setLayoutManager(new FlexboxLayoutManager(this, FlexDirection.ROW));
         mBinding.recordRecycler.setAdapter(mRecordAdapter = new RecordAdapter(this));
+        mBinding.recordClear.setOnClickListener(v -> {
+            mRecordAdapter.clearAll();
+            Notify.show(R.string.search_record_cleared);
+        });
     }
 
     private void setWordRecycler(RecyclerView recyclerView, WordAdapter adapter) {

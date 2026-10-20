@@ -5461,7 +5461,7 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
     @Override
     protected void onError(String msg) {
         recordPlayHealth(false, msg);
-        Track.delete(player().getKey());
+        Track.delete(player().getCid(), player().getKey());
         mClock.setCallback(null);
         clearLyrics();
         clearKaraokeState();

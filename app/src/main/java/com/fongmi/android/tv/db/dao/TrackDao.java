@@ -15,14 +15,14 @@ public abstract class TrackDao extends BaseDao<Track> {
     @Query("SELECT * FROM Track")
     public abstract List<Track> findAll();
 
-    @Query("SELECT * FROM Track WHERE `key` = :key")
-    public abstract List<Track> find(String key);
+    @Query("SELECT * FROM Track WHERE cid = :cid AND `key` = :key")
+    public abstract List<Track> find(int cid, String key);
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     public abstract Long insert(Track item);
 
-    @Query("DELETE FROM Track WHERE `key` = :key")
-    public abstract void delete(String key);
+    @Query("DELETE FROM Track WHERE cid = :cid AND `key` = :key")
+    public abstract void delete(int cid, String key);
 
     @Query("DELETE FROM Track")
     public abstract void deleteAll();

@@ -6,6 +6,8 @@ import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.api.config.LiveConfig;
 import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.api.config.WallConfig;
+import com.fongmi.android.tv.api.config.ConfigRepository;
+import com.fongmi.android.tv.api.config.ConfigService;
 import com.fongmi.android.tv.bean.Config;
 import com.fongmi.android.tv.bean.Site;
 import com.fongmi.android.tv.impl.Callback;
@@ -33,7 +35,7 @@ public final class RemoteConfigOps {
         String url = string(payload, "url");
         String name = string(payload, "name");
         if (TextUtils.isEmpty(url)) return RemoteCommandResult.failure("Missing config url");
-        Config.find(url, type).name(name).save();
+        ConfigRepository.upsert(ConfigRepository.findByUrl(url, type).name(name));
         return RemoteCommandResult.success("Config saved", data());
     }
 
@@ -41,7 +43,7 @@ public final class RemoteConfigOps {
         int type = number(payload, "type", 0);
         String url = string(payload, "url");
         if (TextUtils.isEmpty(url)) return RemoteCommandResult.failure("Missing config url");
-        Config config = Config.find(url, type);
+        Config config = ConfigRepository.findByUrl(url, type);
         if (config.isEmpty()) return RemoteCommandResult.failure("Config not found");
         App.post(() -> {
             if (type == 1) LiveConfig.load(config, new Callback());
@@ -55,7 +57,7 @@ public final class RemoteConfigOps {
         int type = number(payload, "type", 0);
         String url = string(payload, "url");
         if (TextUtils.isEmpty(url)) return RemoteCommandResult.failure("Missing config url");
-        Config.find(url, type).delete();
+        ConfigService.delete(ConfigRepository.findByUrl(url, type));
         return RemoteCommandResult.success("Config deleted", data());
     }
 
@@ -157,7 +159,7 @@ public final class RemoteConfigOps {
         String url = string(payload, "url");
         String name = string(payload, "name");
         if (TextUtils.isEmpty(url)) return null;
-        return Config.find(url, 0).name(name).save();
+        return ConfigRepository.upsert(ConfigRepository.findByUrl(url, 0).name(name));
     }
 
     private static String homeKey(Config config, JsonObject payload) {

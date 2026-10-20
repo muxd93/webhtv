@@ -44,6 +44,13 @@ public class RecordAdapter extends RecyclerView.Adapter<RecordAdapter.ViewHolder
         if (mItems.size() > 9) mItems.remove(9);
     }
 
+    public void clearAll() {
+        mItems.clear();
+        Setting.putKeyword(App.gson().toJson(mItems));
+        notifyDataSetChanged();
+        listener.onDataChanged(0);
+    }
+
     public void add(String item) {
         checkToAdd(item);
         notifyDataSetChanged();

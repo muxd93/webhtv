@@ -73,10 +73,42 @@
             android:layout_height="36dp"
             android:minHeight="36dp"
             android:minWidth="84dp"
-            android:nextFocusDown="@id/negative"
+            android:nextFocusDown="@id/detail"
             android:paddingStart="10dp"
             android:paddingEnd="10dp"
             android:text="@string/setting_disable"
+            android:textColor="@color/dialog_tonal_button_text"
+            app:backgroundTint="@color/dialog_tonal_button_bg" />
+
+    </androidx.appcompat.widget.LinearLayoutCompat>
+
+    <androidx.appcompat.widget.LinearLayoutCompat
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <com.google.android.material.textview.MaterialTextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="16dp"
+            android:layout_weight="1"
+            android:text="@string/site_health_detail_title"
+            android:textColor="@color/black"
+            android:textSize="16sp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/detail"
+            style="@style/Widget.Material3.Button.TonalButton"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:minHeight="36dp"
+            android:minWidth="84dp"
+            android:nextFocusDown="@id/negative"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp"
+            android:text="@string/site_health_detail_open"
             android:textColor="@color/dialog_tonal_button_text"
             app:backgroundTint="@color/dialog_tonal_button_bg" />
 

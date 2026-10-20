@@ -12,7 +12,7 @@ import com.fongmi.android.tv.db.AppDatabase;
 import java.util.Collections;
 import java.util.List;
 
-@Entity(indices = @Index(value = {"key", "type"}, unique = true))
+@Entity(indices = @Index(value = {"cid", "key", "type"}, unique = true))
 public class Track {
 
     private static final String DISABLED = "__disabled__";
@@ -24,6 +24,7 @@ public class Track {
     private String name;
     private String format;
     private boolean selected;
+    private int cid;
     @Ignore
     private String playerId;
 
@@ -39,13 +40,13 @@ public class Track {
         return track;
     }
 
-    public static List<Track> find(String key) {
-        return TextUtils.isEmpty(key) ? Collections.emptyList() : AppDatabase.get().getTrackDao().find(key);
+    public static List<Track> find(int cid, String key) {
+        return TextUtils.isEmpty(key) ? Collections.emptyList() : AppDatabase.get().getTrackDao().find(cid, key);
     }
 
-    public static void delete(String key) {
+    public static void delete(int cid, String key) {
         if (TextUtils.isEmpty(key)) return;
-        AppDatabase.get().getTrackDao().delete(key);
+        AppDatabase.get().getTrackDao().delete(cid, key);
     }
 
     public int getId() {
@@ -114,6 +115,19 @@ public class Track {
         return this;
     }
 
+    public int getCid() {
+        return cid;
+    }
+
+    public void setCid(int cid) {
+        this.cid = cid;
+    }
+
+    public Track cid(int cid) {
+        setCid(cid);
+        return this;
+    }
+
     public boolean isDisabled() {
         return DISABLED.equals(getFormat());
     }
@@ -123,8 +137,9 @@ public class Track {
         return this;
     }
 
-    public Track save() {
+    public Track save(int cid) {
         if (TextUtils.isEmpty(getKey())) return this;
+        setCid(cid);
         AppDatabase.get().getTrackDao().insert(this);
         return this;
     }

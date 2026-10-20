@@ -212,7 +212,7 @@ public final class PlaybackProgressWriter {
             }
             int count = dao.delete(cid, history.getKey());
             if (count <= 0) continue;
-            AppDatabase.get().getTrackDao().delete(history.getKey());
+            AppDatabase.get().getTrackDao().delete(history.getCid(), history.getKey());
             affected += count;
         }
 

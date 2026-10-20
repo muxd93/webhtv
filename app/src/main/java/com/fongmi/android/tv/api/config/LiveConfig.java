@@ -2,6 +2,7 @@ package com.fongmi.android.tv.api.config;
 
 import android.text.TextUtils;
 
+import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.api.Decoder;
 import com.fongmi.android.tv.api.LiveApi;
 import com.fongmi.android.tv.api.loader.BaseLoader;
@@ -43,6 +44,10 @@ public class LiveConfig extends BaseConfig {
 
     public static LiveConfig get() {
         return Loader.INSTANCE;
+    }
+
+    public static int getCid() {
+        return get().getConfig().getId();
     }
 
     public static String getUrl() {
@@ -107,6 +112,11 @@ public class LiveConfig extends BaseConfig {
     }
 
     @Override
+    protected int getType() {
+        return LIVE;
+    }
+
+    @Override
     protected Config defaultConfig() {
         return Config.live();
     }
@@ -126,6 +136,25 @@ public class LiveConfig extends BaseConfig {
         String json = Decoder.getJson(UrlUtil.convert(config.getUrl()), TAG);
         if (Json.isObj(json)) checkJson(config, Json.parse(json).getAsJsonObject());
         else parseText(config, json);
+        config.setJson(json);
+    }
+
+    @Override
+    protected boolean loadFromCache(Config config, Callback callback) {
+        try {
+            String json = config.getJson();
+            if (Json.isObj(json)) {
+                JsonObject object = Json.parse(json).getAsJsonObject();
+                if (object.has("urls") || object.has("msg")) return false;
+                checkJson(config, object);
+            } else {
+                parseText(config, json);
+            }
+            App.post(callback::success);
+            return true;
+        } catch (Throwable e) {
+            return false;
+        }
     }
 
     @Override
@@ -151,7 +180,7 @@ public class LiveConfig extends BaseConfig {
     }
 
     private void parseText(Config config, String text) {
-        Live live = new Live(UrlUtil.getName(config.getUrl()), config.getUrl()).sync();
+        Live live = new Live(UrlUtil.getName(config.getUrl()), config.getUrl()).sourceId(config.getId()).sync(config.getId());
         lives = new ArrayList<>(List.of(live));
         LiveParser.text(live, text);
         finishLive(config, "");
@@ -169,11 +198,11 @@ public class LiveConfig extends BaseConfig {
 
     private void parseDepot(Config config, JsonObject object) throws Throwable {
         List<Depot> items = Depot.arrayFrom(object.getAsJsonArray("urls").toString());
-        List<Config> configs = new ArrayList<>();
-        for (Depot item : items) configs.add(Config.find(item, LIVE));
-        if (configs.isEmpty()) throw new Exception("Depot urls is empty");
-        load(this.config = configs.get(0));
-        Config.delete(config.getUrl());
+        // 多仓入口本身保留为 Config(kind=DEPOT)，子源平铺但可溯源、可整组刷新/删除
+        Config depot = ConfigRepository.upsert(new Config().type(LIVE).depot().url(config.getUrl()).name(config.getName()));
+        List<Config> children = ConfigService.registerDepot(depot, items);
+        Config target = children.stream().filter(Config::isActive).findFirst().orElse(children.get(0));
+        load(this.config = target);
     }
 
     private void parseConfig(Config config, JsonObject object) {
@@ -184,6 +213,7 @@ public class LiveConfig extends BaseConfig {
 
     public void parse(JsonObject object) {
         initLive(getConfig(), object);
+        commitRules();
     }
 
     private void initList(JsonObject object) {
@@ -197,14 +227,14 @@ public class LiveConfig extends BaseConfig {
     private void initLive(Config config, JsonObject object) {
         String spider = Json.safeString(object, "spider");
         BaseLoader.get().parseJar(spider, false);
-        setLives(Json.safeListElement(object, "lives").stream().map(e -> Live.objectFrom(e, spider)).distinct().collect(Collectors.toCollection(ArrayList::new)));
+        setLives(Json.safeListElement(object, "lives").stream().map(e -> Live.objectFrom(e, spider).sourceId(config.getId())).distinct().collect(Collectors.toCollection(ArrayList::new)));
         finishLive(config, spider);
     }
 
     private void finishLive(Config config, String spider) {
         CustomCspSetting.inject(getLives(), spider);
         getLives().removeIf(Live::isEmpty);
-        Map<String, Live> items = Live.findAll().stream().collect(Collectors.toMap(Live::getName, Function.identity()));
+        Map<String, Live> items = Live.findBySource(config.getId()).stream().collect(Collectors.toMap(Live::getName, Function.identity()));
         getLives().forEach(live -> live.sync(items.get(live.getName())));
         setHome(config, getLives().isEmpty() ? new Live() : getLives().stream().filter(item -> item.getName().equals(config.getHome())).findFirst().orElse(getLives().get(0)), false);
     }

@@ -138,24 +138,25 @@
                 android:focusable="true"
                 android:focusableInTouchMode="true"
                 android:nextFocusUp="@id/select"
-                android:nextFocusDown="@id/mode"
+                android:nextFocusDown="@id/block"
                 android:padding="8dp"
                 android:src="@drawable/ic_site_cancel"
                 app:tint="@color/site_action_icon" />
 
             <androidx.appcompat.widget.AppCompatImageView
-                android:id="@+id/mode"
+                android:id="@+id/block"
                 android:layout_width="40dp"
                 android:layout_height="40dp"
                 android:layout_marginTop="16dp"
                 android:background="@drawable/selector_site_action"
+                android:contentDescription="@string/site_block"
                 android:focusable="true"
                 android:focusableInTouchMode="true"
                 android:nextFocusUp="@id/cancel"
-                android:nextFocusDown="@id/mode"
+                android:nextFocusDown="@id/block"
                 android:padding="8dp"
-                app:tint="@color/site_action_icon"
-                tools:src="@drawable/ic_site_list" />
+                android:src="@drawable/ic_site_hidden"
+                app:tint="@color/site_action_icon" />
 
         </androidx.appcompat.widget.LinearLayoutCompat>
 

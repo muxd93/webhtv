@@ -7,7 +7,6 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.media3.common.C;
 import androidx.room.Entity;
-import androidx.room.PrimaryKey;
 
 import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.Constant;
@@ -28,14 +27,13 @@ import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
-@Entity
+@Entity(primaryKeys = {"cid", "key"})
 public class History implements Diffable<History> {
 
     private static final long NEAR_END_MIN_MS = TimeUnit.SECONDS.toMillis(5);
     private static final long NEAR_END_MAX_MS = TimeUnit.SECONDS.toMillis(30);
 
     @NonNull
-    @PrimaryKey
     @SerializedName("key")
     private String key;
     @SerializedName("vodPic")
@@ -417,7 +415,7 @@ public class History implements Diffable<History> {
 
     public History delete() {
         AppDatabase.get().getHistoryDao().delete(VodConfig.getCid(), getKey());
-        AppDatabase.get().getTrackDao().delete(getKey());
+        AppDatabase.get().getTrackDao().delete(getCid(), getKey());
         return this;
     }
 

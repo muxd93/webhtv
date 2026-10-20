@@ -22,6 +22,17 @@
         tools:text="https://fongmi.github.io/cat.json" />
 
     <androidx.appcompat.widget.AppCompatImageView
+        android:id="@+id/expand"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
+        android:focusable="false"
+        android:src="@drawable/ic_tree_chevron"
+        android:visibility="gone"
+        app:tint="@color/dialog_outlined_button_text"
+        tools:visibility="visible" />
+
+    <androidx.appcompat.widget.AppCompatImageView
         android:id="@+id/delete"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"

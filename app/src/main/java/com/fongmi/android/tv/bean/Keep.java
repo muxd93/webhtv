@@ -6,6 +6,7 @@ import androidx.room.Entity;
 import androidx.room.PrimaryKey;
 
 import com.fongmi.android.tv.App;
+import com.fongmi.android.tv.api.config.ConfigRepository;
 import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.db.AppDatabase;
 import com.fongmi.android.tv.impl.Diffable;
@@ -17,11 +18,10 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 
-@Entity
+@Entity(primaryKeys = {"cid", "key"})
 public class Keep implements Diffable<Keep> {
 
     @NonNull
-    @PrimaryKey
     @SerializedName("key")
     private String key;
     @SerializedName("siteName")
@@ -78,7 +78,7 @@ public class Keep implements Diffable<Keep> {
     public static void sync(List<Config> configs, List<Keep> targets) {
         targets.forEach(target -> configs.stream()
                 .filter(config -> target.getCid() == config.getId()).findFirst()
-                .ifPresent(config -> target.save(Config.find(config).getId())));
+                .ifPresent(config -> target.save(ConfigRepository.upsertFrom(config).getId())));
     }
 
     @NonNull

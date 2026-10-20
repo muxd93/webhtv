@@ -211,6 +211,62 @@ public class SiteHealthStore {
         return text.length() <= 120 ? text : text.substring(0, 120);
     }
 
+    /** 供健康明细对话框使用的只读摘要 */
+    public static final class Summary {
+
+        public final int color;
+        public final int searchSuccess;
+        public final int searchFail;
+        public final int detailSuccess;
+        public final int detailFail;
+        public final int playSuccess;
+        public final int playFail;
+        public final long lastSearchCost;
+        public final long lastDetailCost;
+        public final String lastError;
+        public final boolean abnormal;
+
+        private Summary(Health health, int color, boolean abnormal) {
+            this.color = color;
+            this.searchSuccess = health.searchSuccess;
+            this.searchFail = health.searchFail;
+            this.detailSuccess = health.detailSuccess;
+            this.detailFail = health.detailFail;
+            this.playSuccess = health.playSuccess;
+            this.playFail = health.playFail;
+            this.lastSearchCost = health.lastSearchCost;
+            this.lastDetailCost = health.lastDetailCost;
+            this.lastError = firstError(health);
+            this.abnormal = abnormal;
+        }
+
+        private static String firstError(Health health) {
+            if (!TextUtils.isEmpty(health.lastPlayError)) return health.lastPlayError;
+            if (!TextUtils.isEmpty(health.lastDetailError)) return health.lastDetailError;
+            return TextUtils.isEmpty(health.lastSearchError) ? "" : health.lastSearchError;
+        }
+    }
+
+    /** 站点健康摘要；无数据返回 null */
+    public static Summary summary(Site site) {
+        if (skip(site)) return null;
+        synchronized (SiteHealthStore.class) {
+            Health health = find(site.getKey());
+            if (health == null || health.total() == 0) return null;
+            Status status = getStatus(site);
+            return new Summary(health, getColor(site), status == Status.WARN || status == Status.BAD);
+        }
+    }
+
+    /** 重置单个站点的健康数据 */
+    public static void reset(Site site) {
+        if (skip(site)) return;
+        synchronized (SiteHealthStore.class) {
+            ensureLoaded();
+            if (items.remove(key(site.getKey())) != null) markDirty();
+        }
+    }
+
     private enum Status {GOOD, WARN, BAD, UNKNOWN}
 
     public static class Health {

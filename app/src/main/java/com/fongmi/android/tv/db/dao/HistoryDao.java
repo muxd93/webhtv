@@ -37,6 +37,9 @@ public abstract class HistoryDao extends BaseDao<History> {
     @Query("DELETE FROM History WHERE cid = :cid")
     public abstract int delete(int cid);
 
+    @Query("DELETE FROM History WHERE createTime < :cutoff")
+    public abstract int deleteBefore(long cutoff);
+
     @Query("DELETE FROM History")
     public abstract int delete();
 }

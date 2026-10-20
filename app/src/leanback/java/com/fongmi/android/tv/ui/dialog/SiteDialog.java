@@ -21,6 +21,7 @@ import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.api.config.LiveConfig;
 import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.bean.Config;
+import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.bean.Site;
 import com.fongmi.android.tv.databinding.DialogSiteBinding;
 import com.fongmi.android.tv.impl.Callback;
@@ -49,6 +50,7 @@ public class SiteDialog extends BaseAlertDialog implements SiteAdapter.OnClickLi
     private SiteAdapter adapter;
     private long showStart;
     private boolean action;
+    private boolean block;
     private boolean listLoaded;
     private int type;
 
@@ -150,7 +152,7 @@ public class SiteDialog extends BaseAlertDialog implements SiteAdapter.OnClickLi
         binding.change.setVisibility(action ? View.VISIBLE : View.GONE);
         binding.select.setVisibility(action ? View.VISIBLE : View.GONE);
         binding.cancel.setVisibility(action ? View.VISIBLE : View.GONE);
-        binding.mode.setVisibility(View.GONE);
+        binding.block.setVisibility(action ? View.VISIBLE : View.GONE);
         setActionEnabled(false);
         binding.recycler.setAdapter(null);
         binding.recycler.setItemAnimator(null);
@@ -174,7 +176,6 @@ public class SiteDialog extends BaseAlertDialog implements SiteAdapter.OnClickLi
         setType(type);
         setRecyclerView();
         setRecyclerHeight(adapter.getItemCount());
-        setMode();
         setActionEnabled(true);
         log("view configured cost=%sms total=%sms", cost(layoutStart), cost());
         runAfterFirstPreDraw("list preDraw", () -> {
@@ -190,7 +191,7 @@ public class SiteDialog extends BaseAlertDialog implements SiteAdapter.OnClickLi
             dismiss();
             App.post(() -> HistoryDialog.create().vod().readOnly().show(activity, item -> loadConfig(activity, item)), 100);
         });
-        binding.mode.setOnClickListener(this::onMode);
+        binding.block.setOnClickListener(this::onBlockToggle);
         binding.select.setOnClickListener(v -> {
             if (adapter != null) adapter.selectAll();
         });
@@ -206,7 +207,6 @@ public class SiteDialog extends BaseAlertDialog implements SiteAdapter.OnClickLi
                 adapter.filter(s.toString());
                 setRecyclerView();
                 setRecyclerHeight(adapter.getItemCount());
-                setMode();
                 setWidth();
             }
         });
@@ -246,23 +246,23 @@ public class SiteDialog extends BaseAlertDialog implements SiteAdapter.OnClickLi
         setActionEnabled(listLoaded && adapter != null);
     }
 
-    private void setMode() {
-        binding.mode.setEnabled(false);
-    }
-
     private void setWidth() {
         setWidth(getWidth());
     }
 
-    private void onMode(View view) {
-        setRecyclerView();
-        setMode();
+    private void onBlockToggle(View view) {
+        block = !block;
+        binding.block.setSelected(block);
+        binding.block.setImageResource(block ? R.drawable.ic_site_visible : R.drawable.ic_site_hidden);
+        if (adapter != null) adapter.setBlock(block);
+        setRecyclerHeight(adapter == null ? 0 : adapter.getItemCount());
         setWidth();
     }
 
     private void setActionEnabled(boolean enabled) {
         binding.search.setEnabled(enabled);
         binding.change.setEnabled(enabled);
+        binding.block.setEnabled(enabled);
         binding.select.setEnabled(enabled && type > 0);
         binding.cancel.setEnabled(enabled && type > 0);
     }
@@ -271,6 +271,13 @@ public class SiteDialog extends BaseAlertDialog implements SiteAdapter.OnClickLi
     public void onItemClick(Site item) {
         if (listener != null) listener.setSite(item);
         dismiss();
+    }
+
+    @Override
+    public void onBlockChanged() {
+        if (adapter == null) return;
+        setRecyclerHeight(adapter.getItemCount());
+        setWidth();
     }
 
     private void loadConfig(FragmentActivity activity, Config config) {

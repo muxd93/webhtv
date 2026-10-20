@@ -7,6 +7,7 @@ import com.fongmi.android.tv.Constant;
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.bean.Backup;
+import com.fongmi.android.tv.api.config.ConfigRepository;
 import com.fongmi.android.tv.bean.Config;
 import com.fongmi.android.tv.bean.Device;
 import com.fongmi.android.tv.bean.History;
@@ -179,7 +180,8 @@ public class Action implements Process {
         Config config = Config.objectFrom(params.get("config"));
         Device device = Device.objectFrom(params.get("device"));
         History history = History.objectFrom(params.get("history"));
-        CastEvent.post(Config.find(config), device, history);
+        if (config == null || config.isEmpty()) return;
+        CastEvent.post(ConfigRepository.upsertFrom(config), device, history);
     }
 
     private Response onSync(Map<String, String> params, Map<String, String> files) {
@@ -303,8 +305,8 @@ public class Action implements Process {
 
     private boolean sendHistory(Device device, Map<String, String> params) {
         try {
-            Config config = Config.find(Config.objectFrom(params.get("config")));
-            if (config.getUrl() == null) config = Config.vod();
+            Config remote = Config.objectFrom(params.get("config"));
+            Config config = remote == null || remote.isEmpty() ? Config.vod() : ConfigRepository.upsertFrom(remote);
             FormBody.Builder body = new FormBody.Builder();
             body.add("config", config.toString());
             body.add("targets", App.gson().toJson(History.get(config.getId())));
@@ -403,9 +405,10 @@ public class Action implements Process {
     }
 
     public void syncHistory(Map<String, String> params, boolean force) {
-        Config config = Config.find(Config.objectFrom(params.get("config")));
+        Config remote = Config.objectFrom(params.get("config"));
+        if (remote == null || remote.isEmpty()) return;
+        Config config = ConfigRepository.upsertFrom(remote);
         List<History> targets = History.arrayFrom(params.get("targets"));
-        if (config.getUrl() == null) return;
         if (config.getUrl().equals(VodConfig.getUrl())) {
             if (force) History.delete(config.getId());
             History.sync(targets);
@@ -435,7 +438,7 @@ public class Action implements Process {
         List<Keep> targets = Keep.arrayFrom(params.get("targets"));
         List<Config> configs = Config.arrayFrom(params.get("configs"));
         if (TextUtils.isEmpty(VodConfig.getUrl()) && !configs.isEmpty()) {
-            VodConfig.load(Config.find(configs.get(0)), getCallback(configs, targets, force));
+            VodConfig.load(ConfigRepository.upsertFrom(configs.get(0)), getCallback(configs, targets, force));
         } else {
             if (force) Keep.deleteAll();
             Keep.sync(configs, targets);

@@ -19,9 +19,10 @@ import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.api.config.LiveConfig;
 import com.fongmi.android.tv.api.config.VodConfig;
+import com.fongmi.android.tv.api.config.ConfigRepository;
+import com.fongmi.android.tv.api.config.ConfigService;
 import com.fongmi.android.tv.api.config.WallConfig;
 import com.fongmi.android.tv.bean.Config;
-import com.fongmi.android.tv.db.AppDatabase;
 import com.fongmi.android.tv.databinding.DialogConfigBinding;
 import com.fongmi.android.tv.event.ServerEvent;
 import com.fongmi.android.tv.impl.ConfigListener;
@@ -218,13 +219,18 @@ public class ConfigDialog extends BaseAlertDialog {
     private Config saveConfig(String text, String name) {
         if (text.isEmpty()) {
             if (!edit) return null;
-            if (!TextUtils.isEmpty(url)) Config.delete(url, type);
+            if (!TextUtils.isEmpty(url)) ConfigService.delete(Config.find(url, type));
             return getStoredConfig();
         } else if (edit) {
-            return Config.find(url, type).url(text).name(name).update();
+            String canonical = ConfigRepository.canonicalize(text);
+            Config current = Config.find(url, type);
+            Config exists = ConfigRepository.findByUrl(canonical, type);
+            boolean taken = !exists.isEmpty() && exists.getId() != current.getId();
+            if (taken && !current.isEmpty()) ConfigService.delete(current);
+            Config target = taken ? exists : (current.isEmpty() ? Config.create(type) : current);
+            return ConfigRepository.activate(ConfigRepository.upsert(target.url(canonical).name(name)));
         } else {
-            Config exists = AppDatabase.get().getConfigDao().find(text, type);
-            return exists != null ? exists : Config.create(type).url(text).name(name).update();
+            return ConfigRepository.upsert(Config.create(type).url(ConfigRepository.canonicalize(text)).name(name));
         }
     }
 

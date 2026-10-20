@@ -8,7 +8,6 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.room.Entity;
 import androidx.room.Ignore;
-import androidx.room.PrimaryKey;
 
 import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.Constant;
@@ -36,13 +35,15 @@ import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-@Entity
+@Entity(primaryKeys = {"sourceId", "key"})
 public class Site implements Parcelable {
 
     private static final Pattern GROUP_PATTERN = Pattern.compile("\\[([^\\]]+)]");
 
+    @SerializedName("sourceId")
+    private int sourceId;
+
     @NonNull
-    @PrimaryKey
     @SerializedName("key")
     private String key;
 
@@ -176,6 +177,23 @@ public class Site implements Parcelable {
 
     public static List<Site> findAll() {
         return AppDatabase.get().getSiteDao().findAll();
+    }
+
+    public static List<Site> findBySource(int sourceId) {
+        return AppDatabase.get().getSiteDao().findBySource(sourceId);
+    }
+
+    public int getSourceId() {
+        return sourceId;
+    }
+
+    public void setSourceId(int sourceId) {
+        this.sourceId = sourceId;
+    }
+
+    public Site sourceId(int sourceId) {
+        setSourceId(sourceId);
+        return this;
     }
 
     public String getKey() {

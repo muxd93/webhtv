@@ -24,18 +24,34 @@ public final class RemoteConfigSiteParser {
 
     public static JsonObject parse(Config config, String selectedKey, String selectedName) throws Exception {
         if (config == null || config.isEmpty()) throw new IllegalArgumentException("Missing vod config url");
-        JsonObject object = Json.parse(Decoder.getJson(UrlUtil.convert(config.getUrl()), TAG)).getAsJsonObject();
+        JsonElement element = Json.parse(Decoder.getJson(UrlUtil.convert(config.getUrl()), TAG));
+        if (element == null || !element.isJsonObject()) throw new IllegalStateException("Invalid config response");
+        JsonObject object = element.getAsJsonObject();
         if (object.has("msg")) throw new IllegalStateException(object.get("msg").getAsString());
         if (object.has("urls")) return parseDepot(config, object, selectedKey, selectedName);
         return sitesData(config, object, selectedKey, selectedName);
     }
 
+    /** 多仓：聚合全部子源的站点（按 key 去重），与本地导入行为一致 */
     private static JsonObject parseDepot(Config config, JsonObject object, String selectedKey, String selectedName) throws Exception {
+        JsonObject data = new JsonObject();
+        JsonArray sites = new JsonArray();
+        Set<String> keys = new HashSet<>();
         for (Depot depot : Depot.arrayFrom(object.getAsJsonArray("urls").toString())) {
             if (depot == null || TextUtils.isEmpty(depot.getUrl())) continue;
-            return parse(new Config().type(0).url(depot.getUrl()).name(depot.getName()), selectedKey, selectedName);
+            JsonObject child = parse(new Config().type(0).url(depot.getUrl()).name(depot.getName()), selectedKey, selectedName);
+            for (JsonElement element : child.getAsJsonArray("sites")) {
+                if (!element.isJsonObject()) continue;
+                String key = Json.safeString(element.getAsJsonObject(), "key");
+                if (TextUtils.isEmpty(key) || !keys.add(key)) continue;
+                sites.add(element);
+            }
         }
-        throw new IllegalStateException("Depot urls is empty");
+        if (keys.isEmpty()) throw new IllegalStateException("Depot urls is empty");
+        data.add("sites", sites);
+        data.addProperty("url", config.getUrl());
+        data.addProperty("name", config.getName());
+        return data;
     }
 
     private static JsonObject sitesData(Config config, JsonObject object, String selectedKey, String selectedName) {

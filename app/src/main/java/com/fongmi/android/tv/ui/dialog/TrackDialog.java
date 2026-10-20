@@ -192,7 +192,7 @@ public final class TrackDialog extends BaseBottomSheetDialog implements TrackAda
             dismiss();
             return;
         }
-        player.setTrack(Arrays.asList(item.key(player.getKey()).save()));
+        player.setTrack(Arrays.asList(item.key(player.getKey()).save(player.getCid())));
         dismiss();
     }
 

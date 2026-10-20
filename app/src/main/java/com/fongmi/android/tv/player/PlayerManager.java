@@ -33,6 +33,8 @@ import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.Constant;
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.api.SiteApi;
+import com.fongmi.android.tv.api.config.LiveConfig;
+import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.bean.Danmaku;
 import com.fongmi.android.tv.bean.Result;
 import com.fongmi.android.tv.bean.Sub;
@@ -518,6 +520,10 @@ public class PlayerManager implements ParseCallback {
 
     public String getKey() {
         return spec != null ? spec.getKey() : null;
+    }
+
+    public int getCid() {
+        return isLive() ? LiveConfig.getCid() : VodConfig.getCid();
     }
 
     public List<Danmaku> getDanmakus() {
@@ -4698,7 +4704,7 @@ public class PlayerManager implements ParseCallback {
     private void prepareMpvOutputForNewItem() {
         resetMpvOutputEvaluationState();
         mpvSurfaceFallbackTried = false;
-        List<Track> persistedTracks = Track.find(getKey());
+        List<Track> persistedTracks = Track.find(getCid(), getKey());
         Track persistedSubtitle = findRequestedSubtitle(persistedTracks);
         mpvExplicitSubtitlePreference = persistedSubtitle != null;
         if (!(engine instanceof MpvPlayerEngine mpv)) return;
@@ -7587,7 +7593,7 @@ public class PlayerManager implements ParseCallback {
             if (isExo()) scheduleNetworkProtection(0);
             if (!tracks.isEmpty() && !initTrack) {
                 playbackTrace.mark(PlaybackTrace.Stage.TRACKS, trackSummary(tracks));
-                restoreTrackSelection(Track.find(getKey()));
+                restoreTrackSelection(Track.find(getCid(), getKey()));
                 if (engine instanceof MpvPlayerEngine mpv) {
                     mpv.completeInitialSubtitleTrackRestore();
                 }

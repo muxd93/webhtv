@@ -142,7 +142,9 @@ public class SettingFragment extends BaseFragment implements ConfigListener, Sit
         mBinding.searchThreads.setOnClickListener(this::setSearchThreads);
         mBinding.startupPage.setOnClickListener(this::setStartupPage);
         mBinding.vodHistory.setOnClickListener(this::onVodHistory);
+        mBinding.vodRefresh.setOnClickListener(this::onVodRefresh);
         mBinding.liveHistory.setOnClickListener(this::onLiveHistory);
+        mBinding.liveRefresh.setOnClickListener(this::onLiveRefresh);
         mBinding.wallDefault.setOnClickListener(this::setWallDefault);
         mBinding.wallRefresh.setOnClickListener(this::setWallRefresh);
         mBinding.wallRefresh.setOnLongClickListener(this::onWallHistory);
@@ -246,6 +248,15 @@ public class SettingFragment extends BaseFragment implements ConfigListener, Sit
 
     private void onLiveHistory(View view) {
         HistoryDialog.create().live().show(this);
+    }
+
+
+    private void onVodRefresh(View view) {
+        VodConfig.get().init().load(getCallback());
+    }
+
+    private void onLiveRefresh(View view) {
+        LiveConfig.get().init().load(getCallback());
     }
 
     private void onPlayer(View view) {

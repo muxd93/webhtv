@@ -14,6 +14,7 @@ import com.fongmi.android.tv.bean.Site;
 import com.fongmi.android.tv.databinding.AdapterSiteBinding;
 import com.fongmi.android.tv.databinding.AdapterSiteSwitchBinding;
 import com.fongmi.android.tv.setting.Setting;
+import com.fongmi.android.tv.setting.SiteBlockSetting;
 import com.fongmi.android.tv.setting.SiteHealthStore;
 import com.github.catvod.crawler.SpiderDebug;
 
@@ -31,6 +32,7 @@ public class SiteAdapter extends RecyclerView.Adapter<SiteAdapter.ViewHolder> {
     private final List<Site> mItems;
     private final long adapterStart;
     private boolean firstBindLogged;
+    private boolean block;
     private int displayLimit = Integer.MAX_VALUE;
     private int type;
 
@@ -47,6 +49,8 @@ public class SiteAdapter extends RecyclerView.Adapter<SiteAdapter.ViewHolder> {
     public interface OnClickListener {
 
         void onItemClick(Site item);
+
+        void onBlockChanged();
     }
 
     public void setType(int type) {
@@ -59,7 +63,21 @@ public class SiteAdapter extends RecyclerView.Adapter<SiteAdapter.ViewHolder> {
     public void filter(String keyword) {
         String text = keyword == null ? "" : keyword.trim().toLowerCase(Locale.getDefault());
         mItems.clear();
-        for (Site site : allItems) if (text.isEmpty() || site.getName().toLowerCase(Locale.getDefault()).contains(text) || site.getKey().toLowerCase(Locale.getDefault()).contains(text)) mItems.add(site);
+        for (Site site : SiteBlockSetting.filter(allItems, block)) if (text.isEmpty() || site.getName().toLowerCase(Locale.getDefault()).contains(text) || site.getKey().toLowerCase(Locale.getDefault()).contains(text)) mItems.add(site);
+        displayLimit = Integer.MAX_VALUE;
+        notifyDataSetChanged();
+    }
+
+    /** 屏蔽视图开关：开启后显示被屏蔽站点（置灰），点击可取消屏蔽 */
+    public void setBlock(boolean block) {
+        this.block = block;
+        applyBlock();
+    }
+
+    private void applyBlock() {
+        mItems.clear();
+        mItems.addAll(SiteBlockSetting.filter(allItems, block));
+        if (Setting.isSiteHealthDialogSort()) SiteHealthStore.sortSites(mItems);
         displayLimit = Integer.MAX_VALUE;
         notifyDataSetChanged();
     }
@@ -76,12 +94,12 @@ public class SiteAdapter extends RecyclerView.Adapter<SiteAdapter.ViewHolder> {
         long collectStart = System.currentTimeMillis();
         for (Site site : VodConfig.get().getSites()) if (!site.isHide()) allItems.add(site);
         log("collect sites cost=%sms visible=%s", cost(collectStart), allItems.size());
+        mItems.addAll(SiteBlockSetting.filter(allItems, block));
         if (Setting.isSiteHealthDialogSort()) {
             long sortStart = System.currentTimeMillis();
-            SiteHealthStore.sortSites(allItems);
-            log("health sort cost=%sms visible=%s", cost(sortStart), allItems.size());
+            SiteHealthStore.sortSites(mItems);
+            log("health sort cost=%sms visible=%s", cost(sortStart), mItems.size());
         }
-        mItems.addAll(allItems);
     }
 
     public List<Site> getItems() {
@@ -144,6 +162,12 @@ public class SiteAdapter extends RecyclerView.Adapter<SiteAdapter.ViewHolder> {
     }
 
     private void setListener(Site item, int position) {
+        if (type == 0 && block) {
+            SiteBlockSetting.toggle(item);
+            applyBlock();
+            listener.onBlockChanged();
+            return;
+        }
         if (type == 0) listener.onItemClick(item);
         if (type == 1) item.setSearchable(!item.isSearchable()).save();
         if (type == 2) item.setChangeable(!item.isChangeable()).save();
@@ -207,17 +231,22 @@ public class SiteAdapter extends RecyclerView.Adapter<SiteAdapter.ViewHolder> {
 
         void bind(Site item) {
             this.item = item;
+            float alpha = SiteBlockSetting.isBlocked(item) ? 0.4f : 1f;
             if (actionBinding != null) {
                 actionBinding.text.setText(item.getName());
                 actionBinding.health.setBackgroundTintList(ColorStateList.valueOf(SiteHealthStore.getColor(item)));
                 actionBinding.check.setChecked(getChecked(item));
                 actionBinding.text.setSelected(item.isSelected());
                 actionBinding.getRoot().setSelected(item.isSelected());
+                actionBinding.text.setAlpha(alpha);
+                actionBinding.health.setAlpha(alpha);
             } else {
                 switchBinding.text.setText(item.getName());
                 switchBinding.health.setBackgroundTintList(ColorStateList.valueOf(SiteHealthStore.getColor(item)));
                 switchBinding.text.setSelected(item.isSelected());
                 switchBinding.getRoot().setSelected(item.isSelected());
+                switchBinding.text.setAlpha(alpha);
+                switchBinding.health.setAlpha(alpha);
             }
         }
 

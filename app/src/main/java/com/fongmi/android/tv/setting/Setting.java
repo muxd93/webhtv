@@ -795,7 +795,7 @@ public class Setting {
     public static final int GLOBAL_HISTORY_SEARCH = 2;
 
     public static int getGlobalHistoryMode() {
-        return clampGlobalHistoryMode(Prefers.getInt("global_history_mode", GLOBAL_HISTORY_OFF));
+        return clampGlobalHistoryMode(Prefers.getInt("global_history_mode", GLOBAL_HISTORY_AUTO));
     }
 
     public static void putGlobalHistoryMode(int mode) {

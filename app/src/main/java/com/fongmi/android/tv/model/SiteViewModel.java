@@ -12,6 +12,7 @@ import com.fongmi.android.tv.bean.Result;
 import com.fongmi.android.tv.bean.Site;
 import com.fongmi.android.tv.exception.ExtractException;
 import com.fongmi.android.tv.player.karaoke.KaraokeResult;
+import com.fongmi.android.tv.setting.HomeFeedCache;
 import com.fongmi.android.tv.setting.SiteHealthStore;
 import com.fongmi.android.tv.setting.Setting;
 import com.fongmi.android.tv.utils.Task;
@@ -115,7 +116,20 @@ public class SiteViewModel extends ViewModel {
     }
 
     public void homeContent() {
-        execute(TaskType.RESULT, result, () -> SiteApi.homeContent(VodConfig.get().getHome()));
+        Site home = VodConfig.get().getHome();
+        String configUrl = VodConfig.getUrl();
+        Result cached = HomeFeedCache.get(configUrl, home.getKey());
+        if (cached != null) result.postValue(cached);
+        execute(TaskType.RESULT, result, () -> {
+            try {
+                return SiteApi.homeContent(home);
+            } catch (Throwable e) {
+                // 网络失败且已有缓存：保留缓存内容，避免首页被清空
+                Result fallback = HomeFeedCache.get(configUrl, home.getKey());
+                if (fallback != null) return fallback;
+                throw e;
+            }
+        }, r -> HomeFeedCache.put(configUrl, home.getKey(), r), null);
     }
 
     public void categoryContent(String key, String tid, String page, boolean filter, HashMap<String, String> extend) {

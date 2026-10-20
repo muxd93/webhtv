@@ -63,6 +63,11 @@ public class WallConfig extends BaseConfig {
     }
 
     @Override
+    protected int getType() {
+        return WALL;
+    }
+
+    @Override
     protected Config defaultConfig() {
         return Config.wall();
     }

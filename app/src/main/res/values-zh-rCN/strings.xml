@@ -367,6 +367,13 @@
     <string name="setting_site_health_sort">站点健康排序</string>
     <string name="setting_site_health_enable">启用站点健康排序</string>
     <string name="setting_site_health_dialog_sort">站点弹窗排序</string>
+    <string name="site_health_detail_open">查看明细</string>
+    <string name="site_health_detail_title">站点健康明细</string>
+    <string name="site_health_detail_filter">只看异常</string>
+    <string name="site_health_detail_hint">点击条目重置该站点的健康数据</string>
+    <string name="site_health_detail_count">%1$d 个站点</string>
+    <string name="site_health_detail_empty">暂无站点健康数据</string>
+    <string name="site_health_reset">已重置该站点健康数据</string>
     <string name="site_health_clear_done">站点健康记录已清空</string>
     <string name="setting_web_home_extension">WebHome 扩展</string>
     <string name="setting_web_home_fullscreen">WebHome 主页全屏</string>
@@ -674,6 +681,13 @@
     <string name="global_history_auto">自动切换</string>
     <string name="global_history_search">全局搜索</string>
     <string name="config_preset_filled">已回填预设源，再次点击确定保存</string>
+    <string name="config_section_depot">多仓源</string>
+    <string name="config_section_single">单源</string>
+    <string name="config_badge_depot">多仓 %1$d</string>
+    <string name="config_badge_current">当前</string>
+    <string name="config_delete_title">删除源</string>
+    <string name="config_delete_single">删除该源？观看历史与收藏将保留，并标记为“来源已失效”；其站点偏好一并清理。</string>
+    <string name="config_delete_depot">删除该多仓及其 %1$d 个子源？观看历史与收藏将保留，并标记为“来源已失效”；其站点偏好一并清理。</string>
     <string name="config_preset_exhausted">已无更多预设源</string>
     <string name="setting_drive_check">网盘检测</string>
     <string name="setting_theme_color">主题色彩</string>
@@ -1124,7 +1138,10 @@
     <!-- Search -->
     <string name="search_keyword">关键字…</string>
     <string name="site_search_hint">搜索站点…</string>
+    <string name="site_block">屏蔽/取消屏蔽站点</string>
     <string name="search_record">历史</string>
+    <string name="search_record_clear">清空</string>
+    <string name="search_record_cleared">已清空搜索历史</string>
     <string name="search_suggest">建议</string>
     <string name="search_hot">热搜</string>
     <string name="search_hot_tv">电视榜</string>

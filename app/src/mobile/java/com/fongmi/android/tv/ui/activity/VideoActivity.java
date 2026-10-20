@@ -5752,7 +5752,7 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     protected void onError(String msg) {
         recordPlayHealth(false, msg);
         mBinding.swipeLayout.setEnabled(true);
-        Track.delete(player().getKey());
+        Track.delete(player().getCid(), player().getKey());
         mClock.setCallback(null);
         clearLyrics();
         clearKaraokeState();

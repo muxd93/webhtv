@@ -12,6 +12,8 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.core.os.HandlerCompat;
 
+import com.fongmi.android.tv.Constant;
+import com.fongmi.android.tv.db.AppDatabase;
 import com.fongmi.android.tv.server.Server;
 import com.fongmi.android.tv.playback.PlaybackRemoteSyncer;
 import com.fongmi.android.tv.player.PlaybackMemoryMonitor;
@@ -24,6 +26,7 @@ import com.fongmi.android.tv.utils.DanmakuSearchListFocusFixer;
 import com.fongmi.android.tv.utils.NsdDeviceDiscovery;
 import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.PreviousProcessExitLogger;
+import com.fongmi.android.tv.utils.Task;
 import com.fongmi.hook.Hook;
 import com.github.catvod.crawler.DebugLogStore;
 import com.github.catvod.crawler.SpiderDebug;
@@ -128,6 +131,11 @@ public class App extends Application implements Application.ActivityLifecycleCal
         SpiderDebug.log("startup", "background services start cost=%sms", System.currentTimeMillis() - time);
         // 局域网 HTTP 服务阻塞在 accept，无连接时不唤醒 CPU，成本可忽略，省电模式也保留
         Server.get().start();
+        // 历史行物理清理：读取侧本就按 Constant.HISTORY_TIME 窗口过滤，这里同步删除过期行，避免 DB 无限累积
+        Task.execute(() -> {
+            int pruned = AppDatabase.get().getHistoryDao().deleteBefore(System.currentTimeMillis() - Constant.HISTORY_TIME);
+            if (pruned > 0) SpiderDebug.log("startup", "history pruned rows=%s", pruned);
+        });
         // 省电启动：远程托管(4s 轮询)、观影记录同步、mDNS 注册都不自动启动
         if (Setting.isPowerSaveStartup()) {
             SpiderDebug.log("startup", "power save: skip remote agent, playback sync and nsd");

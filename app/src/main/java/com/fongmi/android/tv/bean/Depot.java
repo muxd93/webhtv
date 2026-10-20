@@ -20,7 +20,9 @@ public class Depot {
     public static List<Depot> arrayFrom(String str) {
         Type listType = TypeToken.getParameterized(List.class, Depot.class).getType();
         List<Depot> items = App.gson().fromJson(str, listType);
-        return items == null ? Collections.emptyList() : items;
+        if (items == null) return Collections.emptyList();
+        items.removeIf(java.util.Objects::isNull);
+        return items;
     }
 
     public String getUrl() {

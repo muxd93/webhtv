@@ -71,6 +71,7 @@ public class SiteHealthDialog extends BaseAlertDialog {
 
     @Override
     protected void initEvent() {
+        binding.detail.setOnClickListener(view -> SiteHealthDetailDialog.show(requireActivity()));
         binding.healthSort.setOnClickListener(view -> {
             healthSort = !healthSort;
             updateButton(binding.healthSort, healthSort);

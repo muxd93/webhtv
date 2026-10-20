@@ -22,6 +22,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.ToNumberPolicy;
 import com.google.gson.annotations.SerializedName;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -43,10 +44,14 @@ public class Backup {
     private List<Keep> keep;
     @SerializedName("config")
     private List<Config> config;
+    @SerializedName("configDepot")
+    private List<ConfigDepot> configDepot;
     @SerializedName("history")
     private List<History> history;
     @SerializedName("track")
     private List<Track> track;
+    @SerializedName("tombstone")
+    private List<PlaybackDeleteTombstone> tombstone;
     @SerializedName("device")
     private List<Device> device;
     @SerializedName("prefers")
@@ -59,8 +64,10 @@ public class Backup {
         backup.setLive(AppDatabase.get().getLiveDao().findAll());
         backup.setKeep(AppDatabase.get().getKeepDao().findAll());
         backup.setConfig(AppDatabase.get().getConfigDao().findAll());
+        backup.setConfigDepot(AppDatabase.get().getConfigDepotDao().findAll());
         backup.setHistory(AppDatabase.get().getHistoryDao().findAll());
         backup.setTrack(AppDatabase.get().getTrackDao().findAll());
+        backup.setTombstone(AppDatabase.get().getPlaybackDeleteTombstoneDao().findAll());
         backup.setDevice(AppDatabase.get().getDeviceDao().findAll());
         return backup;
     }
@@ -71,9 +78,14 @@ public class Backup {
             backup.setSite(AppDatabase.get().getSiteDao().findAll());
             backup.setLive(AppDatabase.get().getLiveDao().findAll());
             backup.setConfig(AppDatabase.get().getConfigDao().findAll());
+            backup.setConfigDepot(AppDatabase.get().getConfigDepotDao().findAll());
         }
         if (options.isKeep()) backup.setKeep(AppDatabase.get().getKeepDao().findAll());
-        if (options.isHistory()) backup.setHistory(AppDatabase.get().getHistoryDao().findAll());
+        if (options.isHistory()) {
+            backup.setHistory(AppDatabase.get().getHistoryDao().findAll());
+            backup.setTrack(AppDatabase.get().getTrackDao().findAll());
+            backup.setTombstone(AppDatabase.get().getPlaybackDeleteTombstoneDao().findAll());
+        }
         backup.setPrefers(filter(Prefers.getPrefers().getAll(), options));
         return backup;
     }
@@ -98,8 +110,10 @@ public class Backup {
         AppDatabase.get().getLiveDao().insertOrUpdate(getLive());
         AppDatabase.get().getKeepDao().insertOrUpdate(getKeep());
         AppDatabase.get().getConfigDao().insertOrUpdate(getConfig());
+        AppDatabase.get().getConfigDepotDao().insertOrUpdate(getConfigDepot());
         AppDatabase.get().getHistoryDao().insertOrUpdate(getHistory());
         AppDatabase.get().getTrackDao().insertOrUpdate(getTrack());
+        restoreTombstone();
         AppDatabase.get().getDeviceDao().insertOrUpdate(getDevice());
         restorePrefers(getPrefers(), true, preserveMissingWebHomePrefs);
     }
@@ -111,10 +125,12 @@ public class Backup {
                 AppDatabase.get().getSiteDao().delete();
                 AppDatabase.get().getLiveDao().delete();
                 AppDatabase.get().getConfigDao().delete();
+                AppDatabase.get().getConfigDepotDao().delete();
             }
             AppDatabase.get().getSiteDao().insertOrUpdate(getSite());
             AppDatabase.get().getLiveDao().insertOrUpdate(getLive());
             cids.putAll(restoreConfig());
+            restoreConfigDepot(cids);
         }
         if (options.isKeep()) {
             if (force) AppDatabase.get().getKeepDao().deleteAll();
@@ -122,9 +138,15 @@ public class Backup {
             AppDatabase.get().getKeepDao().insertOrUpdate(getKeep());
         }
         if (options.isHistory()) {
-            if (force) AppDatabase.get().getHistoryDao().delete();
+            if (force) {
+                AppDatabase.get().getHistoryDao().delete();
+                AppDatabase.get().getTrackDao().deleteAll();
+                AppDatabase.get().getPlaybackDeleteTombstoneDao().delete();
+            }
             for (History item : getHistory()) if (cids.containsKey(item.getCid())) item.setCid(cids.get(item.getCid()));
             AppDatabase.get().getHistoryDao().insertOrUpdate(getHistory());
+            AppDatabase.get().getTrackDao().insertOrUpdate(getTrack());
+            restoreTombstone();
         }
         Map<String, ?> prefers = filter(getPrefers(), options);
         if (options.isMpvConfig()) clearMpvConfigPreferences();
@@ -156,6 +178,22 @@ public class Backup {
             if (source > 0) cids.put(source, item.getId());
         }
         return cids;
+    }
+
+    /** 多仓关系的 configId 跨设备重映射到本地配置 id */
+    private void restoreConfigDepot(Map<Integer, Integer> cids) {
+        List<ConfigDepot> relations = new ArrayList<>();
+        for (ConfigDepot relation : getConfigDepot()) {
+            Integer configId = cids.get(relation.getConfigId());
+            if (configId == null || configId <= 0) continue;
+            relations.add(new ConfigDepot().configId(configId).url(relation.getUrl()).name(relation.getName()).ord(relation.getOrd()));
+        }
+        if (!relations.isEmpty()) AppDatabase.get().getConfigDepotDao().insertOrUpdate(relations);
+    }
+
+    /** 删除墓碑随历史一起恢复，避免「已删除的播放进度」在恢复/同步后复活 */
+    private void restoreTombstone() {
+        for (PlaybackDeleteTombstone item : getTombstone()) AppDatabase.get().getPlaybackDeleteTombstoneDao().insertOrUpdate(item);
     }
 
     private static Map<String, ?> filter(Map<String, ?> source, SyncOptions options) {
@@ -305,6 +343,14 @@ public class Backup {
         this.config = config;
     }
 
+    public List<ConfigDepot> getConfigDepot() {
+        return configDepot == null ? Collections.emptyList() : configDepot;
+    }
+
+    public void setConfigDepot(List<ConfigDepot> configDepot) {
+        this.configDepot = configDepot;
+    }
+
     public List<History> getHistory() {
         return history == null ? Collections.emptyList() : history;
     }
@@ -319,6 +365,14 @@ public class Backup {
 
     public void setTrack(List<Track> track) {
         this.track = track;
+    }
+
+    public List<PlaybackDeleteTombstone> getTombstone() {
+        return tombstone == null ? Collections.emptyList() : tombstone;
+    }
+
+    public void setTombstone(List<PlaybackDeleteTombstone> tombstone) {
+        this.tombstone = tombstone;
     }
 
     public List<Device> getDevice() {

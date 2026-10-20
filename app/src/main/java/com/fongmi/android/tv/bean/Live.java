@@ -6,7 +6,6 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.room.Entity;
 import androidx.room.Ignore;
-import androidx.room.PrimaryKey;
 
 import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.Constant;
@@ -29,11 +28,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
-@Entity
+@Entity(primaryKeys = {"sourceId", "name"})
 public class Live {
 
+    @SerializedName("sourceId")
+    private int sourceId;
+
     @NonNull
-    @PrimaryKey
     @SerializedName("name")
     private String name;
 
@@ -150,8 +151,21 @@ public class Live {
         return AppDatabase.get().getLiveDao().findAll();
     }
 
-    public static Live find(String name) {
-        return AppDatabase.get().getLiveDao().find(name);
+    public static List<Live> findBySource(int sourceId) {
+        return AppDatabase.get().getLiveDao().findBySource(sourceId);
+    }
+
+    public int getSourceId() {
+        return sourceId;
+    }
+
+    public void setSourceId(int sourceId) {
+        this.sourceId = sourceId;
+    }
+
+    public Live sourceId(int sourceId) {
+        setSourceId(sourceId);
+        return this;
     }
 
     public String getName() {
@@ -357,8 +371,8 @@ public class Live {
         return this;
     }
 
-    public Live sync() {
-        sync(find(getName()));
+    public Live sync(int sourceId) {
+        sync(AppDatabase.get().getLiveDao().find(sourceId, getName()));
         return this;
     }
 
