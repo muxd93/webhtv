@@ -736,6 +736,24 @@
             app:drawableStartCompat="@drawable/ic_detail_keep_off" />
 
         <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/download"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="16dp"
+            android:background="@drawable/selector_video_item"
+            android:drawablePadding="6dp"
+            android:focusable="true"
+            android:focusableInTouchMode="true"
+            android:gravity="center"
+            android:nextFocusUp="@id/actor"
+            android:nextFocusDown="@id/flag"
+            android:singleLine="true"
+            android:text="@string/download_action"
+            android:textColor="@color/white"
+            android:textSize="16sp"
+            app:drawableStartCompat="@drawable/ic_detail_download" />
+
+        <com.google.android.material.textview.MaterialTextView
             android:id="@+id/change1"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"

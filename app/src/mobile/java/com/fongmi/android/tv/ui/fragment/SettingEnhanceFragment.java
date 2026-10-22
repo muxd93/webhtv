@@ -12,7 +12,9 @@ import androidx.annotation.Nullable;
 import androidx.viewbinding.ViewBinding;
 
 import com.fongmi.android.tv.R;
+import com.fongmi.android.tv.download.DownloadManager;
 import com.fongmi.android.tv.gitcloud.GitCloudAccountStore;
+import com.fongmi.android.tv.ui.dialog.DownloadSettingsDialog;
 import com.fongmi.android.tv.playback.ViewingRecordSyncStore;
 import com.fongmi.android.tv.remote.RemoteStore;
 import com.fongmi.android.tv.setting.Setting;
@@ -103,6 +105,7 @@ public class SettingEnhanceFragment extends BaseFragment {
         }));
         mBinding.loginState.setOnClickListener(view -> LoginStateLearnDialog.show(this, this::setText));
         mBinding.oneKeySync.setOnClickListener(v -> OneKeySyncDialog.create().show(requireActivity()));
+        mBinding.download.setOnClickListener(view -> DownloadSettingsDialog.show(this));
     }
 
     private void reorderItems() {
@@ -123,7 +126,8 @@ public class SettingEnhanceFragment extends BaseFragment {
                 mBinding.driveCheck,
                 mBinding.siteHealthSort,
                 mBinding.debugLog,
-                mBinding.playbackWebhook
+                mBinding.playbackWebhook,
+                mBinding.download
         };
         for (View view : order) parent.removeView(view);
         for (View view : order) parent.addView(view);
@@ -142,6 +146,7 @@ public class SettingEnhanceFragment extends BaseFragment {
         safeSet("cspWarmup", mBinding.cspWarmupText, this::getCspWarmupText);
         safeSet("playbackArtworkWall", mBinding.playbackArtworkWallText, () -> getSwitch(Setting.isPlaybackArtworkWall()));
         safeSet("playbackWebhook", mBinding.playbackWebhookText, () -> ViewingRecordSyncStore.summary(requireContext()));
+        safeSet("download", mBinding.downloadText, () -> DownloadManager.summary(requireContext()));
         safeSet("managePage", mBinding.managePageText, () -> getString(R.string.manage_page_web));
         safeSet("remoteTrust", mBinding.remoteTrustText, () -> RemoteStore.summary(requireContext()));
         safeSet("gitCloud", mBinding.gitCloudText, () -> getString(R.string.git_cloud_account_count, GitCloudAccountStore.list().size()));

@@ -70,6 +70,8 @@ import com.fongmi.android.tv.api.SiteApi;
 import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.bean.CastVideo;
 import com.fongmi.android.tv.bean.Danmaku;
+import com.fongmi.android.tv.bean.DownloadTask;
+import com.fongmi.android.tv.download.DownloadEvent;
 import com.fongmi.android.tv.bean.Episode;
 import com.fongmi.android.tv.bean.Flag;
 import com.fongmi.android.tv.bean.History;
@@ -664,6 +666,7 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
     @SuppressLint("ClickableViewAccessibility")
     protected void initEvent() {
         mBinding.keep.setOnClickListener(view -> onKeep());
+        mBinding.download.setOnClickListener(view -> onDownload());
         mBinding.search.setOnClickListener(view -> onSearch());
         mBinding.video.setOnClickListener(view -> onVideo());
         mBinding.change1.setOnClickListener(view -> onChange());
@@ -1145,6 +1148,7 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
         checkKeepImg();
         setText(item);
         updateKeep();
+        updateDownloadButton();
     }
 
     private void setText(Vod item) {
@@ -1199,11 +1203,31 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
         if (shouldUseImmersiveAudio()) setAudioStageVisible(true);
         SpiderDebug.log("video-flow", "player audio stage cost=%dms visible=%s", System.currentTimeMillis() - step, isMusicLike());
         step = System.currentTimeMillis();
+        DownloadTask localTask = service() != null ? com.fongmi.android.tv.download.DownloadManager.findPlayable(getKey(), getId(), episode.getUrl()) : null;
+        if (localTask != null) {
+            // 命中离线缓存：本地文件直拨，跳过 spider 解析与嗅探（边下边播时为已下分片的本地 playlist）
+            updateHistory(episode);
+            playLocalDownload(localTask, episode);
+            mBinding.widget.title.setSelected(true);
+            return;
+        }
         mViewModel.playerContent(getKey(), playFlag, episode.getUrl());
         SpiderDebug.log("video-flow", "player content request dispatch cost=%dms", System.currentTimeMillis() - step);
         mBinding.widget.title.setSelected(true);
         updateHistory(episode);
         showProgress();
+    }
+
+    private void playLocalDownload(DownloadTask task, Episode episode) {
+        com.fongmi.android.tv.download.DownloadManager.markPlayed(task.getId());
+        Result result = new Result();
+        result.setUrl(com.fongmi.android.tv.download.DownloadManager.localUrl(task));
+        result.setFlag(task.getVodFlag());
+        result.setHeader(new HashMap<>());
+        SpiderDebug.log("video-flow", "player local start id=%s completed=%s url=%s", task.getId(), task.isCompleted(), com.fongmi.android.tv.download.DownloadManager.localUrl(task));
+        mBinding.control.parse.setVisibility(View.GONE);
+        Notify.show(task.isCompleted() ? R.string.download_play_local : R.string.download_play_partial);
+        startPlayer(getHistoryKey(), result, false, Constant.TIMEOUT_PLAY, buildMetadata(), resolveInitialPlaybackPosition());
     }
 
     private void setPlayer(Result result) {
@@ -1775,12 +1799,36 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
         TimerDialog.create().show(this);
     }
 
+    private void updateDownloadButton() {
+        Episode episode = getEpisode();
+        String text = episode == null ? null : com.fongmi.android.tv.download.DownloadManager.buttonText(getKey(), getId(), episode.getUrl());
+        mBinding.download.setText(text == null ? ResUtil.getString(R.string.download_action) : text);
+    }
+
+    @Subscribe(threadMode = ThreadMode.MAIN)
+    public void onDownloadEvent(com.fongmi.android.tv.download.DownloadEvent event) {
+        updateDownloadButton();
+    }
+
     private void onKeep() {
         Keep keep = Keep.find(getHistoryKey());
         Notify.show(keep != null ? R.string.keep_del : R.string.keep_add);
         if (keep != null) keep.delete();
         else createKeep();
         checkKeepImg();
+    }
+
+    private void onDownload() {
+        if (!com.fongmi.android.tv.download.DownloadPath.writable()) {
+            Notify.show(R.string.download_permission);
+            com.fongmi.android.tv.download.DownloadPath.openPermissionSettings(this);
+            return;
+        }
+        List<Flag> flags = mFlagAdapter == null ? new ArrayList<>() : mFlagAdapter.getItems();
+        if (flags.isEmpty()) return;
+        com.fongmi.android.tv.ui.dialog.DownloadDialog.create()
+                .siteKey(getKey()).vodId(getId()).vodName(getName()).vodPic(getPic())
+                .flags(flags).show(this);
     }
 
     private void checkPlay() {

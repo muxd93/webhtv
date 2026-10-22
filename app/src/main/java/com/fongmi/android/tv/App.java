@@ -113,6 +113,7 @@ public class App extends Application implements Application.ActivityLifecycleCal
             PreviousProcessExitLogger.log(this);
         }
         Notify.createChannel();
+        com.fongmi.android.tv.download.DownloadManager.init();
         ProxySetting.apply();
         RulePool.apply();
         fixLeakedConfigNames();
@@ -154,6 +155,8 @@ public class App extends Application implements Application.ActivityLifecycleCal
             int pruned = AppDatabase.get().getHistoryDao().deleteBefore(System.currentTimeMillis() - Constant.HISTORY_TIME);
             if (pruned > 0) SpiderDebug.log("startup", "history pruned rows=%s", pruned);
         });
+        // 离线缓存恢复：进程重启后继续未完成的任务（用户主动发起，不受省电启动开关影响）
+        com.fongmi.android.tv.download.DownloadManager.resumeIfNeeded(this);
         // 省电启动：远程托管(4s 轮询)、观影记录同步、mDNS 注册都不自动启动
         if (Setting.isPowerSaveStartup()) {
             SpiderDebug.log("startup", "power save: skip remote agent, playback sync and nsd");

@@ -9,9 +9,11 @@ import androidx.viewbinding.ViewBinding;
 
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.databinding.ActivitySettingPersonalBinding;
+import com.fongmi.android.tv.download.DownloadManager;
 import com.fongmi.android.tv.event.RefreshEvent;
 import com.fongmi.android.tv.setting.Setting;
 import com.fongmi.android.tv.ui.base.BaseActivity;
+import com.fongmi.android.tv.ui.dialog.DownloadSettingsDialog;
 import com.fongmi.android.tv.utils.Task;
 
 public class SettingPersonalActivity extends BaseActivity {
@@ -45,6 +47,7 @@ public class SettingPersonalActivity extends BaseActivity {
         mBinding.history.setOnClickListener(this::onHistory);
         mBinding.searchThreads.setOnClickListener(this::setSearchThreads);
         mBinding.startupPage.setOnClickListener(this::setStartupPage);
+        mBinding.download.setOnClickListener(view -> DownloadSettingsDialog.show(this));
     }
 
     private void refreshTexts() {
@@ -54,6 +57,7 @@ public class SettingPersonalActivity extends BaseActivity {
         mBinding.globalHistoryText.setText(getGlobalHistoryModeText());
         mBinding.searchThreadsText.setText(String.valueOf(Setting.getSearchThreads()));
         mBinding.startupPageText.setText(getStartupPageLabel());
+        mBinding.downloadText.setText(DownloadManager.summary(this));
     }
 
     private int getStartupPageLabel() {
@@ -108,5 +112,12 @@ public class SettingPersonalActivity extends BaseActivity {
     private void setStartupPage(View view) {
         Setting.putStartupPage(Setting.nextStartupPage());
         mBinding.startupPageText.setText(getStartupPageLabel());
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // 从缓存设置弹窗/下载管理返回后刷新摘要
+        mBinding.downloadText.setText(DownloadManager.summary(this));
     }
 }

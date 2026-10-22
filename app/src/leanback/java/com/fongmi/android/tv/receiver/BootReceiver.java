@@ -40,6 +40,8 @@ public class BootReceiver extends BroadcastReceiver {
 
         private void doJob() {
             LiveConfig.get().init().load();
+            // 设备重启后恢复未完成的离线缓存任务（BOOT_COMPLETED 在 FGS 后台启动豁免名单内）
+            com.fongmi.android.tv.download.DownloadManager.resumeIfNeeded(App.get());
             ((ConnectivityManager) App.get().getSystemService(Context.CONNECTIVITY_SERVICE)).unregisterNetworkCallback(this);
         }
     }

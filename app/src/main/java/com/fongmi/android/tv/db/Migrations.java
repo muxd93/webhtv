@@ -72,6 +72,30 @@ public class Migrations {
      * History/Keep 主键改 (cid,key)；Track 增加 cid、唯一索引改 (cid,key,type)。
      * 项目未发布、无历史数据，故不做分步迁移与数据自愈。
      */
+    /**
+     * 38→39：新增 DownloadTask 离线缓存任务表（列序与实体声明序一致，Room 校验 schema）。
+     */
+    public static final Migration MIGRATION_38_39 = new Migration(38, 39) {
+        @Override
+        public void migrate(@NonNull SupportSQLiteDatabase database) {
+            database.execSQL("CREATE TABLE IF NOT EXISTS `DownloadTask` (`id` TEXT NOT NULL, `cid` INTEGER NOT NULL, `siteKey` TEXT, `vodId` TEXT, `vodName` TEXT, `vodPic` TEXT, `vodFlag` TEXT, `episodeName` TEXT, `episodeUrl` TEXT, `kind` INTEGER NOT NULL, `state` INTEGER NOT NULL, `dirPath` TEXT, `fileName` TEXT, `totalBytes` INTEGER NOT NULL, `doneBytes` INTEGER NOT NULL, `totalSegments` INTEGER NOT NULL, `doneSegments` INTEGER NOT NULL, `resolvedUrl` TEXT, `headers` TEXT, `createTime` INTEGER NOT NULL, `finishTime` INTEGER NOT NULL, `lastPlayTime` INTEGER NOT NULL, `errorMsg` TEXT, PRIMARY KEY(`id`))");
+            database.execSQL("CREATE INDEX IF NOT EXISTS `index_DownloadTask_cid_siteKey_vodId` ON `DownloadTask` (`cid`, `siteKey`, `vodId`)");
+        }
+    };
+
+    /**
+     * 39→40：DownloadTask 增加 stopReason/retryCount/sourceHash 三列
+     * （默认值与实体 @ColumnInfo(defaultValue) 一致，Room schema 校验才能通过）。
+     */
+    public static final Migration MIGRATION_39_40 = new Migration(39, 40) {
+        @Override
+        public void migrate(@NonNull SupportSQLiteDatabase database) {
+            database.execSQL("ALTER TABLE `DownloadTask` ADD COLUMN `stopReason` INTEGER NOT NULL DEFAULT 0");
+            database.execSQL("ALTER TABLE `DownloadTask` ADD COLUMN `retryCount` INTEGER NOT NULL DEFAULT 0");
+            database.execSQL("ALTER TABLE `DownloadTask` ADD COLUMN `sourceHash` TEXT");
+        }
+    };
+
     public static final Migration MIGRATION_37_38 = new Migration(37, 38) {
         @Override
         public void migrate(@NonNull SupportSQLiteDatabase database) {

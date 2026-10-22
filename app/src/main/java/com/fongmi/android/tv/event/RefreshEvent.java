@@ -54,6 +54,10 @@ public class RefreshEvent {
         EventBus.getDefault().post(new RefreshEvent(Type.SUBTITLE, path));
     }
 
+    public static void download() {
+        EventBus.getDefault().post(new RefreshEvent(Type.DOWNLOAD));
+    }
+
     public static void danmaku(String path) {
         EventBus.getDefault().post(new RefreshEvent(Type.DANMAKU, path));
     }
@@ -89,6 +93,6 @@ public class RefreshEvent {
     }
 
     public enum Type {
-        HOME, CATEGORY, HISTORY, KEEP, SIZE, THEME, LANGUAGE, LIVE, DETAIL, PLAYER, SUBTITLE, DANMAKU, VOD
+        HOME, CATEGORY, HISTORY, KEEP, SIZE, THEME, LANGUAGE, LIVE, DETAIL, PLAYER, SUBTITLE, DANMAKU, VOD, DOWNLOAD
     }
 }
