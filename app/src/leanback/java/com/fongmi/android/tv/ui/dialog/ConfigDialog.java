@@ -50,6 +50,7 @@ public class ConfigDialog extends BaseAlertDialog {
     private String url;
     private int type;
     private int presetIndex;
+    private String autoName = "";
 
     public static ConfigDialog create() {
         return new ConfigDialog();
@@ -198,7 +199,12 @@ public class ConfigDialog extends BaseAlertDialog {
         String preset = Config.DEFAULT_VOD_URLS[presetIndex++];
         binding.text.setText(preset);
         binding.text.setSelection(preset.length());
-        if (binding.name.getText().toString().trim().isEmpty()) binding.name.setText(UrlUtil.getName(preset));
+        // 名称跟随本次回填的预设：为空、或仍是上一次预设回填值时覆盖；
+        // 用户手输过的名字不动（避免连按两次预设时第二个仓继承第一个的名字）
+        String presetName = UrlUtil.getName(preset);
+        String current = binding.name.getText().toString().trim();
+        if (current.isEmpty() || current.equals(autoName)) binding.name.setText(presetName);
+        autoName = presetName;
         Notify.show(R.string.config_preset_filled);
         return true;
     }

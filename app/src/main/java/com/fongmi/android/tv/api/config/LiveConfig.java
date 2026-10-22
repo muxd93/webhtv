@@ -19,6 +19,7 @@ import com.fongmi.android.tv.event.ConfigEvent;
 import com.fongmi.android.tv.impl.Callback;
 import com.fongmi.android.tv.setting.CustomCspSetting;
 import com.fongmi.android.tv.setting.LiveSetting;
+import com.fongmi.android.tv.utils.Task;
 import com.fongmi.android.tv.utils.UrlUtil;
 import com.github.catvod.bean.Header;
 import com.github.catvod.bean.Proxy;
@@ -27,6 +28,7 @@ import com.google.gson.JsonObject;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -183,7 +185,7 @@ public class LiveConfig extends BaseConfig {
         Live live = new Live(UrlUtil.getName(config.getUrl()), config.getUrl()).sourceId(config.getId()).sync(config.getId());
         lives = new ArrayList<>(List.of(live));
         LiveParser.text(live, text);
-        finishLive(config, "");
+        finishLive(config);
     }
 
     private void checkJson(Config config, JsonObject object) throws Throwable {
@@ -198,11 +200,83 @@ public class LiveConfig extends BaseConfig {
 
     private void parseDepot(Config config, JsonObject object) throws Throwable {
         List<Depot> items = Depot.arrayFrom(object.getAsJsonArray("urls").toString());
-        // 多仓入口本身保留为 Config(kind=DEPOT)，子源平铺但可溯源、可整组刷新/删除
+        // 多仓入口本身保留为 Config(kind=DEPOT)，直播侧聚合全部子仓直播源（不切单仓）
         Config depot = ConfigRepository.upsert(new Config().type(LIVE).depot().url(config.getUrl()).name(config.getName()));
-        List<Config> children = ConfigService.registerDepot(depot, items);
-        Config target = children.stream().filter(Config::isActive).findFirst().orElse(children.get(0));
-        load(this.config = target);
+        ConfigService.registerDepot(depot, items);
+        aggregate(depot);
+    }
+
+    /**
+     * 多仓直播聚合（两段式）：
+     * 第一段同步出「当前子仓」的 lives（通常命中 L1 缓存零请求），保证直播界面立刻可见；
+     * 第二段后台并行展开其余子仓，原地追加并集（同名去重、按子仓顺序首次命中）。
+     * 每个直播源仍是独立源（自己的 type/url/频道），不做频道级合并。
+     */
+    private void aggregate(Config depot) throws Throwable {
+        Config primary = currentChild(depot);
+        List<Live> lives = new ArrayList<>();
+        Set<String> names = new LinkedHashSet<>();
+        List<Rule> rules = new ArrayList<>();
+        List<String> ads = new ArrayList<>();
+        DepotExpander.Leaf leaf = DepotExpander.leaf(depot, primary);
+        if (leaf != null) collect(depot, leaf.json, names, lives, rules, ads);
+        if (lives.isEmpty()) {
+            // 第一段取不到（无缓存且拉取失败）：回退同步全量展开，避免误判「无直播源」
+            for (DepotExpander.Leaf item : DepotExpander.expand(depot)) collect(depot, item.json, names, lives, rules, ads);
+        }
+        if (lives.isEmpty()) throw new Exception("Depot lives is empty");
+        setLives(lives);
+        setRules(rules);
+        setAds(ads);
+        finishLive(depot);
+        Task.submit(() -> complete(depot, new LinkedHashSet<>(names)));
+    }
+
+    /** 当前点播激活子源（若属于本多仓，则其 lives 作为第一段优先内容，且 json 刚拉过必命中缓存） */
+    private Config currentChild(Config depot) {
+        Config vod = VodConfig.get().getConfig();
+        if (vod == null || vod.isEmpty()) return null;
+        Config parent = ConfigRepository.findParentDepot(vod);
+        return parent != null && parent.getUrl().equals(depot.getUrl()) ? vod : null;
+    }
+
+    /** 第二段：后台补全其余子仓，原地追加（LiveAdapter 持同一引用；不发事件避免重置播放器） */
+    private void complete(Config depot, Set<String> names) {
+        try {
+            List<Live> fresh = new ArrayList<>();
+            List<Rule> rules = new ArrayList<>();
+            List<String> ads = new ArrayList<>();
+            for (DepotExpander.Leaf leaf : DepotExpander.expand(depot)) collect(depot, leaf.json, names, fresh, rules, ads);
+            if (fresh.isEmpty()) return;
+            App.post(() -> {
+                if (getConfig() == null || getLives().isEmpty()) return;
+                if (!getConfig().getUrl().equals(depot.getUrl())) return;
+                getLives().addAll(fresh);
+                List<Rule> allRules = new ArrayList<>(getRules());
+                for (Rule rule : rules) if (!allRules.contains(rule)) allRules.add(rule);
+                setRules(allRules);
+                List<String> allAds = new ArrayList<>(getAds());
+                for (String ad : ads) if (!allAds.contains(ad)) allAds.add(ad);
+                setAds(allAds);
+                // 通知已打开的直播源对话框刷新（不重置播放器）；未打开则下次打开即见全量
+                ConfigEvent.liveList();
+            });
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private void collect(Config depot, JsonObject object, Set<String> names, List<Live> lives, List<Rule> rules, List<String> ads) {
+        String spider = Json.safeString(object, "spider");
+        BaseLoader.get().parseJar(spider, false);
+        List<Live> items = Json.safeListElement(object, "lives").stream().map(e -> Live.objectFrom(e, spider).sourceId(depot.getId())).filter(live -> !live.getName().isEmpty()).collect(Collectors.toCollection(ArrayList::new));
+        CustomCspSetting.inject(items, spider);
+        for (Live live : items) if (names.add(live.getName())) lives.add(live);
+        // 网络规则入池：各子仓并集去重、永久保留
+        setHeaders(Header.arrayFrom(fetchArray(object, "headers")));
+        setProxy(Proxy.arrayFrom(fetchArray(object, "proxy")));
+        setHosts(Json.safeListString(object, "hosts"));
+        for (Rule rule : Rule.arrayFrom(fetchArray(object, "rules"))) if (!rules.contains(rule)) rules.add(rule);
+        for (String ad : Json.safeListString(object, "ads")) if (!ads.contains(ad)) ads.add(ad);
     }
 
     private void parseConfig(Config config, JsonObject object) {
@@ -213,7 +287,6 @@ public class LiveConfig extends BaseConfig {
 
     public void parse(JsonObject object) {
         initLive(getConfig(), object);
-        commitRules();
     }
 
     private void initList(JsonObject object) {
@@ -227,12 +300,13 @@ public class LiveConfig extends BaseConfig {
     private void initLive(Config config, JsonObject object) {
         String spider = Json.safeString(object, "spider");
         BaseLoader.get().parseJar(spider, false);
-        setLives(Json.safeListElement(object, "lives").stream().map(e -> Live.objectFrom(e, spider).sourceId(config.getId())).distinct().collect(Collectors.toCollection(ArrayList::new)));
-        finishLive(config, spider);
+        List<Live> items = Json.safeListElement(object, "lives").stream().map(e -> Live.objectFrom(e, spider).sourceId(config.getId())).distinct().collect(Collectors.toCollection(ArrayList::new));
+        CustomCspSetting.inject(items, spider);
+        setLives(items);
+        finishLive(config);
     }
 
-    private void finishLive(Config config, String spider) {
-        CustomCspSetting.inject(getLives(), spider);
+    private void finishLive(Config config) {
         getLives().removeIf(Live::isEmpty);
         Map<String, Live> items = Live.findBySource(config.getId()).stream().collect(Collectors.toMap(Live::getName, Function.identity()));
         getLives().forEach(live -> live.sync(items.get(live.getName())));
@@ -289,7 +363,7 @@ public class LiveConfig extends BaseConfig {
     }
 
     private void setRules(List<Rule> rules) {
-        this.rules = rules;
+        this.rules = RulePool.mergeRules(rules);
         RuleConfig.get().invalidate();
     }
 
@@ -298,7 +372,7 @@ public class LiveConfig extends BaseConfig {
     }
 
     private void setAds(List<String> ads) {
-        this.ads = ads;
+        this.ads = RulePool.mergeAds(ads);
         RuleConfig.get().invalidate();
     }
 

@@ -156,7 +156,7 @@ public class HistoryDialog extends BaseAlertDialog implements ConfigAdapter.OnCl
         Window window = getDialog().getWindow();
         WindowManager.LayoutParams params = window.getAttributes();
         boolean land = ResUtil.isLand(requireContext());
-        int width = Math.min(Math.round(ResUtil.getScreenWidth(requireContext()) * (land ? 0.5f : 0.84f)), ResUtil.dp2px(520));
+        int width = Math.min(Math.round(ResUtil.getScreenWidth(requireContext()) * (land ? 0.5f : 0.9f)), ResUtil.dp2px(620));
         params.width = Math.max(width, ResUtil.dp2px(320));
         params.height = WindowManager.LayoutParams.WRAP_CONTENT;
         params.gravity = Gravity.CENTER;

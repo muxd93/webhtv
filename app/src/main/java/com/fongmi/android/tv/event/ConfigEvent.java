@@ -18,6 +18,11 @@ public record ConfigEvent(Type type) {
         EventBus.getDefault().post(new ConfigEvent(Type.LIVE));
     }
 
+    /** 直播源列表内容变化（多仓聚合第二段补全）：仅直播源对话框订阅，不触发播放器重置 */
+    public static void liveList() {
+        EventBus.getDefault().post(new ConfigEvent(Type.LIVE_LIST));
+    }
+
     public static void wall() {
         EventBus.getDefault().post(new ConfigEvent(Type.WALL));
     }
@@ -44,6 +49,6 @@ public record ConfigEvent(Type type) {
     }
 
     public enum Type {
-        COMMON, VOD, LIVE, WALL, BOOT, PLAYER_PERFORMANCE
+        COMMON, VOD, LIVE, LIVE_LIST, WALL, BOOT, PLAYER_PERFORMANCE
     }
 }

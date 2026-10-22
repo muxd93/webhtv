@@ -3,6 +3,7 @@ package com.fongmi.android.tv.api.config;
 import android.text.TextUtils;
 
 import com.fongmi.android.tv.bean.Config;
+import com.fongmi.android.tv.bean.ConfigDepot;
 import com.fongmi.android.tv.db.AppDatabase;
 import com.github.catvod.utils.Prefers;
 
@@ -94,6 +95,18 @@ public final class ConfigRepository {
     public static Config findByUrl(String url, int type) {
         Config item = AppDatabase.get().getConfigDao().find(canonicalize(url), type);
         return item != null ? item : new Config().type(type).url(canonicalize(url));
+    }
+
+    /**
+     * 反查父多仓：本配置是否为某多仓登记的子源（同一 URL 可能属多个多仓，取 configId 最小者）。
+     * 用于直播聚合——多仓子源的点播配置激活时，直播侧改指多仓本体。
+     */
+    public static Config findParentDepot(Config child) {
+        if (child == null || child.isEmpty()) return null;
+        ConfigDepot relation = AppDatabase.get().getConfigDepotDao().findByChildUrl(child.getUrl());
+        if (relation == null) return null;
+        Config depot = AppDatabase.get().getConfigDao().findById(relation.getConfigId());
+        return depot != null && depot.isDepot() ? depot : null;
     }
 
     /** 从线上的 Config 对象（url/type/name）upsert 出本地配置，供远程推送/同步使用 */

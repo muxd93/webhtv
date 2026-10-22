@@ -6,9 +6,12 @@ import com.fongmi.android.tv.bean.Config;
 import com.fongmi.android.tv.bean.ConfigDepot;
 import com.fongmi.android.tv.bean.Depot;
 import com.fongmi.android.tv.db.AppDatabase;
+import com.fongmi.android.tv.utils.UrlUtil;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * 配置服务：多仓登记、删除策略（历史与收藏不随源删除而销毁）。
@@ -55,5 +58,37 @@ public final class ConfigService {
         AppDatabase.get().getSiteDao().deleteBySource(config.getId());
         AppDatabase.get().getLiveDao().deleteBySource(config.getId());
         AppDatabase.get().getConfigDao().delete(config.getUrl(), config.getType());
+    }
+
+    /**
+     * 一次性清理历史脏数据：预设回填连按时名称「张冠李戴」——
+     * 某源的名字等于同类型另一个源的 URL 文件名，却不等于自己 URL 的文件名，
+     * 改回自己 URL 的文件名。只修正可证实的泄漏；用户手输的相同名字不动。
+     *
+     * @return 修正的源数量
+     */
+    public static int fixLeakedNames() {
+        int fixed = 0;
+        List<Config> all = AppDatabase.get().getConfigDao().findAll();
+        for (int t = 0; t <= 2; t++) {
+            final int type = t;
+            List<Config> items = all.stream().filter(config -> config.getType() == type).toList();
+            Set<String> foreign = items.stream().map(config -> fileName(config.getUrl())).collect(Collectors.toSet());
+            for (Config config : items) {
+                String name = config.getName();
+                String own = fileName(config.getUrl());
+                if (name.isEmpty() || name.equals(own) || !foreign.contains(name)) continue;
+                config.setName(own);
+                ConfigRepository.upsert(config);
+                fixed++;
+            }
+        }
+        return fixed;
+    }
+
+    private static String fileName(String url) {
+        if (TextUtils.isEmpty(url)) return "";
+        String path = UrlUtil.path(url);
+        return path.isEmpty() ? UrlUtil.host(url) : path;
     }
 }

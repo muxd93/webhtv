@@ -24,12 +24,17 @@ import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.api.config.LiveConfig;
 import com.fongmi.android.tv.bean.Live;
 import com.fongmi.android.tv.databinding.DialogLiveBinding;
+import com.fongmi.android.tv.event.ConfigEvent;
 import com.fongmi.android.tv.impl.LiveListener;
 import com.fongmi.android.tv.ui.adapter.LiveAdapter;
 import com.fongmi.android.tv.ui.custom.SpaceItemDecoration;
 import com.fongmi.android.tv.utils.ResUtil;
 import com.google.android.material.bottomsheet.BottomSheetBehavior;
 import com.google.android.material.bottomsheet.BottomSheetDialog;
+
+import org.greenrobot.eventbus.EventBus;
+import org.greenrobot.eventbus.Subscribe;
+import org.greenrobot.eventbus.ThreadMode;
 
 public class LiveDialog extends BaseBottomSheetDialog implements LiveAdapter.OnClickListener {
 
@@ -80,6 +85,22 @@ public class LiveDialog extends BaseBottomSheetDialog implements LiveAdapter.OnC
         super.onStart();
         configureWindow(getDialog());
         if (adapter.getItemCount() == 0) dismiss();
+        EventBus.getDefault().register(this);
+    }
+
+    @Override
+    public void onStop() {
+        super.onStop();
+        EventBus.getDefault().unregister(this);
+    }
+
+    @Subscribe(threadMode = ThreadMode.MAIN)
+    public void onConfigEvent(ConfigEvent event) {
+        // 多仓聚合第二段补全：列表原地增长后刷新对话框，否则新增直播源不可见、也无法滚动到
+        if (event.type() != ConfigEvent.Type.LIVE_LIST) return;
+        if (adapter == null || adapter.getItemCount() == 0) return;
+        adapter.notifyDataSetChanged();
+        binding.recycler.post(() -> binding.recycler.scrollToPosition(LiveConfig.getHomeIndex()));
     }
 
     @Override
@@ -97,7 +118,9 @@ public class LiveDialog extends BaseBottomSheetDialog implements LiveAdapter.OnC
         if (drawer) fillDrawer();
         binding.recycler.setLayoutManager(isFull() && !drawer ? new GridLayoutManager(requireContext(), 2) : new LinearLayoutManager(requireContext()));
         binding.recycler.addItemDecoration(new SpaceItemDecoration(isFull() && !drawer ? 2 : 1, 12));
-        binding.recycler.setMaxHeight(drawer ? ResUtil.getScreenHeight(requireContext()) : ResUtil.getScreenHeight(requireContext()) * (ResUtil.isLand(requireContext()) ? 72 : 48) / 100);
+        // 抽屉模式给 90% 屏高上限：窗口若按内容包裹（AT_MOST 规格）时兜底保证有界可滚；
+        // weight=1 占满（EXACTLY 规格）时该上限被忽略
+        binding.recycler.setMaxHeight(drawer ? ResUtil.getScreenHeight(requireContext()) * 9 / 10 : ResUtil.getScreenHeight(requireContext()) * (ResUtil.isLand(requireContext()) ? 72 : 48) / 100);
         binding.recycler.post(() -> binding.recycler.scrollToPosition(LiveConfig.getHomeIndex()));
     }
 

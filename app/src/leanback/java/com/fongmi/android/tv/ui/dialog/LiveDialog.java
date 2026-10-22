@@ -10,11 +10,16 @@ import androidx.viewbinding.ViewBinding;
 import com.fongmi.android.tv.api.config.LiveConfig;
 import com.fongmi.android.tv.bean.Live;
 import com.fongmi.android.tv.databinding.DialogLiveBinding;
+import com.fongmi.android.tv.event.ConfigEvent;
 import com.fongmi.android.tv.impl.LiveListener;
 import com.fongmi.android.tv.ui.adapter.LiveAdapter;
 import com.fongmi.android.tv.ui.custom.SpaceItemDecoration;
 import com.fongmi.android.tv.utils.ResUtil;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+
+import org.greenrobot.eventbus.EventBus;
+import org.greenrobot.eventbus.Subscribe;
+import org.greenrobot.eventbus.ThreadMode;
 
 public class LiveDialog extends BaseAlertDialog implements LiveAdapter.OnClickListener {
 
@@ -60,7 +65,9 @@ public class LiveDialog extends BaseAlertDialog implements LiveAdapter.OnClickLi
         binding.recycler.setItemAnimator(null);
         if (drawer) {
             binding.recycler.setPadding(24, 24, 24, 24);
-            binding.recycler.setMaxHeight(ResUtil.getScreenHeight());
+            // 90% 屏高：窗口若按内容包裹（AT_MOST 规格）时此上限生效兜底，保证列表有界可滚；
+            // 窗口为 MATCH_PARENT（EXACTLY 规格）时此上限被忽略，面板占满
+            binding.recycler.setMaxHeight(ResUtil.getScreenHeight() * 9 / 10);
         }
         binding.recycler.addItemDecoration(new SpaceItemDecoration(1, 16));
         binding.recycler.post(() -> binding.recycler.scrollToPosition(LiveConfig.getHomeIndex()));
@@ -106,6 +113,22 @@ public class LiveDialog extends BaseAlertDialog implements LiveAdapter.OnClickLi
         if (adapter.getItemCount() == 0) dismiss();
         else if (drawer) setDrawerWindow();
         else setWidth(0.4f);
+        EventBus.getDefault().register(this);
+    }
+
+    @Override
+    public void onStop() {
+        super.onStop();
+        EventBus.getDefault().unregister(this);
+    }
+
+    @Subscribe(threadMode = ThreadMode.MAIN)
+    public void onConfigEvent(ConfigEvent event) {
+        // 多仓聚合第二段补全：列表原地增长后刷新对话框，否则新增直播源不可见、也无法滚动到
+        if (event.type() != ConfigEvent.Type.LIVE_LIST) return;
+        if (adapter == null || adapter.getItemCount() == 0) return;
+        adapter.notifyDataSetChanged();
+        binding.recycler.post(() -> binding.recycler.scrollToPosition(LiveConfig.getHomeIndex()));
     }
 
     private void setDrawerWindow() {

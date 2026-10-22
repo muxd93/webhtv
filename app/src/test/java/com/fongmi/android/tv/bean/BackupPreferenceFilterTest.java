@@ -48,6 +48,16 @@ public class BackupPreferenceFilterTest {
     }
 
     @Test
+    public void rulePoolFollowsSettingsOption() {
+        SyncOptions settingsOnly = new SyncOptions().config(false).spider(false).webHome(false).settings(true);
+        SyncOptions configOnly = new SyncOptions().config(true).spider(false).webHome(false).settings(false);
+
+        // 规则池为全局网络规则并集，随设置同步，且不属于配置/爬虫粒度
+        assertTrue(Backup.include("rule_pool", settingsOnly));
+        assertFalse(Backup.include("rule_pool", configOnly));
+    }
+
+    @Test
     public void playbackExperimentStateRemainsDeviceLocal() {
         SyncOptions everything = new SyncOptions()
                 .config(true)

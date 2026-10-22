@@ -128,6 +128,6 @@ public class HistoryDialog extends BaseAlertDialog implements ConfigAdapter.OnCl
     public void onStart() {
         super.onStart();
         if (adapter.getItemCount() == 0) dismiss();
-        else setWidth(0.4f);
+        else setWidth(0.5f);
     }
 }

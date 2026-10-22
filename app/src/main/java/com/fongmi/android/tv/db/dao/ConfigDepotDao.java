@@ -16,6 +16,9 @@ public abstract class ConfigDepotDao extends BaseDao<ConfigDepot> {
     @Query("SELECT * FROM ConfigDepot WHERE configId = :configId ORDER BY ord")
     public abstract List<ConfigDepot> findByConfig(int configId);
 
+    @Query("SELECT * FROM ConfigDepot WHERE url = :url ORDER BY configId LIMIT 1")
+    public abstract ConfigDepot findByChildUrl(String url);
+
     @Query("DELETE FROM ConfigDepot WHERE configId = :configId")
     public abstract void deleteByConfig(int configId);
 

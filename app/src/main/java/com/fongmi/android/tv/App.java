@@ -13,8 +13,12 @@ import androidx.annotation.Nullable;
 import androidx.core.os.HandlerCompat;
 
 import com.fongmi.android.tv.Constant;
+import com.fongmi.android.tv.api.config.ConfigService;
+import com.fongmi.android.tv.api.config.RulePool;
 import com.fongmi.android.tv.db.AppDatabase;
 import com.fongmi.android.tv.server.Server;
+import com.github.catvod.utils.Prefers;
+import com.orhanobut.logger.Logger;
 import com.fongmi.android.tv.playback.PlaybackRemoteSyncer;
 import com.fongmi.android.tv.player.PlaybackMemoryMonitor;
 import com.fongmi.android.tv.player.PlaybackSystemConditionMonitor;
@@ -110,6 +114,8 @@ public class App extends Application implements Application.ActivityLifecycleCal
         }
         Notify.createChannel();
         ProxySetting.apply();
+        RulePool.apply();
+        fixLeakedConfigNames();
         DanmakuSearchListFocusFixer.start();
         registerActivityLifecycleCallbacks(this);
         post(this::startBackgroundServices, 1200);
@@ -125,6 +131,18 @@ public class App extends Application implements Application.ActivityLifecycleCal
     public void onLowMemory() {
         if (!PlaybackRecoveryMonitor.isRecoveryProcess(this)) PlaybackMemoryMonitor.process().onLowMemory();
         super.onLowMemory();
+    }
+
+    /** 一次性清理：预设回填连按导致源名称张冠李戴的历史脏数据（修复后不会再有新脏数据） */
+    private void fixLeakedConfigNames() {
+        if (Prefers.getBoolean("config_name_leak_fixed", false)) return;
+        try {
+            int fixed = ConfigService.fixLeakedNames();
+            if (fixed > 0) Logger.i("config name leak fixed: " + fixed);
+        } catch (Exception e) {
+            Logger.e("fixLeakedConfigNames", e);
+        }
+        Prefers.put("config_name_leak_fixed", true);
     }
 
     private void startBackgroundServices() {

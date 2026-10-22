@@ -20,7 +20,6 @@ import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.api.config.LiveConfig;
 import com.fongmi.android.tv.api.config.VodConfig;
-import com.fongmi.android.tv.api.config.NetworkRules;
 import com.fongmi.android.tv.api.config.WallConfig;
 import com.fongmi.android.tv.bean.Config;
 import com.fongmi.android.tv.bean.Site;
@@ -450,7 +449,6 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
         VodConfig.get().clear();
         AppDatabase.backup();
         OkHttp.get().clear();
-        NetworkRules.reset();
         Source.get().exit();
         Server.get().stop();
         super.onDestroy();

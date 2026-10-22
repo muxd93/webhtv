@@ -197,6 +197,16 @@ public class VodConfig extends BaseConfig {
 
     private void initLive(Config config, JsonObject object) {
         if (Json.isEmpty(object, "lives")) return;
+        // 多仓子源：直播侧指向多仓本体，打开直播时聚合全部子仓直播源（无需切单仓）
+        Config depot = ConfigRepository.findParentDepot(config);
+        if (depot != null) {
+            Config temp = ConfigRepository.upsert(new Config().type(LIVE).url(depot.getUrl()).name(depot.getName()));
+            Config current = LiveConfig.get().getConfig();
+            boolean same = current != null && !current.isEmpty() && current.getUrl().equals(temp.getUrl());
+            LiveConfig.get().config(ConfigRepository.activate(temp));
+            if (!same) LiveConfig.get().clear();
+            return;
+        }
         Config temp = ConfigRepository.upsert(new Config().type(LIVE).url(config.getUrl()).name(config.getName()));
         boolean sync = LiveConfig.get().needSync(config.getUrl());
         if (sync) LiveConfig.get().config(ConfigRepository.activate(temp)).parse(object);
@@ -252,7 +262,8 @@ public class VodConfig extends BaseConfig {
     }
 
     private void setDoh(List<Doh> doh) {
-        this.doh = doh;
+        // doh 入规则池：返回自身 + 池中其他仓的并集（DNS 解析器，全局并集不影响内容）
+        this.doh = RulePool.mergeDoh(doh);
     }
 
     public List<Rule> getRules() {
@@ -260,7 +271,7 @@ public class VodConfig extends BaseConfig {
     }
 
     private void setRules(List<Rule> rules) {
-        this.rules = rules;
+        this.rules = RulePool.mergeRules(rules);
         RuleConfig.get().invalidate();
     }
 
@@ -287,7 +298,7 @@ public class VodConfig extends BaseConfig {
     }
 
     private void setAds(List<String> ads) {
-        this.ads = ads;
+        this.ads = RulePool.mergeAds(ads);
         RuleConfig.get().invalidate();
     }
 
