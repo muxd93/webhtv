@@ -3,6 +3,7 @@ package com.fongmi.android.tv.ui;
 import androidx.leanback.widget.ArrayObjectAdapter;
 import androidx.leanback.widget.ClassPresenterSelector;
 import androidx.leanback.widget.FocusHighlight;
+import androidx.leanback.widget.HeaderItem;
 import androidx.leanback.widget.HorizontalGridView;
 import androidx.leanback.widget.ItemBridgeAdapter;
 import androidx.leanback.widget.ListRow;
@@ -12,6 +13,7 @@ import androidx.leanback.widget.PresenterSelector;
 
 import com.fongmi.android.tv.Product;
 import com.fongmi.android.tv.R;
+import com.fongmi.android.tv.setting.Setting;
 import com.fongmi.android.tv.bean.Func;
 import com.fongmi.android.tv.bean.History;
 import com.fongmi.android.tv.bean.HomeMore;
@@ -42,6 +44,10 @@ public class HomeRows {
     public static final int KEEP_LIMIT = 10;
     public static final int HISTORY_LIMIT = 10;
 
+    /** 铺平铺网格子行的稳定 id 基址，用于 RowDiff 按 id 而非适配器实例做行级 diff */
+    private static final long HISTORY_ID_BASE = 1_000_000L;
+    private static final long KEEP_ID_BASE = 2_000_000L;
+
     public interface OnMoreClickListener {
         void onMoreClick(HomeMore.Kind kind);
     }
@@ -58,6 +64,10 @@ public class HomeRows {
     private ArrayObjectAdapter mKeepAdapter;
     private HistoryPresenter mHistoryPresenter;
     private KeepPresenter mKeepPresenter;
+    private HomeSelector mHistorySelector;
+    private HomeSelector mKeepSelector;
+    private final List<ArrayObjectAdapter> mHistoryGrid = new ArrayList<>();
+    private final List<ArrayObjectAdapter> mKeepGrid = new ArrayList<>();
 
     private List<Func> mFuncItems = Collections.emptyList();
     private List<History> mHistory = Collections.emptyList();
@@ -84,15 +94,15 @@ public class HomeRows {
     private void init() {
         mFuncAdapter = new ArrayObjectAdapter(new FuncPresenter(mFuncListener));
         mHistoryPresenter = new HistoryPresenter(mHistoryListener);
-        HomeSelector historySelector = new HomeSelector(mHistoryPresenter);
-        historySelector.add(History.class, mHistoryPresenter);
-        historySelector.add(HomeMore.class, new HomeMorePresenter(mMoreListener));
-        mHistoryAdapter = new ArrayObjectAdapter(historySelector);
+        mHistorySelector = new HomeSelector(mHistoryPresenter);
+        mHistorySelector.add(History.class, mHistoryPresenter);
+        mHistorySelector.add(HomeMore.class, new HomeMorePresenter(mMoreListener));
+        mHistoryAdapter = new ArrayObjectAdapter(mHistorySelector);
         mKeepPresenter = new KeepPresenter(mKeepListener);
-        HomeSelector keepSelector = new HomeSelector(mKeepPresenter);
-        keepSelector.add(Keep.class, mKeepPresenter);
-        keepSelector.add(HomeMore.class, new HomeMorePresenter(mMoreListener));
-        mKeepAdapter = new ArrayObjectAdapter(keepSelector);
+        mKeepSelector = new HomeSelector(mKeepPresenter);
+        mKeepSelector.add(Keep.class, mKeepPresenter);
+        mKeepSelector.add(HomeMore.class, new HomeMorePresenter(mMoreListener));
+        mKeepAdapter = new ArrayObjectAdapter(mKeepSelector);
         CustomSelector selector = new CustomSelector();
         selector.addPresenter(Integer.class, new HeaderPresenter());
         selector.addPresenter(String.class, new ProgressPresenter());
@@ -124,6 +134,21 @@ public class HomeRows {
     public ItemBridgeAdapter rebuild() {
         init();
         return bridgeAdapter();
+    }
+
+    /** 数据变化后整体重铺（删除单条等场景），按当前设置值重新铺平铺网格 */
+    public void refresh() {
+        apply();
+    }
+
+    /** 删除模式切换时通知所有历史网格子适配器重绑（保留焦点，不整体重建） */
+    public void notifyHistoryChanged() {
+        for (ArrayObjectAdapter adapter : mHistoryGrid) adapter.notifyArrayItemRangeChanged(0, adapter.size());
+    }
+
+    /** 删除模式切换时通知所有收藏网格子适配器重绑 */
+    public void notifyKeepChanged() {
+        for (ArrayObjectAdapter adapter : mKeepGrid) adapter.notifyArrayItemRangeChanged(0, adapter.size());
     }
 
     public void submitFunc(List<Func> items) {
@@ -159,8 +184,9 @@ public class HomeRows {
     }
 
     private void submitHistoryItems() {
-        List<Object> items = new ArrayList<>(mHistory.subList(0, Math.min(mHistory.size(), HISTORY_LIMIT)));
-        if (mHistoryTotal > HISTORY_LIMIT) items.add(new HomeMore(HomeMore.Kind.HISTORY, mHistoryTotal));
+        int limit = Setting.getHistoryCount();
+        List<Object> items = new ArrayList<>(mHistory.subList(0, Math.min(mHistory.size(), limit)));
+        if (mHistoryTotal > limit) items.add(new HomeMore(HomeMore.Kind.HISTORY, mHistoryTotal));
         if (sameItems(mHistoryAdapter, items)) {
             if (mHistoryAdapter.size() > 0 && !mConfigNames.equals(mAppliedConfigNames)) mHistoryAdapter.notifyArrayItemRangeChanged(0, mHistoryAdapter.size());
             mAppliedConfigNames = mConfigNames;
@@ -174,8 +200,9 @@ public class HomeRows {
     private void submitKeepItems(Map<String, History> progress, Map<Integer, String> configNames) {
         mKeepPresenter.setProgress(progress);
         mKeepPresenter.setConfigNames(configNames);
-        List<Object> items = new ArrayList<>(mKeeps.subList(0, Math.min(mKeeps.size(), KEEP_LIMIT)));
-        if (mKeepTotal > KEEP_LIMIT) items.add(new HomeMore(HomeMore.Kind.KEEP, mKeepTotal));
+        int limit = Setting.getKeepCount();
+        List<Object> items = new ArrayList<>(mKeeps.subList(0, Math.min(mKeeps.size(), limit)));
+        if (mKeepTotal > limit) items.add(new HomeMore(HomeMore.Kind.KEEP, mKeepTotal));
         if (sameItems(mKeepAdapter, items)) {
             if (mKeepAdapter.size() > 0 && (!progress.equals(mAppliedProgress) || !configNames.equals(mAppliedConfigNames))) mKeepAdapter.notifyArrayItemRangeChanged(0, mKeepAdapter.size());
             mAppliedProgress = progress;
@@ -188,14 +215,45 @@ public class HomeRows {
         mKeepAdapter.addAll(0, items);
     }
 
+    /** 网格每行列数，与推荐区保持一致，保证横向对齐 */
+    private int gridColumn() {
+        return Math.max(1, Product.getColumn(mVodStyle));
+    }
+
     private List<Object> build() {
         List<Object> items = new ArrayList<>();
         items.add(new ListRow(mFuncAdapter));
         items.add(R.string.home_history);
-        if (!mHistory.isEmpty()) items.add(new ListRow(mHistoryAdapter));
+        mHistoryGrid.clear();
+        if (mHistoryAdapter.size() > 0) {
+            int column = gridColumn();
+            List<Object> data = new ArrayList<>(mHistoryAdapter.size());
+            for (int i = 0; i < mHistoryAdapter.size(); i++) data.add(mHistoryAdapter.get(i));
+            int row = 0;
+            for (List<Object> part : Lists.partition(data, column)) {
+                ArrayObjectAdapter adapter = new ArrayObjectAdapter(mHistorySelector);
+                adapter.addAll(0, part);
+                mHistoryGrid.add(adapter);
+                items.add(new ListRow(HISTORY_ID_BASE + row, (HeaderItem) null, adapter));
+                row++;
+            }
+        }
         if (!mKeeps.isEmpty() || mKeepTotal > 0) {
             items.add(R.string.home_keep);
-            items.add(new ListRow(mKeepAdapter));
+            mKeepGrid.clear();
+            if (mKeepAdapter.size() > 0) {
+                int column = gridColumn();
+                List<Object> data = new ArrayList<>(mKeepAdapter.size());
+                for (int i = 0; i < mKeepAdapter.size(); i++) data.add(mKeepAdapter.get(i));
+                int row = 0;
+                for (List<Object> part : Lists.partition(data, column)) {
+                    ArrayObjectAdapter adapter = new ArrayObjectAdapter(mKeepSelector);
+                    adapter.addAll(0, part);
+                    mKeepGrid.add(adapter);
+                    items.add(new ListRow(KEEP_ID_BASE + row, (HeaderItem) null, adapter));
+                    row++;
+                }
+            }
         }
         items.add(R.string.home_recommend);
         if (mVodStyle.isList()) {
@@ -243,6 +301,9 @@ public class HomeRows {
         if (item instanceof HomeMore) return "m:" + ((HomeMore) item).getKind();
         if (item instanceof Vod) return "vod:" + vodKey((Vod) item);
         if (item instanceof ListRow) {
+            long id = ((ListRow) item).getId();
+            if (id >= HISTORY_ID_BASE && id < HISTORY_ID_BASE + 1_000_000) return "row:history:" + (id - HISTORY_ID_BASE);
+            if (id >= KEEP_ID_BASE && id < KEEP_ID_BASE + 1_000_000) return "row:keep:" + (id - KEEP_ID_BASE);
             ObjectAdapter child = ((ListRow) item).getAdapter();
             if (child == null) return "grid:null";
             if (child == mFuncAdapter) return "row:func";

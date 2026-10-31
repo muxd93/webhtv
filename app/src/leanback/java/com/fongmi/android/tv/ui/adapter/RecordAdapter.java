@@ -8,8 +8,10 @@ import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.fongmi.android.tv.App;
+import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.databinding.AdapterSearchRecordBinding;
 import com.fongmi.android.tv.setting.Setting;
+import com.fongmi.android.tv.utils.ResUtil;
 import com.google.gson.reflect.TypeToken;
 
 import java.util.ArrayList;
@@ -18,12 +20,14 @@ import java.util.List;
 public class RecordAdapter extends RecyclerView.Adapter<RecordAdapter.ViewHolder> {
 
     private final OnClickListener listener;
-    private final List<String> mItems;
+    private final List<String> mHistory;  // 真实搜索历史（持久化于 Setting）
+    private final List<String> mDisplay;  // 历史 + 预置默认词（去重后用于展示）
 
     public RecordAdapter(OnClickListener listener) {
         this.listener = listener;
-        this.mItems = getItems();
-        this.listener.onDataChanged(mItems.size());
+        this.mHistory = getHistory();
+        this.mDisplay = buildDisplay();
+        this.listener.onDataChanged(mDisplay.size());
     }
 
     public interface OnClickListener {
@@ -33,33 +37,58 @@ public class RecordAdapter extends RecyclerView.Adapter<RecordAdapter.ViewHolder
         void onDataChanged(int size);
     }
 
-    private List<String> getItems() {
+    private List<String> getHistory() {
         if (Setting.getKeyword().isEmpty()) return new ArrayList<>();
         return App.gson().fromJson(Setting.getKeyword(), TypeToken.getParameterized(List.class, String.class).getType());
     }
 
-    private void checkToAdd(String item) {
-        mItems.remove(item);
-        mItems.add(0, item);
-        if (mItems.size() > 9) mItems.remove(9);
+    /** 预置默认搜索词（如儿童节目），作为空历史的快捷入口，不参与真实历史存储、不可删除 */
+    private List<String> getDefaults() {
+        List<String> list = new ArrayList<>();
+        for (String keyword : ResUtil.getStringArray(R.array.search_default_keywords)) {
+            list.add(keyword);
+        }
+        return list;
+    }
+
+    private List<String> buildDisplay() {
+        List<String> display = new ArrayList<>(mHistory);
+        for (String keyword : getDefaults()) {
+            if (!display.contains(keyword)) display.add(keyword);
+        }
+        return display;
+    }
+
+    private void saveHistory() {
+        Setting.putKeyword(App.gson().toJson(mHistory));
+    }
+
+    private void rebuild() {
+        mDisplay.clear();
+        mDisplay.addAll(buildDisplay());
     }
 
     public void clearAll() {
-        mItems.clear();
-        Setting.putKeyword(App.gson().toJson(mItems));
+        mHistory.clear();
+        saveHistory();
+        rebuild();
         notifyDataSetChanged();
-        listener.onDataChanged(0);
+        listener.onDataChanged(mDisplay.size());
     }
 
     public void add(String item) {
-        checkToAdd(item);
+        mHistory.remove(item);
+        mHistory.add(0, item);
+        if (mHistory.size() > 9) mHistory.remove(9);
+        saveHistory();
+        rebuild();
         notifyDataSetChanged();
         listener.onDataChanged(getItemCount());
     }
 
     @Override
     public int getItemCount() {
-        return mItems.size();
+        return mDisplay.size();
     }
 
     @NonNull
@@ -70,7 +99,7 @@ public class RecordAdapter extends RecyclerView.Adapter<RecordAdapter.ViewHolder
 
     @Override
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
-        String text = mItems.get(position);
+        String text = mDisplay.get(position);
         holder.binding.text.setText(text);
         holder.binding.text.setOnClickListener(v -> listener.onItemClick(text));
     }
@@ -87,10 +116,15 @@ public class RecordAdapter extends RecyclerView.Adapter<RecordAdapter.ViewHolder
 
         @Override
         public boolean onLongClick(View v) {
-            mItems.remove(getLayoutPosition());
-            notifyItemRemoved(getLayoutPosition());
-            listener.onDataChanged(getItemCount());
-            Setting.putKeyword(App.gson().toJson(mItems));
+            int position = getLayoutPosition();
+            if (position < 0 || position >= mDisplay.size()) return false;
+            String text = mDisplay.get(position);
+            if (!mHistory.contains(text)) return false; // 默认词不可删除
+            mHistory.remove(text);
+            saveHistory();
+            rebuild();
+            notifyDataSetChanged();
+            listener.onDataChanged(mDisplay.size());
             return true;
         }
     }

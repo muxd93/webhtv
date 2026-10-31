@@ -45,6 +45,8 @@ public class SettingPersonalActivity extends BaseActivity {
         mBinding.powerSave.setOnClickListener(this::setPowerSave);
         mBinding.globalHistory.setOnClickListener(this::setGlobalHistory);
         mBinding.history.setOnClickListener(this::onHistory);
+        mBinding.historyCount.setOnClickListener(this::setHistoryCount);
+        mBinding.keepCount.setOnClickListener(this::setKeepCount);
         mBinding.searchThreads.setOnClickListener(this::setSearchThreads);
         mBinding.startupPage.setOnClickListener(this::setStartupPage);
         mBinding.download.setOnClickListener(view -> DownloadSettingsDialog.show(this));
@@ -55,6 +57,8 @@ public class SettingPersonalActivity extends BaseActivity {
         mBinding.doubleBackText.setText(getSwitch(Setting.isDoubleBackExit()));
         mBinding.powerSaveText.setText(getSwitch(Setting.isPowerSaveStartup()));
         mBinding.globalHistoryText.setText(getGlobalHistoryModeText());
+        mBinding.historyCountText.setText(String.valueOf(Setting.getHistoryCount()));
+        mBinding.keepCountText.setText(String.valueOf(Setting.getKeepCount()));
         mBinding.searchThreadsText.setText(String.valueOf(Setting.getSearchThreads()));
         mBinding.startupPageText.setText(getStartupPageLabel());
         mBinding.downloadText.setText(DownloadManager.summary(this));
@@ -107,6 +111,22 @@ public class SettingPersonalActivity extends BaseActivity {
         // 立即调整共享搜索池，下一次搜索即按新线程数执行
         Task.newSearchExecutor(threads);
         mBinding.searchThreadsText.setText(String.valueOf(threads));
+    }
+
+    private void setHistoryCount(View view) {
+        int count = Setting.nextHistoryCount();
+        Setting.putHistoryCount(count);
+        mBinding.historyCountText.setText(String.valueOf(count));
+        // 数量变化影响主页历史行铺平铺网格，通知主页重载
+        RefreshEvent.history();
+    }
+
+    private void setKeepCount(View view) {
+        int count = Setting.nextKeepCount();
+        Setting.putKeepCount(count);
+        mBinding.keepCountText.setText(String.valueOf(count));
+        // 数量变化影响主页收藏行铺平铺网格，通知主页重载
+        RefreshEvent.history();
     }
 
     private void setStartupPage(View view) {

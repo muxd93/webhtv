@@ -673,6 +673,8 @@
     <string name="setting_power_save">省电启动</string>
     <string name="setting_global_history">全局历史</string>
     <string name="setting_search_thread">搜索线程数</string>
+    <string name="setting_history_count">首页历史行数量</string>
+    <string name="setting_keep_count">首页收藏行数量</string>
     <string name="setting_startup_page">启动页面</string>
     <string name="startup_page_home">首页</string>
     <string name="startup_page_live">直播</string>

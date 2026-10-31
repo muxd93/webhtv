@@ -455,7 +455,7 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
 
     private void setHistoryDelete(boolean delete) {
         mRows.historyPresenter().setDelete(delete);
-        mRows.historyAdapter().notifyArrayItemRangeChanged(0, mRows.historyAdapter().size());
+        mRows.notifyHistoryChanged();
     }
 
     private void clearHistory() {
@@ -639,6 +639,7 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
     @Override
     public void onItemDelete(History item) {
         mRows.historyAdapter().remove(item.deleteAndSync());
+        mRows.refresh();
         if (mRows.historyAdapter().size() > 0) return;
         mRows.historyPresenter().setDelete(false);
         onFeed(new HomeFeed(Collections.emptyList(), 0, mFeed.getKeeps(), mFeed.getKeepTotal(), mFeed.getProgress(), mFeed.getConfigNames()));

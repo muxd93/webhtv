@@ -675,6 +675,8 @@
     <string name="setting_power_save">Power-save startup</string>
     <string name="setting_global_history">Global history</string>
     <string name="setting_search_thread">Search threads</string>
+    <string name="setting_history_count">Home history row count</string>
+    <string name="setting_keep_count">Home keep row count</string>
     <string name="setting_startup_page">Startup page</string>
     <string name="startup_page_home">Home</string>
     <string name="startup_page_live">Live</string>
@@ -1153,6 +1155,16 @@
     <string name="search_loading">Searching...</string>
     <string name="search_progress">(%1$d/%2$d)</string>
     <string name="search_no_result">No results</string>
+    <string-array name="search_default_keywords">
+        <item>火车</item>
+        <item>超级飞侠</item>
+        <item>托马斯和他的朋友们</item>
+        <item>小砾与工程家族</item>
+        <item>小猪佩奇</item>
+        <item>汪汪队</item>
+        <item>熊出没</item>
+        <item>迪迦奥特曼</item>
+    </string-array>
 
     <!-- Dialog -->
     <string name="dialog_edit">Edit</string>

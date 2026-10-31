@@ -867,6 +867,50 @@ public class Setting {
         return page >= STARTUP_HOME && page < STARTUP_PAGE_COUNT ? page : STARTUP_HOME;
     }
 
+    // 首页「最近观看」行展示数量：默认 10，可调档位 5/10/15/20/30/50
+    public static final int HISTORY_COUNT_DEFAULT = 10;
+    public static final int[] HISTORY_COUNT_OPTIONS = {5, 10, 15, 20, 30, 50};
+
+    public static int getHistoryCount() {
+        return clampHistoryCount(Prefers.getInt("history_count", HISTORY_COUNT_DEFAULT));
+    }
+
+    public static void putHistoryCount(int count) {
+        Prefers.put("history_count", clampHistoryCount(count));
+    }
+
+    public static int nextHistoryCount() {
+        int current = getHistoryCount();
+        for (int option : HISTORY_COUNT_OPTIONS) if (option > current) return option;
+        return HISTORY_COUNT_OPTIONS[0];
+    }
+
+    private static int clampHistoryCount(int count) {
+        return Math.min(100, Math.max(1, count));
+    }
+
+    // 首页「收藏」行展示数量：与历史行共用同一套档位机制
+    public static final int KEEP_COUNT_DEFAULT = 10;
+    public static final int[] KEEP_COUNT_OPTIONS = {5, 10, 15, 20, 30, 50};
+
+    public static int getKeepCount() {
+        return clampKeepCount(Prefers.getInt("keep_count", KEEP_COUNT_DEFAULT));
+    }
+
+    public static void putKeepCount(int count) {
+        Prefers.put("keep_count", clampKeepCount(count));
+    }
+
+    public static int nextKeepCount() {
+        int current = getKeepCount();
+        for (int option : KEEP_COUNT_OPTIONS) if (option > current) return option;
+        return KEEP_COUNT_OPTIONS[0];
+    }
+
+    private static int clampKeepCount(int count) {
+        return Math.min(100, Math.max(1, count));
+    }
+
     public static boolean hasFileManager() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return false;
         return new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:" + App.get().getPackageName())).resolveActivity(App.get().getPackageManager()) != null || new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION).resolveActivity(App.get().getPackageManager()) != null;
