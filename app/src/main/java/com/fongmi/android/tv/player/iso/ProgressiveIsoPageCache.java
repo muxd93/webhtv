@@ -1,5 +1,7 @@
 package com.fongmi.android.tv.player.iso;
 
+import com.fongmi.android.tv.utils.ExecutorsX;
+
 import com.github.catvod.crawler.SpiderDebug;
 
 import java.io.EOFException;
@@ -24,8 +26,7 @@ final class ProgressiveIsoPageCache implements RemoteIsoSource {
     private final int prefetchDistance;
     private final LinkedHashMap<Long, Page> pages = new LinkedHashMap<>(8, 0.75f, true);
     private final LinkedHashMap<Long, Load> loads = new LinkedHashMap<>();
-    private final ExecutorService workers = Executors.newFixedThreadPool(MAX_READERS,
-            runnable -> new Thread(runnable, "iso-range"));
+    private final ExecutorService workers = ExecutorsX.daemonPool(MAX_READERS, "iso-range");
     private boolean closed;
     private IOException sourceFailure;
     private int running;

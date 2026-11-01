@@ -43,7 +43,7 @@ public class Clock {
     }
 
     public void start() {
-        timer = new Timer();
+        timer = new Timer("clock", true);
         timer.schedule(new TimerTask() {
             @Override
             public void run() {

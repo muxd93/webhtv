@@ -1,5 +1,7 @@
 package com.fongmi.android.tv.player;
 
+import com.fongmi.android.tv.utils.Disposer;
+
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -188,6 +190,7 @@ public class PlayerManager implements ParseCallback {
     private final PlaybackSystemConditionCoordinator.Registration mpvResourceSystemRegistration;
     private final PlaybackExperimentCoordinator playbackExperimentCoordinator;
     private final PlaybackExperimentCoordinator.Registration playbackExperimentRegistration;
+    private final Disposer disposer = new Disposer();
     private final IjkBufferController ijkBufferController;
     private final IjkDecodePressureController ijkDecodePressureController;
     private final IjkRealtimeRecoveryController ijkRealtimeRecoveryController;
@@ -322,6 +325,10 @@ public class PlayerManager implements ParseCallback {
                 App.post(() -> onIjkBufferMemoryUpdate(update)));
         this.mpvResourceSystemRegistration = PlaybackSystemConditionCoordinator.process().addListener(update ->
                 App.post(() -> onMpvResourceSystemUpdate(update)));
+        disposer.add(mpvResourceMemoryRegistration);
+        disposer.add(ijkBufferMemoryRegistration);
+        disposer.add(mpvResourceSystemRegistration);
+        disposer.add(playbackExperimentRegistration);
         this.networkProtectionTrend = new ForwardBufferTrend();
         this.liveDanmakuBuffer = new LiveDanmakuBuffer();
         this.liveDanmakuMetrics = new LiveDanmakuMetrics();
@@ -350,10 +357,7 @@ public class PlayerManager implements ParseCallback {
         App.removeCallbacks(runnable);
         App.removeCallbacks(networkProtectionRunnable);
         App.removeCallbacks(playbackTelemetryRunnable);
-        mpvResourceMemoryRegistration.close();
-        ijkBufferMemoryRegistration.close();
-        mpvResourceSystemRegistration.close();
-        playbackExperimentRegistration.close();
+        disposer.dispose();
         stopNativeAudioSession();
         clearDanmaku("release");
         releaseLiveDanmakuSession();

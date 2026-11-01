@@ -8,7 +8,7 @@ import com.fongmi.android.tv.bean.DownloadTask;
 import com.fongmi.android.tv.db.AppDatabase;
 import com.fongmi.android.tv.utils.Task;
 import com.github.catvod.utils.Path;
-import com.google.gson.Gson;
+import com.fongmi.android.tv.gson.GsonProvider;
 import com.google.gson.annotations.SerializedName;
 
 import java.io.File;
@@ -16,8 +16,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class DownloadStore {
-
-    private static final Gson GSON = new Gson();
 
     private DownloadStore() {
     }
@@ -127,7 +125,7 @@ public class DownloadStore {
         File info = DownloadPath.info(episodeDir);
         if (!info.exists()) return null;
         try {
-            Sidecar sidecar = GSON.fromJson(Path.read(info), Sidecar.class);
+            Sidecar sidecar = GsonProvider.get().fromJson(Path.read(info), Sidecar.class);
             if (sidecar == null || TextUtils.isEmpty(sidecar.id)) return null;
             if (find(sidecar.id) != null) return null;
             DownloadTask task = new DownloadTask();
@@ -169,7 +167,7 @@ public class DownloadStore {
         sidecar.totalBytes = bytes;
         sidecar.createTime = task.getCreateTime();
         sidecar.finishTime = System.currentTimeMillis();
-        Path.write(DownloadPath.info(dir), GSON.toJson(sidecar).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        Path.write(DownloadPath.info(dir), GsonProvider.get().toJson(sidecar).getBytes(java.nio.charset.StandardCharsets.UTF_8));
     }
 
     public static class Sidecar {

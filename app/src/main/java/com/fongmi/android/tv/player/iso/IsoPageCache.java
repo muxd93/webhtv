@@ -1,5 +1,7 @@
 package com.fongmi.android.tv.player.iso;
 
+import com.fongmi.android.tv.utils.ExecutorsX;
+
 import com.github.catvod.crawler.SpiderDebug;
 
 import java.io.EOFException;
@@ -61,8 +63,7 @@ public final class IsoPageCache implements RemoteIsoSource {
         // raw-byte horizon instead, without advancing libbluray's VM.
         this.prefetchParallelism = disk == null ? 1 : 2;
         this.prefetchDistance = disk == null ? 1 : Math.min(4, Math.max(1, maxPages - 1));
-        this.prefetch = Executors.newFixedThreadPool(prefetchParallelism,
-                r -> new Thread(r, "iso-prefetch"));
+        this.prefetch = ExecutorsX.daemonPool(prefetchParallelism, "iso-prefetch");
         this.pages = new LinkedHashMap<>(maxPages, 0.75f, true) {
             @Override
             protected boolean removeEldestEntry(Map.Entry<Long, byte[]> eldest) {

@@ -5,6 +5,7 @@ import com.fongmi.android.tv.bean.Rule;
 import com.github.catvod.bean.Doh;
 import com.github.catvod.bean.Header;
 import com.github.catvod.bean.Proxy;
+import com.github.catvod.crawler.SpiderDebug;
 import com.github.catvod.net.OkHttp;
 import com.github.catvod.utils.Prefers;
 import com.google.gson.JsonArray;
@@ -42,12 +43,16 @@ public final class RulePool {
 
     private static final class Data {
 
-        List<JsonElement> headers = new ArrayList<>();
-        List<JsonElement> proxies = new ArrayList<>();
+        // 注意：headers/proxies/doh/rules 必须是具体类型 JsonArray，而非 List<JsonElement>。
+        // R8 下若泛型签名被擦除，List<JsonElement> 的元素会被反序列化成 LinkedTreeMap，
+        // 读取时强转 JsonElement 即崩溃；JsonArray 是 Gson 内置的具体类型，不依赖 Signature 属性，release 安全。
+        // 序列化后的 JSON 形状不变（仍是数组），因此旧版持久化数据可无缝加载。
+        JsonArray headers = new JsonArray();
+        JsonArray proxies = new JsonArray();
         List<String> hosts = new ArrayList<>();
-        List<JsonElement> doh = new ArrayList<>();
+        JsonArray doh = new JsonArray();
         List<String> ads = new ArrayList<>();
-        List<JsonElement> rules = new ArrayList<>();
+        JsonArray rules = new JsonArray();
 
         transient Set<String> headerKeys = new LinkedHashSet<>();
         transient Set<String> proxyKeys = new LinkedHashSet<>();
@@ -76,12 +81,16 @@ public final class RulePool {
                     if (stored.rules != null) result.rules = stored.rules;
                 }
             }
-        } catch (Exception e) {
-            result = new Data();
+            rebuildKeys(result);
+            data = result;
+        } catch (Throwable e) {
+            // 兜底：JsonArray 已是具体类型、不依赖泛型签名，但历史脏数据等意外仍可能失败；
+            // 自愈：清空损坏的持久化数据并以空池继续，避免整个 App 在启动时硬崩溃。
+            SpiderDebug.log("rule_pool", "load failed, reset corrupt data: %s", e.getMessage());
+            data = new Data();
+            Prefers.remove(KEY);
         }
-        rebuildKeys(result);
-        data = result;
-        return result;
+        return data;
     }
 
     private static void rebuildKeys(Data d) {
@@ -120,12 +129,6 @@ public final class RulePool {
             Prefers.put(KEY, App.gson().toJson(d));
         } catch (Exception ignored) {
         }
-    }
-
-    private static JsonArray element(List<JsonElement> items) {
-        JsonArray array = new JsonArray();
-        for (JsonElement item : items) array.add(item);
-        return array;
     }
 
     private static JsonArray wrap(JsonElement item) {
@@ -271,8 +274,8 @@ public final class RulePool {
     public static void apply() {
         synchronized (LOCK) {
             Data d = load();
-            List<Header> headers = Header.arrayFrom(element(d.headers));
-            List<Proxy> proxies = Proxy.arrayFrom(element(d.proxies));
+            List<Header> headers = Header.arrayFrom(d.headers);
+            List<Proxy> proxies = Proxy.arrayFrom(d.proxies);
             List<String> hosts = new ArrayList<>(d.hosts);
             if (!headers.isEmpty()) OkHttp.responseInterceptor().addAll(headers);
             if (!proxies.isEmpty()) OkHttp.selector().addAll(proxies);

@@ -1,5 +1,7 @@
 package com.fongmi.android.tv.player.diagnostic;
 
+import com.fongmi.android.tv.utils.ExecutorsX;
+
 import android.net.Uri;
 import android.os.SystemClock;
 
@@ -51,7 +53,7 @@ public final class PanNetworkDiagnosticRunner {
     private static final long PROXY_WARMUP_BYTES = 512 * 1024L;
     private static final long MIB = 1024L * 1024L;
 
-    private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private final ExecutorService executor = ExecutorsX.singleDaemon("pan-diagnostic");
     private final Set<Call> calls = Collections.newSetFromMap(new ConcurrentHashMap<>());
     private final AtomicBoolean cancelled = new AtomicBoolean();
     private final OkHttpClient client;
