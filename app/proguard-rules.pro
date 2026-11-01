@@ -22,7 +22,16 @@
 -keep,allowobfuscation class com.fongmi.android.tv.player.engine.MpvPlayerEngine { *; }
 
 # Gson
+# 必须保留泛型签名(Signature)：否则 R8 会把 List<JsonElement> 的元素类型擦除成 Object，
+# Gson 退化为 ObjectTypeAdapter，JSON 对象被反序列化成 LinkedTreeMap，后续强转 JsonElement 即崩溃。
+-keepattributes Signature
+-keepattributes *Annotation*
 -keep class com.google.gson.** { *; }
+-keep class com.google.gson.internal.** { *; }
+-keep class * extends com.google.gson.TypeAdapter
+-keep class * implements com.google.gson.TypeAdapterFactory
+-keep class * implements com.google.gson.JsonSerializer
+-keep class * implements com.google.gson.JsonDeserializer
 -keep class com.fongmi.android.tv.remote.** { *; }
 -keep class com.fongmi.android.tv.gitcloud.** { *; }
 

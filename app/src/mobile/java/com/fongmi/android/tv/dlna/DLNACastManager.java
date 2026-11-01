@@ -9,6 +9,7 @@ import android.os.IBinder;
 import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.bean.Device;
 import com.fongmi.android.tv.service.DLNACastService;
+import com.fongmi.android.tv.utils.SafeServiceBinder;
 
 import org.jupnp.android.AndroidUpnpService;
 import org.jupnp.controlpoint.ControlPoint;
@@ -30,6 +31,7 @@ public class DLNACastManager extends DefaultRegistryListener implements ServiceC
 
     private AndroidUpnpService upnpService;
     private DeviceListener deviceListener;
+    private SafeServiceBinder binder;
 
     public static DLNACastManager get() {
         return Loader.INSTANCE;
@@ -74,7 +76,8 @@ public class DLNACastManager extends DefaultRegistryListener implements ServiceC
     }
 
     public void init(Context context) {
-        context.bindService(new Intent(context, DLNACastService.class), this, Context.BIND_AUTO_CREATE);
+        binder = SafeServiceBinder.create(context, this);
+        binder.bind(new Intent(context, DLNACastService.class), Context.BIND_AUTO_CREATE);
     }
 
     public void search() {
@@ -101,10 +104,11 @@ public class DLNACastManager extends DefaultRegistryListener implements ServiceC
     }
 
     public void release(Context context) {
-        if (upnpService == null) return;
-        upnpService.getRegistry().removeListener(this);
-        context.unbindService(this);
-        upnpService = null;
+        if (binder != null) binder.unbind();
+        if (upnpService != null) {
+            upnpService.getRegistry().removeListener(this);
+            upnpService = null;
+        }
     }
 
     public interface DeviceListener {

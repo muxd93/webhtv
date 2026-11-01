@@ -1,7 +1,7 @@
 package com.fongmi.android.tv.playback;
 
 import com.fongmi.android.tv.db.AppDatabase;
-import com.google.gson.Gson;
+import com.fongmi.android.tv.gson.GsonProvider;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -14,8 +14,6 @@ import java.util.List;
 import java.util.Locale;
 
 public class PlaybackProgressDeleteInput {
-
-    private static final Gson GSON = new Gson();
 
     @SerializedName("historyKey")
     public String historyKey;
@@ -101,7 +99,7 @@ public class PlaybackProgressDeleteInput {
             source = object.deepCopy();
             source.remove("deleted");
         }
-        PlaybackProgressDeleteInput input = GSON.fromJson(source, PlaybackProgressDeleteInput.class);
+        PlaybackProgressDeleteInput input = GsonProvider.get().fromJson(source, PlaybackProgressDeleteInput.class);
         if (input == null) input = new PlaybackProgressDeleteInput();
         applyAliases(input, object);
         return input.normalize();

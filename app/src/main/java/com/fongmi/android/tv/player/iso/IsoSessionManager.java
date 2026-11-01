@@ -9,6 +9,8 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+
+import com.fongmi.android.tv.utils.ExecutorsX;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
@@ -18,16 +20,8 @@ public final class IsoSessionManager {
 
     private static final AtomicLong NEXT_ID = new AtomicLong(1000);
     private static final Map<Long, IsoPlaybackSession> SESSIONS = new ConcurrentHashMap<>();
-    private static final ExecutorService PROBE_EXECUTOR = Executors.newSingleThreadExecutor(r -> {
-        Thread thread = new Thread(r, "iso-probe");
-        thread.setDaemon(true);
-        return thread;
-    });
-    private static final ExecutorService METADATA_EXECUTOR = Executors.newSingleThreadExecutor(r -> {
-        Thread thread = new Thread(r, "iso-track-metadata");
-        thread.setDaemon(true);
-        return thread;
-    });
+    private static final ExecutorService PROBE_EXECUTOR = Executors.newSingleThreadExecutor(ExecutorsX.daemonFactory("iso-probe"));
+    private static final ExecutorService METADATA_EXECUTOR = Executors.newSingleThreadExecutor(ExecutorsX.daemonFactory("iso-track-metadata"));
 
     private IsoSessionManager() {
     }

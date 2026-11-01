@@ -3,6 +3,7 @@ package com.fongmi.android.tv.setting;
 import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.bean.Result;
 import com.fongmi.android.tv.utils.Task;
+import com.github.catvod.crawler.SpiderDebug;
 import com.github.catvod.utils.Prefers;
 import com.google.gson.reflect.TypeToken;
 
@@ -100,7 +101,17 @@ public class HomeFeedCache {
         if (raw.isEmpty()) return;
         try {
             Map<String, Entry> result = App.gson().fromJson(raw, TYPE);
-            if (result != null) items.putAll(result);
+            if (result == null) return;
+            // R8 下 Map<String, Entry> 泛型签名可能被剥离，元素退化为 LinkedTreeMap，
+            // 读取时强转 Entry 会抛 CCE；这里在加载期用原始 Map 校验值类型，损坏则清空自愈。
+            for (Map.Entry<?, ?> entry : ((Map<?, ?>) result).entrySet()) {
+                if (!(entry.getValue() instanceof Entry)) {
+                    Prefers.remove(KEY);
+                    SpiderDebug.log("home_feed", "corrupt cache data, reset");
+                    return;
+                }
+            }
+            items.putAll(result);
         } catch (Exception e) {
             items.clear();
         }

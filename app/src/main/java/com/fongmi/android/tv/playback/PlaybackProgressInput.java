@@ -1,7 +1,7 @@
 package com.fongmi.android.tv.playback;
 
 import com.fongmi.android.tv.db.AppDatabase;
-import com.google.gson.Gson;
+import com.fongmi.android.tv.gson.GsonProvider;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -13,8 +13,6 @@ import java.util.Collections;
 import java.util.List;
 
 public class PlaybackProgressInput {
-
-    private static final Gson GSON = new Gson();
 
     @SerializedName("historyKey")
     public String historyKey;
@@ -93,7 +91,7 @@ public class PlaybackProgressInput {
     }
 
     public static PlaybackProgressInput fromJson(JsonObject object) {
-        PlaybackProgressInput input = GSON.fromJson(object, PlaybackProgressInput.class);
+        PlaybackProgressInput input = GsonProvider.get().fromJson(object, PlaybackProgressInput.class);
         if (input == null) input = new PlaybackProgressInput();
         applyAliases(input, object);
         return input.normalize();

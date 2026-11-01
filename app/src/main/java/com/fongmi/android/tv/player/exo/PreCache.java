@@ -1,5 +1,7 @@
 package com.fongmi.android.tv.player.exo;
 
+import com.fongmi.android.tv.utils.ExecutorsX;
+
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Looper;
@@ -818,7 +820,7 @@ public class PreCache implements Player.Listener {
         }
         retireExecutor();
         threads = count;
-        return executor = new ThreadPoolExecutor(count, count, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>());
+        return executor = new ThreadPoolExecutor(count, count, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>(), ExecutorsX.daemonFactory("precache"));
     }
 
     private AutoPreloadPolicy.Decision getAutoDecision() {

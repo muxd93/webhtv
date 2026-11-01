@@ -1,5 +1,7 @@
 package com.fongmi.android.tv.player.karaoke;
 
+import com.fongmi.android.tv.utils.ExecutorsX;
+
 import android.media.AudioFormat;
 import android.media.MediaCodec;
 import android.media.MediaExtractor;
@@ -974,7 +976,7 @@ public class KaraokePitchTrackGenerator {
         private final List<AnalysisWindow> precisionWindows;
         private final List<FrameJob> frameJobs = new ArrayList<>();
         private final List<DetectionFrame> pendingDetectionFrames = new ArrayList<>(DETECTOR_BATCH_SIZE);
-        private final ExecutorService detectorExecutor = Executors.newFixedThreadPool(detectorThreadCount());
+        private final ExecutorService detectorExecutor = ExecutorsX.daemonPool(detectorThreadCount(), "karaoke-pitch");
         private final ThreadLocal<DetectorState> detectorState = ThreadLocal.withInitial(DetectorState::new);
         private VoiceBandpassFilter filter;
         private Biquad resampleLowPass;

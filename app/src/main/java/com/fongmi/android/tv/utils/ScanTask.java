@@ -1,5 +1,8 @@
 package com.fongmi.android.tv.utils;
 
+import com.fongmi.android.tv.utils.Disposer;
+import com.fongmi.android.tv.utils.ExecutorsX;
+
 import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.bean.Device;
 import com.fongmi.android.tv.server.Server;
@@ -34,12 +37,14 @@ public class ScanTask {
     private final OkHttpClient client;
     private Listener listener;
     private volatile boolean stopped;
+    private final Disposer disposer = new Disposer();
 
     public ScanTask(Listener listener) {
         this.client = OkHttp.client(500);
-        this.executor = Executors.newFixedThreadPool(PARALLELISM);
+        this.executor = ExecutorsX.daemonPool(PARALLELISM, "scan");
         this.future = new CopyOnWriteArrayList<>();
         this.listener = listener;
+        disposer.add(executor);
     }
 
     public void start() {
@@ -69,7 +74,7 @@ public class ScanTask {
         OkHttp.cancel(client, "scan");
         future.forEach(f -> f.cancel(true));
         future.clear();
-        executor.shutdownNow();
+        disposer.dispose();
     }
 
     private void run(List<Device> devices, List<String> urls, boolean notifyFinish, List<String> localUrls) {

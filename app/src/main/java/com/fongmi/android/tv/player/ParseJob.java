@@ -1,5 +1,8 @@
 package com.fongmi.android.tv.player;
 
+import com.fongmi.android.tv.utils.Disposer;
+import com.fongmi.android.tv.utils.ExecutorsX;
+
 import android.text.TextUtils;
 
 import com.fongmi.android.tv.App;
@@ -43,12 +46,14 @@ public class ParseJob implements ParseCallback {
     private ExecutorService infinite;
     private ParseCallback callback;
     private Parse parse;
+    private final Disposer disposer = new Disposer();
 
     private ParseJob(ParseCallback callback) {
-        this.executor = Executors.newSingleThreadExecutor();
-        this.infinite = Executors.newCachedThreadPool();
+        this.executor = ExecutorsX.singleDaemon("parse-job");
+        this.infinite = ExecutorsX.daemonPool(8, "parse-infinite");
         this.webViews = new ArrayList<>();
         this.callback = callback;
+        disposer.add(executor).add(infinite).add(this::stopWeb);
     }
 
     public static ParseJob create(ParseCallback callback) {
@@ -221,12 +226,11 @@ public class ParseJob implements ParseCallback {
     }
 
     public void stop() {
-        if (executor != null) executor.shutdownNow();
-        if (infinite != null) infinite.shutdownNow();
+        if (disposer.isDisposed()) return;
+        disposer.dispose();
         infinite = null;
         executor = null;
         callback = null;
         done.set(true);
-        stopWeb();
     }
 }

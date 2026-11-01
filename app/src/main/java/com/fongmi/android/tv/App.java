@@ -16,6 +16,7 @@ import com.fongmi.android.tv.Constant;
 import com.fongmi.android.tv.api.config.ConfigService;
 import com.fongmi.android.tv.api.config.RulePool;
 import com.fongmi.android.tv.db.AppDatabase;
+import com.fongmi.android.tv.gson.GsonProvider;
 import com.fongmi.android.tv.server.Server;
 import com.github.catvod.utils.Prefers;
 import com.orhanobut.logger.Logger;
@@ -50,7 +51,7 @@ public class App extends Application implements Application.ActivityLifecycleCal
 
     public App() {
         instance = this;
-        gson = new Gson();
+        gson = GsonProvider.get();
         time = System.currentTimeMillis();
         handler = HandlerCompat.createAsync(Looper.getMainLooper());
     }
@@ -88,6 +89,15 @@ public class App extends Application implements Application.ActivityLifecycleCal
         for (Runnable r : runnable) get().handler.removeCallbacks(r);
     }
 
+    /** 启动期单点容错：任一初始化失败只记录日志，不波及后续初始化与整个 App 启动 */
+    private void safe(Runnable runnable, String tag) {
+        try {
+            runnable.run();
+        } catch (Throwable e) {
+            Logger.e("startup:" + tag, e);
+        }
+    }
+
     public void setHook(Hook hook) {
         this.hook = hook;
     }
@@ -113,10 +123,10 @@ public class App extends Application implements Application.ActivityLifecycleCal
             PreviousProcessExitLogger.log(this);
         }
         Notify.createChannel();
-        com.fongmi.android.tv.download.DownloadManager.init();
-        ProxySetting.apply();
-        RulePool.apply();
-        fixLeakedConfigNames();
+        safe(() -> com.fongmi.android.tv.download.DownloadManager.init(), "download");
+        safe(ProxySetting::apply, "proxy");
+        safe(RulePool::apply, "rule_pool");
+        safe(this::fixLeakedConfigNames, "config_name_fix");
         DanmakuSearchListFocusFixer.start();
         registerActivityLifecycleCallbacks(this);
         post(this::startBackgroundServices, 1200);

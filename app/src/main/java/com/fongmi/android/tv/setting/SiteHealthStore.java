@@ -9,6 +9,7 @@ import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.bean.Site;
 import com.fongmi.android.tv.bean.Vod;
 import com.fongmi.android.tv.utils.Task;
+import com.github.catvod.crawler.SpiderDebug;
 import com.github.catvod.utils.Prefers;
 import com.google.gson.reflect.TypeToken;
 
@@ -177,9 +178,21 @@ public class SiteHealthStore {
     private static void ensureLoaded() {
         if (loaded) return;
         loaded = true;
+        String raw = Prefers.getString(KEY);
+        if (raw.isEmpty()) return;
         try {
-            Map<String, Health> restored = App.gson().fromJson(Prefers.getString(KEY), TYPE);
-            if (restored != null) items.putAll(restored);
+            Map<String, Health> restored = App.gson().fromJson(raw, TYPE);
+            if (restored == null) return;
+            // R8 下 Map<String, Health> 泛型签名可能被剥离，元素退化为 LinkedTreeMap，
+            // 读取时强转 Health 会抛 CCE；这里在加载期用原始 Map 校验值类型，损坏则清空自愈。
+            for (Map.Entry<?, ?> entry : ((Map<?, ?>) restored).entrySet()) {
+                if (!(entry.getValue() instanceof Health)) {
+                    Prefers.remove(KEY);
+                    SpiderDebug.log("site_health", "corrupt health data, reset");
+                    return;
+                }
+            }
+            items.putAll(restored);
         } catch (Throwable ignored) {
         }
     }

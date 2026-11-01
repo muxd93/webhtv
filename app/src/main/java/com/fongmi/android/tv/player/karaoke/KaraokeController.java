@@ -7,6 +7,7 @@ import com.fongmi.android.tv.player.lyrics.LyricsLine;
 import com.fongmi.android.tv.setting.PlayerSetting;
 import com.fongmi.android.tv.utils.PermissionUtil;
 import com.fongmi.android.tv.utils.Task;
+import com.fongmi.android.tv.utils.Disposer;
 
 import java.util.List;
 
@@ -14,6 +15,7 @@ public class KaraokeController implements KaraokeMicRecorder.Listener {
 
     private final KaraokeTrackRepository repository = new KaraokeTrackRepository();
     private final KaraokeMicRecorder mic = new KaraokeMicRecorder();
+    private final Disposer disposer = new Disposer();
     private KaraokePitchSample sample = new KaraokePitchSample(0, 0, 0, 0);
     private KaraokeScoreSnapshot snapshot = new KaraokeScoreSnapshot(0, 0, null, Double.NaN, Double.NaN, false, false);
     private KaraokeTrack track;
@@ -140,9 +142,19 @@ public class KaraokeController implements KaraokeMicRecorder.Listener {
         notifyUpdate();
     }
 
+    public KaraokeController() {
+        disposer.add(this::stopMic);
+    }
+
     public void release() {
+        if (disposer.isDisposed()) return;
         clear();
+        disposer.dispose();
         listener = null;
+    }
+
+    private void stopMic() {
+        mic.stop();
     }
 
     @Override

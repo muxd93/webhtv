@@ -1,5 +1,7 @@
 package androidx.media3.mpvplayer;
 
+import com.fongmi.android.tv.utils.ExecutorsX;
+
 import android.os.SystemClock;
 import android.text.TextUtils;
 
@@ -1049,7 +1051,7 @@ public final class MpvHlsProxy extends NanoHTTPD {
         releasePreloadExecutor();
         preloading.clear();
         preloadThreads = threads;
-        return preloadExecutor = Executors.newFixedThreadPool(threads);
+        return preloadExecutor = ExecutorsX.daemonPool(threads, "mpv-hls-preload");
     }
 
     private synchronized void cancelPreloads() {
