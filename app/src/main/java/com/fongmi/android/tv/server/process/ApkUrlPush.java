@@ -9,6 +9,7 @@ import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.ui.dialog.ApkPushProgressDialog;
 import com.fongmi.android.tv.utils.FileUtil;
 import com.fongmi.android.tv.utils.Notify;
+import com.fongmi.android.tv.utils.AppHttpClient;
 import com.fongmi.android.tv.utils.Task;
 import com.github.catvod.crawler.SpiderDebug;
 import com.github.catvod.utils.Path;
@@ -41,7 +42,7 @@ public final class ApkUrlPush {
     private static final OkHttpClient CLIENT = createClient();
 
     static OkHttpClient createClient() {
-        return new OkHttpClient.Builder()
+        return AppHttpClient.api().newBuilder()
             .connectTimeout(20, TimeUnit.SECONDS)
             .readTimeout(60, TimeUnit.SECONDS)
             .callTimeout(20, TimeUnit.MINUTES)

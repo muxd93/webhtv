@@ -156,9 +156,9 @@ public class SettingPlayerActivity extends BaseActivity implements UaListener, B
     }
 
     private void setKernel(View view) {
-        PlayerKernelDialog.show(this, PlayerSetting.getPlayer(), index -> {
-            mBinding.kernelText.setText(kernel[index]);
-            PlayerSetting.putPlayer(index);
+        PlayerKernelDialog.show(this, PlayerSetting.getPlayer(), player -> {
+            mBinding.kernelText.setText(kernel[player]);
+            PlayerSetting.putPlayer(player);
             setMpvRows();
             setPerformanceText();
         });

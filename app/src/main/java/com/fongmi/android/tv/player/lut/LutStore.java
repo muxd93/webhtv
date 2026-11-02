@@ -9,6 +9,7 @@ import android.provider.DocumentsContract.Document;
 import android.text.TextUtils;
 
 import com.fongmi.android.tv.App;
+import com.fongmi.android.tv.BuildConfig;
 import com.fongmi.android.tv.utils.Task;
 import com.github.catvod.utils.Prefers;
 
@@ -160,6 +161,7 @@ public class LutStore {
     }
 
     private static void scanAssets(String dir, List<LutPreset> items) {
+        if (!BuildConfig.FEATURE_LUT) return;
         String[] children;
         try {
             children = App.get().getAssets().list(dir);

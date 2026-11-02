@@ -158,9 +158,9 @@ public class SettingPlayerFragment extends BaseFragment implements UaListener, B
     }
 
     private void onKernel(View view) {
-        PlayerKernelDialog.show(this, PlayerSetting.getPlayer(), which -> {
-            mBinding.kernelText.setText(kernel[which]);
-            PlayerSetting.putPlayer(which);
+        PlayerKernelDialog.show(this, PlayerSetting.getPlayer(), player -> {
+            mBinding.kernelText.setText(kernel[player]);
+            PlayerSetting.putPlayer(player);
             setMpvRows();
             setPerformanceText();
         });

@@ -29,9 +29,10 @@ import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+
+import com.fongmi.android.tv.utils.AppExecutors;
 
 public class Source {
 
@@ -69,16 +70,15 @@ public class Source {
     }
 
     public void parse(Vod vod) throws Exception {
-        try (ExecutorService executor = Executors.newCachedThreadPool()) {
-            for (Flag flag : vod.getFlags()) {
-                List<Callable<List<Episode>>> items = new ArrayList<>();
-                Iterator<Episode> iterator = flag.getEpisodes().iterator();
-                while (iterator.hasNext()) addCallable(iterator, items);
-                for (Future<List<Episode>> future : executor.invokeAll(items, 30, TimeUnit.SECONDS)) {
-                    try {
-                        flag.getEpisodes().addAll(future.get());
-                    } catch (CancellationException ignored) {
-                    }
+        ExecutorService executor = AppExecutors.PARSE;
+        for (Flag flag : vod.getFlags()) {
+            List<Callable<List<Episode>>> items = new ArrayList<>();
+            Iterator<Episode> iterator = flag.getEpisodes().iterator();
+            while (iterator.hasNext()) addCallable(iterator, items);
+            for (Future<List<Episode>> future : executor.invokeAll(items, 30, TimeUnit.SECONDS)) {
+                try {
+                    flag.getEpisodes().addAll(future.get());
+                } catch (CancellationException ignored) {
                 }
             }
         }

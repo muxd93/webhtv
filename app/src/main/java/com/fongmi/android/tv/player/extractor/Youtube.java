@@ -12,6 +12,7 @@ import com.fongmi.android.tv.bean.Vod;
 import com.fongmi.android.tv.event.RefreshEvent;
 import com.fongmi.android.tv.impl.NewPipeImpl;
 import com.fongmi.android.tv.player.Source;
+import com.fongmi.android.tv.utils.FeatureGate;
 import com.fongmi.android.tv.utils.UrlUtil;
 
 import org.schabi.newpipe.extractor.ListExtractor;
@@ -69,11 +70,13 @@ public class Youtube implements Source.Extractor {
 
     @Override
     public String fetch(String url) throws Exception {
+        if (!FeatureGate.newPipe()) throw new UnsupportedOperationException("NewPipe extractor disabled");
         return fetch(StreamInfo.getInfo(url));
     }
 
     @Override
     public String fetch(Result result) throws Exception {
+        if (!FeatureGate.newPipe()) throw new UnsupportedOperationException("NewPipe extractor disabled");
         StreamInfo info = StreamInfo.getInfo(result.getUrl().v());
         result.setSubs(getSubtitles(info.getSubtitles()));
         return fetch(info);

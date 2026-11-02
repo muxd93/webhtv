@@ -12,6 +12,34 @@ if (localPropsFile.exists()) {
 def hasReleaseSigning = localProps['storeFile'] && localProps['keyAlias'] && localProps['storePassword']
 def releaseKeyPassword = localProps['keyPassword'] ?: localProps['storePassword']
 def fastRelease = (project.findProperty('fastRelease') ?: 'false').toString().toBoolean()
+// 功能开关：关闭后对应重型资产/原生库不打进 APK（详见 gradle.properties 注释）
+def featureLut = (project.findProperty('webhtv.feature.lut') ?: 'true').toString().toBoolean()
+def featureKaraoke = (project.findProperty('webhtv.feature.karaoke') ?: 'true').toString().toBoolean()
+def featureDovi = (project.findProperty('webhtv.feature.dovi') ?: 'true').toString().toBoolean()
+def featureMitv = (project.findProperty('webhtv.feature.mitv') ?: 'true').toString().toBoolean()
+def featureThunder = (project.findProperty('webhtv.feature.thunder') ?: 'true').toString().toBoolean()
+def featureJianpian = (project.findProperty('webhtv.feature.jianpian') ?: 'true').toString().toBoolean()
+def featureMpv = (project.findProperty('webhtv.feature.mpv') ?: 'true').toString().toBoolean()
+def featureIjk = (project.findProperty('webhtv.feature.ijk') ?: 'true').toString().toBoolean()
+def featureExoAss = (project.findProperty('webhtv.feature.exoass') ?: 'true').toString().toBoolean()
+def featureDanmaku = (project.findProperty('webhtv.feature.danmaku') ?: 'true').toString().toBoolean()
+def featureWebHome = (project.findProperty('webhtv.feature.webhome') ?: 'true').toString().toBoolean()
+def featureNewPipe = (project.findProperty('webhtv.feature.newpipe') ?: 'true').toString().toBoolean()
+// 构建档位：lite / minimal 一键精简（fork 可用 -Pwebhtv.profile=minimal 产出最小包）。
+// 仅当对应子开关未被显式设置时按档位覆盖其默认值；显式 -Pwebhtv.feature.* 优先级最高。
+def webhtvProfile = (project.findProperty('webhtv.profile') ?: 'full').toString()
+if (webhtvProfile == 'lite') {
+    if (!project.hasProperty('webhtv.feature.ijk')) featureIjk = false
+    if (!project.hasProperty('webhtv.feature.exoass')) featureExoAss = false
+    if (!project.hasProperty('webhtv.feature.newpipe')) featureNewPipe = false
+} else if (webhtvProfile == 'minimal') {
+    if (!project.hasProperty('webhtv.feature.mpv')) featureMpv = false
+    if (!project.hasProperty('webhtv.feature.ijk')) featureIjk = false
+    if (!project.hasProperty('webhtv.feature.exoass')) featureExoAss = false
+    if (!project.hasProperty('webhtv.feature.danmaku')) featureDanmaku = false
+    if (!project.hasProperty('webhtv.feature.webhome')) featureWebHome = false
+    if (!project.hasProperty('webhtv.feature.newpipe')) featureNewPipe = false
+}
 def buildTimestamp = new Date().format('yyyyMMddHHmm', TimeZone.getTimeZone('Asia/Shanghai'))
 def buildTime = fastRelease ? "fast-${buildTimestamp}" : buildTimestamp
 def releaseTag = (System.getenv('WEBHTV_RELEASE_TAG') ?: '').replace('\\', '\\\\').replace('"', '\\"')
@@ -50,9 +78,25 @@ android {
         buildConfigField "String", "GIT_STATE", "\"${gitState}\""
         buildConfigField "String", "MPV_NATIVE_SOURCES", "\"${mpvSourceRevisions}\""
         buildConfigField "String", "MEDIA3_VERSION", "\"${libs.versions.media3.get()}\""
+        // 功能裁剪开关（false 时对应重型资产/原生库不打进 APK）
+        buildConfigField "boolean", "FEATURE_LUT", featureLut.toString()
+        buildConfigField "boolean", "FEATURE_KARAOKE", featureKaraoke.toString()
+        buildConfigField "boolean", "FEATURE_DOVII", featureDovi.toString()
+        buildConfigField "boolean", "FEATURE_MITV", featureMitv.toString()
+        buildConfigField "boolean", "FEATURE_THUNDER", featureThunder.toString()
+        buildConfigField "boolean", "FEATURE_JIANPIAN", featureJianpian.toString()
+        buildConfigField "boolean", "FEATURE_MPV", featureMpv.toString()
+        buildConfigField "boolean", "FEATURE_IJK", featureIjk.toString()
+        buildConfigField "boolean", "FEATURE_EXOASS", featureExoAss.toString()
+        buildConfigField "boolean", "FEATURE_DANMAKU", featureDanmaku.toString()
+        buildConfigField "boolean", "FEATURE_WEBHOME", featureWebHome.toString()
+        buildConfigField "boolean", "FEATURE_NEWPIPE", featureNewPipe.toString()
+        buildConfigField "String", "WEBHTV_PROFILE", "\"${webhtvProfile}\""
         // 直播预设远端清单地址：fork 时改这一行即可，无需改业务代码。
         buildConfigField "String", "LIVE_PRESET_REMOTE", "\"https://raw.githubusercontent.com/muxd93/webhtv/main/other/live_presets.json\""
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        // 仅打包简体中文(zh)与英文(en)资源，剔除其它语言字符串池(arsc 约 2.2M 中的多余语言)
+        resConfigs "zh-rCN", "en"
         javaCompileOptions {
             annotationProcessorOptions {
                 arguments = ["room.schemaLocation": "$projectDir/schemas".toString(), "eventBusIndex": "com.fongmi.android.tv.event.EventIndex"]
@@ -97,6 +141,11 @@ android {
 
     // ASS rendering is part of normal builds; package the matching prebuilt ABI.
     sourceSets.main.jniLibs.srcDir(rootProject.file('third_party/exo-ass-native/prebuilt'))
+    // 可选资产：默认从 src/main/assets 打包；按功能开关把重型目录并入 assets 源集，
+    // 关闭开关时这些目录不会被打进 APK。
+    sourceSets.main.assets.srcDirs = ['src/main/assets']
+    if (featureLut) sourceSets.main.assets.srcDirs += 'src/extra/lut_presets'
+    if (featureKaraoke) sourceSets.main.assets.srcDirs += 'src/extra/models'
 
     signingConfigs {
         release {
@@ -153,6 +202,41 @@ android {
             path file("src/main/cpp/CMakeLists.txt")
             version "3.22.1"
         }
+    }
+
+    // 功能裁剪：关闭对应开关时，排除 AAR 内打包的重型原生库/资产（源码仍保留）。
+    packagingOptions {
+        jniLibs {
+            if (!featureDovi) {
+                exclude "**/libexo_dovi_renderer.so"
+                exclude "**/libdovi_android.so"
+            }
+            if (!featureKaraoke) exclude "**/libtensorflowlite_jni.so"
+            if (!featureThunder) {
+                exclude "**/libxl_thunder_sdk.so"
+                exclude "**/libxl_stat.so"
+            }
+            if (!featureJianpian) exclude "**/libjpa.so"
+            // MPV 整组 ffmpeg 共享库（libmpv/libplacebo 若不存在则为空匹配，无副作用）
+            if (!featureMpv) {
+                exclude "**/libmpv.so"
+                exclude "**/libplacebo.so"
+                exclude "**/libavcodec.so"
+                exclude "**/libavutil.so"
+                exclude "**/libswresample.so"
+                exclude "**/libswscale.so"
+            }
+            if (!featureIjk) {
+                exclude "**/libijkffmpeg.so"
+                exclude "**/libijkplayer.so"
+                exclude "**/libijksdl.so"
+            }
+            if (!featureExoAss) exclude "**/libexo_ass.so"
+        }
+    }
+    // libmitv.so 位于 forcetech AAR 的 assets 中，只能由 aapt 资产忽略规则排除。
+    aaptOptions {
+        if (!featureMitv) ignoreAssets '!libmitv.so'
     }
 }
 

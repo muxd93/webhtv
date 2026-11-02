@@ -1,9 +1,11 @@
 package com.fongmi.android.tv.update;
 
 import java.io.IOException;
+import java.net.Proxy;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
+import com.fongmi.android.tv.utils.AppHttpClient;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
@@ -12,12 +14,12 @@ import okhttp3.ResponseBody;
 public final class UpdateHttp {
 
     private static final int MAX_TEXT_BYTES = 2 * 1024 * 1024;
-    private static final OkHttpClient CLIENT = new OkHttpClient.Builder()
+    private static final OkHttpClient CLIENT = AppHttpClient.api().newBuilder()
             .connectTimeout(10, TimeUnit.SECONDS)
             .readTimeout(45, TimeUnit.SECONDS)
             .writeTimeout(45, TimeUnit.SECONDS)
-            .followRedirects(true)
             .followSslRedirects(false)
+            .proxy(Proxy.NO_PROXY)
             .build();
     private static final OkHttpClient OCI_CLIENT = CLIENT.newBuilder()
             .followRedirects(false)

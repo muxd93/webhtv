@@ -10,6 +10,7 @@ import com.fongmi.android.tv.player.Source;
 import com.fongmi.android.tv.utils.Download;
 import com.fongmi.android.tv.utils.ResUtil;
 import com.fongmi.android.tv.utils.UrlUtil;
+import com.fongmi.android.tv.BuildConfig;
 import com.github.catvod.utils.Path;
 import com.github.catvod.utils.Util;
 import com.xunlei.downloadlib.XLTaskHelper;
@@ -29,6 +30,7 @@ public class Thunder implements Source.Extractor {
 
     @Override
     public boolean match(Uri uri) {
+        if (!BuildConfig.FEATURE_THUNDER) return false;
         return List.of("magnet", "ed2k").contains(UrlUtil.scheme(uri));
     }
 
@@ -76,6 +78,7 @@ public class Thunder implements Source.Extractor {
         private static final Pattern PATTERN = Pattern.compile("(magnet|thunder|ed2k):.*");
 
         public static boolean match(String url) {
+            if (!BuildConfig.FEATURE_THUNDER) return false;
             return PATTERN.matcher(url).find() || isTorrent(url);
         }
 

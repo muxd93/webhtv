@@ -4,6 +4,8 @@ import android.content.Intent;
 import android.provider.Settings;
 
 import com.fongmi.android.tv.App;
+import com.fongmi.android.tv.BuildConfig;
+import com.fongmi.android.tv.utils.FeatureGate;
 import com.github.catvod.utils.Prefers;
 
 public class PlayerSetting {
@@ -92,19 +94,24 @@ public class PlayerSetting {
     }
 
     public static boolean isPlayer(int player) {
-        return player == EXO || player == IJK || player == MPV;
+        return player == EXO || (player == IJK && FeatureGate.ijk()) || (player == MPV && FeatureGate.mpv());
     }
 
     public static int sanitizePlayer(int player) {
-        return player == IJK || player == MPV ? player : EXO;
+        if (player == IJK && FeatureGate.ijk()) return IJK;
+        if (player == MPV && FeatureGate.mpv()) return MPV;
+        return EXO;
     }
 
     public static int nextPlayer(int player) {
-        return switch (sanitizePlayer(player)) {
-            case EXO -> IJK;
-            case IJK -> MPV;
-            default -> EXO;
-        };
+        int current = sanitizePlayer(player);
+        if (current == EXO) {
+            if (FeatureGate.ijk()) return IJK;
+            if (FeatureGate.mpv()) return MPV;
+            return EXO;
+        }
+        if (current == IJK) return FeatureGate.mpv() ? MPV : EXO;
+        return EXO;
     }
 
     public static int getRender() {
@@ -509,6 +516,7 @@ public class PlayerSetting {
     }
 
     public static boolean isKaraokeBasicPitchTflite() {
+        if (!BuildConfig.FEATURE_KARAOKE) return false;
         return Prefers.getBoolean("karaoke_basic_pitch_tflite");
     }
 

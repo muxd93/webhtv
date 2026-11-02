@@ -1,11 +1,9 @@
 package com.fongmi.android.tv.player.danmaku;
 
+import com.fongmi.android.tv.utils.AppHttpClient;
 import com.github.catvod.net.OkHttp;
 
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import okhttp3.ConnectionPool;
 import okhttp3.Dispatcher;
@@ -19,25 +17,18 @@ public final class LiveDanmakuWebSocketClient {
     private static final long CONNECT_TIMEOUT_SECONDS = 10L;
     private static final long HANDSHAKE_TIMEOUT_SECONDS = 20L;
 
-    private final ExecutorService executor;
-    private final ConnectionPool connectionPool;
     private final OkHttpClient client;
     private boolean released;
 
     public LiveDanmakuWebSocketClient() {
-        AtomicInteger threadNumber = new AtomicInteger();
-        executor = Executors.newCachedThreadPool(runnable -> {
-            Thread thread = new Thread(runnable, "live-danmaku-ws-" + threadNumber.incrementAndGet());
-            thread.setDaemon(true);
-            return thread;
-        });
-        Dispatcher dispatcher = new Dispatcher(executor);
+        // 在统一客户端(AppHttpClient.api)之上派生：保留弹幕专用的并发限制与代理选择器，
+        // 同时继承应用统一的 DNS / 代理 / SSL 配置（原实现缺失，存在潜在连接问题）。
+        Dispatcher dispatcher = new Dispatcher();
         dispatcher.setMaxRequests(4);
         dispatcher.setMaxRequestsPerHost(2);
-        connectionPool = new ConnectionPool(2, 1L, TimeUnit.MINUTES);
-        client = new OkHttpClient.Builder()
+        client = AppHttpClient.api().newBuilder()
                 .dispatcher(dispatcher)
-                .connectionPool(connectionPool)
+                .connectionPool(new ConnectionPool(2, 1L, TimeUnit.MINUTES))
                 .connectTimeout(CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
                 .readTimeout(HANDSHAKE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
                 .writeTimeout(HANDSHAKE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
@@ -57,7 +48,5 @@ public final class LiveDanmakuWebSocketClient {
         if (released) return;
         released = true;
         client.dispatcher().cancelAll();
-        connectionPool.evictAll();
-        executor.shutdownNow();
     }
 }

@@ -28,10 +28,11 @@ import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+
+import com.fongmi.android.tv.utils.AppHttpClient;
+import com.fongmi.android.tv.utils.AppExecutors;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.GZIPInputStream;
@@ -89,13 +90,7 @@ public class DriveCheckService {
     public DriveCheckService() {
         this.memory = new ConcurrentHashMap<>();
         this.inflight = new HashMap<>();
-        this.client = new OkHttpClient.Builder()
-                .followRedirects(true)
-                .followSslRedirects(true)
-                .connectTimeout(12, TimeUnit.SECONDS)
-                .readTimeout(12, TimeUnit.SECONDS)
-                .writeTimeout(12, TimeUnit.SECONDS)
-                .build();
+        this.client = AppHttpClient.api();
         loadCache();
     }
 
@@ -112,17 +107,12 @@ public class DriveCheckService {
     }
 
     private void checkBatch(List<DriveCheckItem> items, DriveCheckResult[] results, int start, int end) {
-        ExecutorService executor = Executors.newFixedThreadPool(Math.max(1, end - start));
         List<Future<?>> futures = new ArrayList<>();
-        try {
-            for (int index = start; index < end; index++) {
-                final int itemIndex = index;
-                futures.add(executor.submit(() -> results[itemIndex] = checkOneSafely(items.get(itemIndex))));
-            }
-            for (Future<?> future : futures) waitFuture(future);
-        } finally {
-            executor.shutdownNow();
+        for (int index = start; index < end; index++) {
+            final int itemIndex = index;
+            futures.add(AppExecutors.IO.submit(() -> results[itemIndex] = checkOneSafely(items.get(itemIndex))));
         }
+        for (Future<?> future : futures) waitFuture(future);
     }
 
     private void waitFuture(Future<?> future) {

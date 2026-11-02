@@ -37,6 +37,7 @@ import com.fongmi.android.tv.ui.dialog.RestoreDialog;
 import com.fongmi.android.tv.ui.dialog.BackupProgressDialog;
 import com.fongmi.android.tv.ui.dialog.SiteDialog;
 import com.fongmi.android.tv.utils.AppVersion;
+import com.fongmi.android.tv.utils.FeatureGate;
 import com.fongmi.android.tv.utils.FileUtil;
 import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.PermissionUtil;
@@ -91,6 +92,8 @@ public class SettingFragment extends BaseFragment implements ConfigListener, Sit
         mBinding.versionText.setText(AppVersion.fullName());
         setOtherText();
         setCacheText();
+        // 弹幕功能关闭时隐藏其设置入口（其余选项仍可见）。
+        if (!FeatureGate.danmaku()) mBinding.danmaku.setVisibility(View.GONE);
     }
 
     private void setOtherText() {

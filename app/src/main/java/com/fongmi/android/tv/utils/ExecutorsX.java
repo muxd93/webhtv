@@ -2,6 +2,7 @@ package com.fongmi.android.tv.utils;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadFactory;
 
 /** Factory for executor pools with consistent, explicit daemon behaviour. */
@@ -47,5 +48,10 @@ public final class ExecutorsX {
                 return new Thread(r, name + "-" + (++count));
             }
         };
+    }
+
+    /** Single-thread scheduled executor whose thread is a daemon thread. */
+    public static ScheduledExecutorService scheduledDaemon(String name) {
+        return Executors.newSingleThreadScheduledExecutor(daemonFactory(name));
     }
 }

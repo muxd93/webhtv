@@ -36,6 +36,7 @@ import com.fongmi.android.tv.ui.dialog.ShellProxyDialog;
 import com.fongmi.android.tv.ui.dialog.SiteHealthDialog;
 import com.fongmi.android.tv.ui.dialog.ViewingRecordSyncDialog;
 import com.fongmi.android.tv.ui.dialog.WebHomeExtensionDialog;
+import com.fongmi.android.tv.utils.FeatureGate;
 import com.fongmi.android.tv.utils.LoginStateSync;
 import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.PermissionUtil;
@@ -67,6 +68,11 @@ public class SettingEnhanceFragment extends BaseFragment {
     protected void initView() {
         reorderItems();
         setText();
+        // WebHome 关闭时隐藏其两项设置入口（扩展 / 主页全屏）。
+        if (!FeatureGate.webHome()) {
+            mBinding.webHomeExtension.setVisibility(View.GONE);
+            mBinding.webHomeFullscreen.setVisibility(View.GONE);
+        }
     }
 
     @Override

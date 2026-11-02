@@ -28,6 +28,7 @@ import com.fongmi.android.tv.remote.RemoteAgent;
 import com.fongmi.android.tv.setting.ProxySetting;
 import com.fongmi.android.tv.setting.Setting;
 import com.fongmi.android.tv.utils.DanmakuSearchListFocusFixer;
+import com.fongmi.android.tv.utils.FeatureGate;
 import com.fongmi.android.tv.utils.NsdDeviceDiscovery;
 import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.PreviousProcessExitLogger;
@@ -127,7 +128,7 @@ public class App extends Application implements Application.ActivityLifecycleCal
         safe(ProxySetting::apply, "proxy");
         safe(RulePool::apply, "rule_pool");
         safe(this::fixLeakedConfigNames, "config_name_fix");
-        DanmakuSearchListFocusFixer.start();
+        if (FeatureGate.danmaku()) DanmakuSearchListFocusFixer.start();
         registerActivityLifecycleCallbacks(this);
         post(this::startBackgroundServices, 1200);
     }
@@ -158,8 +159,10 @@ public class App extends Application implements Application.ActivityLifecycleCal
 
     private void startBackgroundServices() {
         SpiderDebug.log("startup", "background services start cost=%sms", System.currentTimeMillis() - time);
-        // 局域网 HTTP 服务阻塞在 accept，无连接时不唤醒 CPU，成本可忽略，省电模式也保留
-        Server.get().start();
+        // 媒体代理（局域网 /proxy 端口，由 Server/Nano 提供）开机即起：依赖本地代理的播放源
+        // 可能随时出现，若等到首次播放才临时拉起端口会造成卡顿甚至失败，影响体验。
+        // WebHome 的 WebView 仍按需（首次访问主页）渲染，两者解耦、互不影响；远程托管仍走 Server.startManage()。
+        safe(() -> Server.get().start(), "server");
         // 历史行物理清理：读取侧本就按 Constant.HISTORY_TIME 窗口过滤，这里同步删除过期行，避免 DB 无限累积
         Task.execute(() -> {
             int pruned = AppDatabase.get().getHistoryDao().deleteBefore(System.currentTimeMillis() - Constant.HISTORY_TIME);

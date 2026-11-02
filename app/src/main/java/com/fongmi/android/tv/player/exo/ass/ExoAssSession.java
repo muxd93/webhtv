@@ -16,6 +16,8 @@ import androidx.media3.common.text.CueGroup;
 import androidx.media3.exoplayer.text.TextRenderer;
 import androidx.media3.ui.PlayerView;
 
+import com.fongmi.android.tv.utils.FeatureGate;
+
 import java.io.File;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
@@ -71,6 +73,8 @@ public final class ExoAssSession implements TextRenderer.Observer {
 
     /** Both ARM flavors package libass; native loading stays lazy until ASS is admitted. */
     public static ExoAssSession createIfEnabled(Context context, boolean tunneling) {
+        // 关闭 exoAss 时（libexo_ass.so 已被排除）不创建会话，降级为系统字幕渲染。
+        if (!FeatureGate.exoAss()) return null;
         return new ExoAssSession(context, tunneling);
     }
 

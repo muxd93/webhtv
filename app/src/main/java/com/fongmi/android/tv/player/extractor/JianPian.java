@@ -3,6 +3,7 @@ package com.fongmi.android.tv.player.extractor;
 import android.net.Uri;
 
 import com.fongmi.android.tv.player.Source;
+import com.fongmi.android.tv.BuildConfig;
 import com.fongmi.android.tv.utils.FileUtil;
 import com.fongmi.android.tv.utils.UrlUtil;
 import com.github.catvod.utils.Path;
@@ -19,6 +20,7 @@ public class JianPian implements Source.Extractor {
 
     @Override
     public boolean match(Uri uri) {
+        if (!BuildConfig.FEATURE_JIANPIAN) return false;
         return List.of("tvbox-xg", "jianpian", "ftp").contains(UrlUtil.scheme(uri));
     }
 

@@ -5,6 +5,8 @@ import android.view.Surface;
 
 import androidx.annotation.Nullable;
 
+import com.fongmi.android.tv.BuildConfig;
+
 /** JNI boundary for the independent Exo DV5 renderer. */
 final class ExoDv5Native {
 
@@ -64,6 +66,9 @@ final class ExoDv5Native {
     }
 
     private static LoadResult loadLibrary() {
+        if (!BuildConfig.FEATURE_DOVII) {
+            return new LoadResult(false, "disabled");
+        }
         if (Build.VERSION.SDK_INT < ExoDv5GpuMappingPolicy.MIN_GPU_MAPPING_API) {
             return new LoadResult(false, "api-below-26");
         }

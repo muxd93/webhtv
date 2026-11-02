@@ -3,8 +3,8 @@ package com.fongmi.android.tv.web;
 import android.text.TextUtils;
 
 import com.fongmi.android.tv.App;
+import com.fongmi.android.tv.utils.AppHttpClient;
 import com.github.catvod.crawler.SpiderDebug;
-import com.github.catvod.net.OkHttp;
 import com.github.catvod.utils.Json;
 import com.github.catvod.utils.Util;
 import com.google.gson.JsonElement;
@@ -30,7 +30,7 @@ import okhttp3.Response;
 
 public class WebCall {
 
-    private static final OkHttpClient CLIENT = new OkHttpClient.Builder().followRedirects(true).followSslRedirects(true).dns(OkHttp.dns()).proxySelector(OkHttp.selector()).proxyAuthenticator(OkHttp.authenticator()).build();
+    private static final OkHttpClient CLIENT = AppHttpClient.api();
 
     public static String request(JsonObject payload) {
         return request(payload, null);

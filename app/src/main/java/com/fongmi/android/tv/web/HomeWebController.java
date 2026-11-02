@@ -30,7 +30,6 @@ import com.fongmi.android.tv.R;
 import com.github.catvod.crawler.SpiderDebug;
 import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.bean.Site;
-import com.fongmi.android.tv.server.Server;
 import com.fongmi.android.tv.setting.Setting;
 import com.fongmi.android.tv.utils.KeyUtil;
 import com.fongmi.android.tv.utils.Notify;
@@ -130,7 +129,7 @@ public class HomeWebController {
         if (!site.hasHomePage()) return false;
         if (Setting.isWebHomeFullscreen()) listener.applyDefaultChrome(site);
         else listener.setChrome(normalChrome());
-        Server.get().start();
+        // 媒体代理（Server/Nano）已改为开机自启，此处不再负责拉起，WebHome 与代理解耦。
         String url = getHomePage(site);
         boolean reload = force || !url.equals(homePage);
         this.site = site;

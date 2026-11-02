@@ -8,6 +8,7 @@ import android.os.IBinder;
 import android.os.SystemClock;
 
 import com.fongmi.android.tv.App;
+import com.fongmi.android.tv.BuildConfig;
 import com.fongmi.android.tv.player.Source;
 import com.fongmi.android.tv.utils.SafeServiceBinder;
 import com.fongmi.android.tv.utils.UrlUtil;
@@ -29,6 +30,7 @@ public class Force implements Source.Extractor, ServiceConnection {
 
     @Override
     public boolean match(Uri uri) {
+        if (!BuildConfig.FEATURE_MITV) return false;
         return PATTERN.matcher(UrlUtil.scheme(uri)).find();
     }
 
