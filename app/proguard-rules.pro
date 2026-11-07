@@ -35,6 +35,43 @@
 -keep class com.fongmi.android.tv.remote.** { *; }
 -keep class com.fongmi.android.tv.gitcloud.** { *; }
 
+# Gson 持久化模型：字段名就是 JSON 键。这些类只被 Gson 读写，R8 看不到反射访问，
+# 会把字段改名（键失配 → 反序列化后全是 null）或把"只写不读"的字段整条删除（键消失）。
+# 下面只按类保留，不做整包 keep。
+-keepclassmembers,allowobfuscation class * {
+    @com.google.gson.annotations.SerializedName <fields>;
+}
+
+# 自建音频歌单（Prefers: audio_playlists / audio_metadata）
+-keep class com.fongmi.android.tv.player.lyrics.AudioPlaylistStore$Playlist { *; }
+-keep class com.fongmi.android.tv.player.lyrics.AudioPlaylistStore$Entry { *; }
+-keep class com.fongmi.android.tv.player.lyrics.AudioPlaylistStore$Metadata { *; }
+# 歌词磁盘缓存（LyricsResult[] 与单条 LyricsResult）
+-keep class com.fongmi.android.tv.player.lyrics.LyricsResult { *; }
+# 登录态学习快照（Snapshot/Candidate 及路径树模型）
+-keep class com.fongmi.android.tv.utils.LoginStateSync$* { *; }
+# 播放 webhook / 远端同步配置（Prefers: playback_webhook_configs / playback_remote_sync_configs）
+-keep class com.fongmi.android.tv.playback.WebhookConfig { *; }
+-keep class com.fongmi.android.tv.playback.RemoteSyncConfig { *; }
+# WebHome 扩展源（Prefers: webhome_extension_sources）
+-keep class com.fongmi.android.tv.web.ext.WebHomeExtensionSourceStore$Entry { *; }
+# 规则池（Prefers: rule_pool，字段名即 JSON 键，代理/header/DNS/规则全靠它）
+-keep class com.fongmi.android.tv.api.config.RulePool$Data { *; }
+# 自定义 CSP 注册表（TV/CustomCsp/registry.json）
+-keep class com.fongmi.android.tv.setting.CustomCspSetting$Registry { *; }
+-keep class com.fongmi.android.tv.setting.CustomCspSetting$Item { *; }
+# 离线下载 sidecar（下载目录 *.json）
+-keep class com.fongmi.android.tv.download.DownloadStore$Sidecar { *; }
+# 远端/服务端进度的请求体
+-keep class com.fongmi.android.tv.playback.PlaybackProgressInput { *; }
+-keep class com.fongmi.android.tv.playback.PlaybackProgressDeleteInput { *; }
+# catvod DoH 配置（RulePool 的 doh 数组元素）
+-keep class com.github.catvod.bean.Doh { *; }
+# 首页信息流缓存（Prefers: home_feed_v1，Map<String, Entry>，字段 time/json 即 JSON 键）
+-keep class com.fongmi.android.tv.setting.HomeFeedCache$Entry { *; }
+# 站点健康统计（Prefers: site_health，Map<String, Health>，字段名即 JSON 键）
+-keep class com.fongmi.android.tv.setting.SiteHealthStore$Health { *; }
+
 # SimpleXML
 -keep interface org.simpleframework.xml.core.Label { public *; }
 -keep class * implements org.simpleframework.xml.core.Label { public *; }

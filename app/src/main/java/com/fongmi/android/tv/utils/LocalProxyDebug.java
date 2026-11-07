@@ -123,6 +123,7 @@ public final class LocalProxyDebug {
         dumpLog(new File(Path.files(), "goProxy.log"));
         dumpLog(new File(Path.cache(), "goProxy.log"));
         dumpProcessSnapshot();
+        SpiderDebug.log(TAG, "trace snapshot\n%s", LocalProxyTrace.report());
         SpiderDebug.log(TAG, "diagnose end %s hintsOnly=true authoritativeUpstreamState=false", capabilities.logSummary());
     }
 

@@ -25,6 +25,7 @@ def featureExoAss = (project.findProperty('webhtv.feature.exoass') ?: 'true').to
 def featureDanmaku = (project.findProperty('webhtv.feature.danmaku') ?: 'true').toString().toBoolean()
 def featureWebHome = (project.findProperty('webhtv.feature.webhome') ?: 'true').toString().toBoolean()
 def featureNewPipe = (project.findProperty('webhtv.feature.newpipe') ?: 'true').toString().toBoolean()
+def featureYoutube = (project.findProperty('webhtv.feature.youtube') ?: 'true').toString().toBoolean()
 // 构建档位：lite / minimal 一键精简（fork 可用 -Pwebhtv.profile=minimal 产出最小包）。
 // 仅当对应子开关未被显式设置时按档位覆盖其默认值；显式 -Pwebhtv.feature.* 优先级最高。
 def webhtvProfile = (project.findProperty('webhtv.profile') ?: 'full').toString()
@@ -91,12 +92,13 @@ android {
         buildConfigField "boolean", "FEATURE_DANMAKU", featureDanmaku.toString()
         buildConfigField "boolean", "FEATURE_WEBHOME", featureWebHome.toString()
         buildConfigField "boolean", "FEATURE_NEWPIPE", featureNewPipe.toString()
+        buildConfigField "boolean", "FEATURE_YOUTUBE", featureYoutube.toString()
         buildConfigField "String", "WEBHTV_PROFILE", "\"${webhtvProfile}\""
         // 直播预设远端清单地址：fork 时改这一行即可，无需改业务代码。
         buildConfigField "String", "LIVE_PRESET_REMOTE", "\"https://raw.githubusercontent.com/muxd93/webhtv/main/other/live_presets.json\""
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-        // 仅打包简体中文(zh)与英文(en)资源，剔除其它语言字符串池(arsc 约 2.2M 中的多余语言)
-        resConfigs "zh-rCN", "en"
+        // 仅打包简体(zh-rCN)、繁体(zh-rTW)与英文(en)资源，剔除其它语言字符串池(arsc 约 2.2M 中的多余语言)
+        resConfigs "zh-rCN", "zh-rTW", "en"
         javaCompileOptions {
             annotationProcessorOptions {
                 arguments = ["room.schemaLocation": "$projectDir/schemas".toString(), "eventBusIndex": "com.fongmi.android.tv.event.EventIndex"]

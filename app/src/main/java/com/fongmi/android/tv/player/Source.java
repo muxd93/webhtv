@@ -20,6 +20,7 @@ import com.fongmi.android.tv.player.extractor.Video;
 import com.fongmi.android.tv.player.extractor.Youtube;
 import com.fongmi.android.tv.setting.PlayerSetting;
 import com.github.catvod.crawler.SpiderDebug;
+import com.fongmi.android.tv.utils.FeatureGate;
 import com.fongmi.android.tv.utils.Task;
 
 import java.util.ArrayList;
@@ -47,7 +48,7 @@ public class Source {
         extractors.add(new Thunder());
         extractors.add(new TVBus());
         extractors.add(new Video());
-        extractors.add(new Youtube());
+        if (FeatureGate.youtube()) extractors.add(new Youtube());
     }
 
     public static Source get() {
@@ -63,7 +64,7 @@ public class Source {
         if (Thunder.Parser.match(url)) {
             items.add(Thunder.Parser.get(url));
             iterator.remove();
-        } else if (Youtube.Parser.match(url)) {
+        } else if (FeatureGate.youtube() && Youtube.Parser.match(url)) {
             items.add(Youtube.Parser.get(url));
             iterator.remove();
         }
@@ -108,7 +109,7 @@ public class Source {
             return url;
         }
         String sanitized = MpdSanitizer.sanitize(fetched);
-        if (MpdSanitizer.hasLimitedYoutubeAudio(sanitized)) {
+        if (FeatureGate.youtube() && MpdSanitizer.hasLimitedYoutubeAudio(sanitized)) {
             String referer = getHeader(result.getHeader(), "Referer");
             if (referer.contains("youtube.com/watch")) {
                 try {
@@ -119,7 +120,7 @@ public class Source {
                 }
             }
         }
-        if (MpdSanitizer.isYoutube(sanitized)) {
+        if (FeatureGate.youtube() && MpdSanitizer.isYoutube(sanitized)) {
             Map<String, String> headers = result.getHeader();
             headers.put("User-Agent", "com.google.android.youtube/21.02.35 (Linux; U; Android 14) gzip");
             result.setHeader(headers);

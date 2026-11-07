@@ -39,6 +39,11 @@ public final class FeatureGate {
         return BuildConfig.FEATURE_NEWPIPE;
     }
 
+    /** YouTube 解析通道：TRUE 时保留 jar 加载的 iframe_api 探测与 Youtube 提取器，FALSE 时零探测、跳过该通道。 */
+    public static boolean youtube() {
+        return BuildConfig.FEATURE_YOUTUBE;
+    }
+
     /** 播放器引擎是否可用：EXO 始终可用；MPV/IJK 受对应开关约束。 */
     public static boolean playerEnabled(int player) {
         if (player == PlayerSetting.MPV) return mpv();
