@@ -64,7 +64,10 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
     public static final String EXTRA_NAV_POSITION = "nav_position";
     private static final String STATE_RETURN_VOD_FROM_ENHANCE = "returnVodFromEnhance";
     private static final String STATE_CURRENT_POSITION = "currentPosition";
+    private static final long SHAPE_DEBOUNCE_MS = 300L;
 
+    private final ShapeDebounce mShapeDebounce = new ShapeDebounce();
+    private final Runnable mApplyPendingShape = this::applyPendingShape;
     private FragmentStateManager mManager;
     private ActivityHomeBinding mBinding;
     private WebHomeChromeController mChrome;
@@ -114,7 +117,7 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
         currentPosition = savedInstanceState == null ? 0 : savedInstanceState.getInt(STATE_CURRENT_POSITION, 0);
         mStartupConfig = Config.vod();
         mChrome = new WebHomeChromeController(this, mBinding, this, savedInstanceState, WebHomeChromeStartup.restore(mStartupConfig));
-        mBinding.getRoot().addOnLayoutChangeListener((view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> checkWindowShape(right - left, bottom - top));
+        mBinding.getRoot().addOnLayoutChangeListener((view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> onRootLayoutChanged(right - left, bottom - top));
         mBinding.navigation.setOnItemSelectedListener(this);
         PermissionUtil.requestFile(this, allGranted -> PermissionUtil.requestNotify(this));
         initFragment(savedInstanceState);
@@ -417,15 +420,49 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
     }
 
     private void checkWindowShape() {
-        checkWindowShape(MobileWindow.getWidth(this), MobileWindow.getHeight(this));
+        applyWindowShape(MobileWindow.getWidth(this), MobileWindow.getHeight(this));
     }
 
-    private void checkWindowShape(int width, int height) {
-        if (width <= 0 || height <= 0) return;
-        boolean wide = width > height;
-        if (wideWindow != wide) {
-            wideWindow = wide;
-            RefreshEvent.home();
+    /** 分屏/折叠屏拖动会连续触发 layout 回调，300ms 内只按最后一次尺寸判断，避免反复刷新首页 */
+    private void onRootLayoutChanged(int width, int height) {
+        mShapeDebounce.request(width, height);
+        App.post(mApplyPendingShape, SHAPE_DEBOUNCE_MS);
+    }
+
+    private void applyPendingShape() {
+        applyWindowShape(mShapeDebounce.width(), mShapeDebounce.height());
+    }
+
+    private void applyWindowShape(int width, int height) {
+        if (isFinishing() || isDestroyed()) return;
+        if (!shapeFlipChanged(wideWindow, width, height)) return;
+        wideWindow = width > height;
+        RefreshEvent.home();
+    }
+
+    /** 纯判断：尺寸有效且宽高方向与当前状态相反才需要刷新 */
+    static boolean shapeFlipChanged(boolean currentWide, int width, int height) {
+        if (width <= 0 || height <= 0) return false;
+        return currentWide != (width > height);
+    }
+
+    /** 去抖期间的尺寸累积：只保留最后一次，翻转判断只看最终值 */
+    static final class ShapeDebounce {
+
+        private int width;
+        private int height;
+
+        void request(int width, int height) {
+            this.width = width;
+            this.height = height;
+        }
+
+        int width() {
+            return width;
+        }
+
+        int height() {
+            return height;
         }
     }
 
@@ -450,6 +487,7 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
 
     @Override
     protected void onDestroy() {
+        App.removeCallbacks(mApplyPendingShape);
         if (mChrome != null) mChrome.destroy();
         LiveConfig.get().clear();
         VodConfig.get().clear();

@@ -230,6 +230,7 @@ public class OneKeySyncDialog extends BaseBottomSheetDialog implements SyncDevic
 
     private void setScanning(boolean scanning) {
         this.scanning = scanning;
+        if (binding == null) return;
         updateVisible();
     }
 
@@ -311,7 +312,7 @@ public class OneKeySyncDialog extends BaseBottomSheetDialog implements SyncDevic
     }
 
     private void focusFirstDevice() {
-        if (!focusFirstOnNextDevice || selected != null || adapter.getItemCount() == 0) return;
+        if (binding == null || !focusFirstOnNextDevice || selected != null || adapter.getItemCount() == 0) return;
         focusFirstOnNextDevice = false;
         binding.recycler.scrollToPosition(0);
     }
@@ -346,7 +347,9 @@ public class OneKeySyncDialog extends BaseBottomSheetDialog implements SyncDevic
                     if (loginArchive != null) loginArchive.delete();
                     return;
                 }
-                App.post(() -> binding.start.setEnabled(true));
+                App.post(() -> {
+                    if (binding != null) binding.start.setEnabled(true);
+                });
                 request(url, body, archive, mpvArchive, loginArchive, 0);
             } catch (Exception e) {
                 if (!syncing) return;
@@ -445,6 +448,7 @@ public class OneKeySyncDialog extends BaseBottomSheetDialog implements SyncDevic
 
     private void setSyncing(boolean syncing) {
         this.syncing = syncing;
+        if (binding == null) return;
         binding.progressWrap.setVisibility(syncing ? View.VISIBLE : View.GONE);
         binding.progressBox.setVisibility(syncing ? View.VISIBLE : View.GONE);
         binding.start.setText(syncing ? R.string.sync_cancel : R.string.sync_start);
@@ -527,5 +531,7 @@ public class OneKeySyncDialog extends BaseBottomSheetDialog implements SyncDevic
         super.onDestroyView();
         discovery.stop();
         scanTask.stop();
+        // 后台任务仍在跑：释放视图引用，所有回投回调均已按 binding == null 短路
+        binding = null;
     }
 }

@@ -103,6 +103,7 @@ import com.fongmi.android.tv.player.lyrics.LyricsLine;
 import com.fongmi.android.tv.player.lyrics.LyricsRequest;
 import com.fongmi.android.tv.player.lyrics.LyricsRepository;
 import com.fongmi.android.tv.player.lyrics.LyricsResult;
+import com.fongmi.android.tv.player.lyrics.LyricsSupport;
 import com.fongmi.android.tv.player.lut.LutPreset;
 import com.fongmi.android.tv.player.lut.LutSetting;
 import com.fongmi.android.tv.player.lut.LutStore;
@@ -142,6 +143,7 @@ import com.fongmi.android.tv.ui.dialog.TitleDialog;
 import com.fongmi.android.tv.ui.dialog.TimerDialog;
 import com.fongmi.android.tv.ui.dialog.TrackDialog;
 import com.fongmi.android.tv.utils.Clock;
+import com.fongmi.android.tv.utils.FeatureGate;
 import com.fongmi.android.tv.utils.FileChooser;
 import com.fongmi.android.tv.utils.ImgUtil;
 import com.fongmi.android.tv.utils.KeyUtil;
@@ -736,6 +738,7 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
         mBinding.control.action.ending.setOnLongClickListener(view -> onEndingReset());
         mBinding.control.action.opening.setOnLongClickListener(view -> onOpeningReset());
         setActionFocusScroll();
+        bindRow2();
         mBinding.video.setOnTouchListener((view, event) -> dispatchDiscMenuTouch(event) || mKeyDown.onTouchEvent(event));
         mBinding.flag.addOnChildViewHolderSelectedListener(new FlagSelectionListener(mBinding.flag, mFlagAdapter, this));
         mBinding.episode.addOnChildViewHolderSelectedListener(new OnChildViewHolderSelectedListener() {
@@ -810,6 +813,144 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
         }
     }
 
+    private final List<View> mRow2Items = new ArrayList<>();
+    private final Runnable mRedistributeRow2 = this::redistributeRow2;
+
+    // 详情列三套隐藏机制各管一段，改动任一条都要跑 VideoDetailsContractTest + VideoDetailsSpacingTest
+    // + VideoFullscreenDetailsTest + VodDetailActionRowTwoLineTest：
+    //   1) 锚点：row2 锚 actor、scroll 锚 row2（activity_video.xml，串起整列，勿改锚点）；
+    //   2) 显隐：setVideoDetailsVisible 统一收口 7 个视图，满屏/音频台都在那里判；
+    //   3) 位移：本方法只登记 video 的 layout 回调并 setPadding，重建动作行一律延后到本帧布局结束。
+    // 动作行与封面右沿的横向间隙：起点直接等于 video.right（0 间隙）时按钮方块会视觉上贴住预览
+    static final int ROW2_START_GAP_DP = 24;
+
+    private void bindRow2() {
+        for (int i = 0; i < mBinding.row2a.getChildCount(); i++) mRow2Items.add(mBinding.row2a.getChildAt(i));
+        for (View item : mRow2Items) ((ViewGroup) item.getParent()).removeView(item);
+        mBinding.row2.removeView(mBinding.row2a);
+        mBinding.video.addOnLayoutChangeListener((view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
+            if (right == oldRight) return;
+            mBinding.row2.setPadding(right + ResUtil.dp2px(ROW2_START_GAP_DP), 0, ResUtil.dp2px(24), 0);
+            postRedistributeRow2(mRedistributeRow2);
+        });
+    }
+
+    // 回调发生在 layout 通道内：此刻增删子视图会让新行在同一通道里未经 measure 直接 layout，
+    // LinearLayoutCompat.layoutHorizontal 读到空的 mMaxAscent 数组即崩溃，故统一延到本帧布局结束再重排
+    static void postRedistributeRow2(Runnable redistribute) {
+        App.removeCallbacks(redistribute);
+        App.post(redistribute);
+    }
+
+    private void redistributeRow2() {
+        List<View> items = new ArrayList<>();
+        for (View item : mRow2Items) if (item.getVisibility() == View.VISIBLE) items.add(item);
+        distributeRow2(mBinding.row2, items, mBinding.getRoot().getWidth() - mBinding.row2.getPaddingStart() - mBinding.row2.getPaddingEnd());
+    }
+
+    // 按可用宽度把动作按钮分配到多行（子项数与文案无关，插件追加的按钮同样参与分配）
+    static void distributeRow2(LinearLayoutCompat container, List<View> items, int available) {
+        if (available <= 0 || items.isEmpty()) return;
+        container.removeAllViews();
+        // 重复分配时按钮仍挂在旧行里，必须先摘下才能重新 addView
+        for (View item : items) if (item.getParent() instanceof ViewGroup parent) parent.removeView(item);
+        int[] widths = new int[items.size()];
+        for (int i = 0; i < items.size(); i++) widths[i] = widthOf(items.get(i));
+        List<List<View>> rows = splitRows(items, widths, available);
+        for (int r = 0; r < rows.size(); r++) {
+            LinearLayoutCompat row = new LinearLayoutCompat(container.getContext());
+            row.setOrientation(LinearLayoutCompat.HORIZONTAL);
+            LinearLayoutCompat.LayoutParams lp = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            if (r > 0) lp.topMargin = ResUtil.dp2px(8);
+            row.setLayoutParams(lp);
+            container.addView(row);
+            for (View item : rows.get(r)) row.addView(item, item.getLayoutParams());
+        }
+        applyRow2FocusChain(rows, items, widths);
+    }
+
+    // 两行时优先均衡切分；单行放不下任何一项或多行仍超出时按可用宽度续行
+    private static List<List<View>> splitRows(List<View> items, int[] widths, int available) {
+        List<List<View>> rows = new ArrayList<>();
+        int split = -1;
+        int best = Integer.MAX_VALUE;
+        for (int i = 1; i < items.size(); i++) {
+            int max = Math.max(sumWidth(widths, 0, i), sumWidth(widths, i, widths.length));
+            if (max <= available && max < best) {
+                best = max;
+                split = i;
+            }
+        }
+        if (split > 0) {
+            rows.add(new ArrayList<>(items.subList(0, split)));
+            rows.add(new ArrayList<>(items.subList(split, items.size())));
+            return rows;
+        }
+        List<View> row = new ArrayList<>();
+        int width = 0;
+        for (int i = 0; i < items.size(); i++) {
+            if (!row.isEmpty() && width + widths[i] > available) {
+                rows.add(row);
+                row = new ArrayList<>();
+                width = 0;
+            }
+            row.add(items.get(i));
+            width += widths[i];
+        }
+        rows.add(row);
+        return rows;
+    }
+
+    private static int sumWidth(int[] widths, int start, int end) {
+        int total = 0;
+        for (int i = start; i < end; i++) total += widths[i];
+        return total;
+    }
+
+    // 宽度含 marginEnd，用于分行；同时用于计算焦点链的水平中心
+    private static int widthOf(View item) {
+        LinearLayoutCompat.LayoutParams lp = (LinearLayoutCompat.LayoutParams) item.getLayoutParams();
+        int spec = lp.width >= 0 ? View.MeasureSpec.makeMeasureSpec(lp.width, View.MeasureSpec.EXACTLY) : View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED);
+        item.measure(spec, View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+        return item.getMeasuredWidth() + lp.getMarginEnd();
+    }
+
+    // 行末按向下进入下一行首项，其余按水平中心就近；向上按中心就近回上一行
+    private static void applyRow2FocusChain(List<List<View>> rows, List<View> items, int[] widths) {
+        for (int r = 0; r < rows.size(); r++) {
+            List<View> row = rows.get(r);
+            for (int i = 0; i < row.size(); i++) {
+                View item = row.get(i);
+                int center = centerOf(row, i, items, widths);
+                View up = r > 0 ? nearest(rows.get(r - 1), center, items, widths) : null;
+                View down = r + 1 < rows.size() ? (i == row.size() - 1 ? rows.get(r + 1).get(0) : nearest(rows.get(r + 1), center, items, widths)) : null;
+                item.setNextFocusUpId(up == null ? View.NO_ID : up.getId());
+                item.setNextFocusDownId(down == null ? View.NO_ID : down.getId());
+                item.setNextFocusLeftId(View.NO_ID);
+                item.setNextFocusRightId(View.NO_ID);
+            }
+        }
+    }
+
+    private static int centerOf(List<View> row, int index, List<View> items, int[] widths) {
+        int left = 0;
+        for (int i = 0; i < index; i++) left += widths[items.indexOf(row.get(i))];
+        return left + widths[items.indexOf(row.get(index))] / 2;
+    }
+
+    private static View nearest(List<View> row, int center, List<View> items, int[] widths) {
+        View best = null;
+        int diff = Integer.MAX_VALUE;
+        for (int i = 0; i < row.size(); i++) {
+            int value = Math.abs(centerOf(row, i, items, widths) - center);
+            if (value < diff) {
+                diff = value;
+                best = row.get(i);
+            }
+        }
+        return best;
+    }
+
     private void setRecyclerView() {
         mBinding.flag.setHorizontalSpacing(ResUtil.dp2px(8));
         mBinding.flag.setRowHeight(ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -846,7 +987,7 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
     }
 
     private void setVideoView() {
-        mBinding.control.action.danmaku.setVisibility(View.VISIBLE);
+        mBinding.control.action.danmaku.setVisibility(FeatureGate.danmaku() ? View.VISIBLE : View.GONE);
         mBinding.control.action.reset.setText(ResUtil.getStringArray(R.array.select_reset)[Setting.getReset()]);
         mBinding.control.action.karaoke.setVisibility(View.GONE);
         updateImmersiveAudioAction();
@@ -1182,6 +1323,8 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
         };
     }
 
+    private DownloadTask mLocalTask;
+
     private void getPlayer(Flag flag, Episode episode) {
         mBinding.widget.title.setText(getString(R.string.detail_title, mBinding.name.getText(), episode.getName()));
         playerStartTime = System.currentTimeMillis();
@@ -1204,6 +1347,8 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
         SpiderDebug.log("video-flow", "player audio stage cost=%dms visible=%s", System.currentTimeMillis() - step, isMusicLike());
         step = System.currentTimeMillis();
         DownloadTask localTask = service() != null ? com.fongmi.android.tv.download.DownloadManager.findPlayable(getKey(), getId(), episode.getUrl()) : null;
+        // 记住当前是否为本地缓存播放：换源搜索的关键词要取缓存任务的剧名，而不是播放器上显示的文件路径
+        mLocalTask = localTask;
         if (localTask != null) {
             // 命中离线缓存：本地文件直拨，跳过 spider 解析与嗅探（边下边播时为已下分片的本地 playlist）
             updateHistory(episode);
@@ -1579,7 +1724,8 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
 
     private void onSearch() {
         if (onLyricsSearch()) return;
-        String keyword = mBinding.name.getText().toString();
+        // 本地缓存播放时播放器标题是文件/缓存名，用下载记录里的剧名搜回到还有效的源
+        String keyword = mLocalTask != null && !TextUtils.isEmpty(mLocalTask.getVodName()) ? mLocalTask.getVodName() : mBinding.name.getText().toString();
         if (TextUtils.isEmpty(keyword)) return;
         initSearch(keyword, false);
     }
@@ -1801,12 +1947,13 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
 
     private void updateDownloadButton() {
         Episode episode = getEpisode();
-        String text = episode == null ? null : com.fongmi.android.tv.download.DownloadManager.buttonText(getKey(), getId(), episode.getUrl());
+        String text = episode == null ? null : com.fongmi.android.tv.download.DownloadManager.buttonTextCached(getKey(), getId(), episode.getUrl());
         mBinding.download.setText(text == null ? ResUtil.getString(R.string.download_action) : text);
     }
 
     @Subscribe(threadMode = ThreadMode.MAIN)
     public void onDownloadEvent(com.fongmi.android.tv.download.DownloadEvent event) {
+        if (event.isStateChange()) com.fongmi.android.tv.download.DownloadManager.invalidateButtonText();
         updateDownloadButton();
     }
 
@@ -1820,8 +1967,7 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
 
     private void onDownload() {
         if (!com.fongmi.android.tv.download.DownloadPath.writable()) {
-            Notify.show(R.string.download_permission);
-            com.fongmi.android.tv.download.DownloadPath.openPermissionSettings(this);
+            com.fongmi.android.tv.download.DownloadPath.requestPermission(this);
             return;
         }
         List<Flag> flags = mFlagAdapter == null ? new ArrayList<>() : mFlagAdapter.getItems();
@@ -4037,15 +4183,20 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
         }
     }
 
+    // 三套隐藏机制的分工与需跑的测试见 bindRow2() 上方注释；这里是显隐的唯一收口
     private void setVideoDetailsVisible(boolean visible) {
-        int value = visible ? View.VISIBLE : View.GONE;
+        // 满屏与音频台都不显示详情/选集列；判断收在这里，调用顺序不同也不会把面板重新拉起来
+        boolean show = visible && !isFullscreen() && !mAudioStageVisible;
+        int value = show ? View.VISIBLE : View.GONE;
         mBinding.name.setVisibility(value);
-        mBinding.remark.setVisibility(visible && !TextUtils.isEmpty(mBinding.remark.getText()) ? View.VISIBLE : View.GONE);
+        mBinding.remark.setVisibility(show && !TextUtils.isEmpty(mBinding.remark.getText()) ? View.VISIBLE : View.GONE);
         mBinding.row1.setVisibility(value);
-        mBinding.director.setVisibility(visible && !TextUtils.isEmpty(mBinding.director.getText()) ? View.VISIBLE : View.GONE);
-        mBinding.actor.setVisibility(visible && !TextUtils.isEmpty(mBinding.actor.getText()) ? View.VISIBLE : View.GONE);
+        mBinding.director.setVisibility(show && !TextUtils.isEmpty(mBinding.director.getText()) ? View.VISIBLE : View.GONE);
+        mBinding.actor.setVisibility(show && !TextUtils.isEmpty(mBinding.actor.getText()) ? View.VISIBLE : View.GONE);
         mBinding.row2.setVisibility(value);
+        // 选集列锚在 row2 之后，满屏时不再被撑着它的 video 挤出可视区，必须一起收口
         mBinding.scroll.setVisibility(value);
+        if (show) postRedistributeRow2(mRedistributeRow2);
     }
 
     private void updateAudioStageText() {
@@ -4327,10 +4478,7 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
     }
 
     private String cleanAudioEpisodeForArtist(String episode) {
-        String value = Objects.toString(episode, "").trim();
-        if (value.isEmpty()) return "";
-        String[] parts = value.split("[|｜]");
-        return parts.length == 0 ? value : parts[parts.length - 1].trim();
+        return LyricsSupport.cleanEpisodeForArtist(episode);
     }
 
     private void refreshKaraoke(boolean audioContent) {
@@ -4379,27 +4527,15 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
     }
 
     private String getLyricsSearchSuggestionSignature(@Nullable LyricsRequest request, String fallback) {
-        if (request == null || TextUtils.isEmpty(request.getTitle())) return Objects.toString(fallback, "");
-        return "lyrics-ui|" + request.getTitle() + "|" + request.getArtist() + "|" + request.getDurationSec();
+        return LyricsSupport.suggestionSignature(request, fallback);
     }
 
     private List<String> withLastLyricsSearchSuggestion(List<String> suggestions, String signature) {
-        String keyword = Objects.toString(mLyricsLastSearchKeyword, "").trim();
-        if (TextUtils.isEmpty(keyword) || !TextUtils.equals(mLyricsLastSearchSignature, signature)) return suggestions;
-        List<String> values = new ArrayList<>();
-        values.add(keyword);
-        for (String suggestion : suggestions) {
-            String value = Objects.toString(suggestion, "").trim();
-            if (TextUtils.isEmpty(value) || containsLyricsSearchSuggestion(values, value)) continue;
-            values.add(value);
-            if (values.size() >= 8) break;
-        }
-        return values;
+        return LyricsSupport.withLastSuggestion(suggestions, mLyricsLastSearchKeyword, mLyricsLastSearchSignature, signature);
     }
 
     private boolean containsLyricsSearchSuggestion(List<String> suggestions, String keyword) {
-        for (String suggestion : suggestions) if (suggestion.equalsIgnoreCase(keyword)) return true;
-        return false;
+        return LyricsSupport.containsSuggestion(suggestions, keyword);
     }
 
     private void searchLyrics(String keyword) {
@@ -4555,11 +4691,7 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
     }
 
     private int getLyricsSelectedIndex() {
-        if (TextUtils.isEmpty(mLyricsSelectedResultKey) || mLyricsSearchResults == null) return -1;
-        for (int i = 0; i < mLyricsSearchResults.size(); i++) {
-            if (TextUtils.equals(mLyricsSelectedResultKey, getLyricsResultKey(mLyricsSearchResults.get(i)))) return i;
-        }
-        return -1;
+        return LyricsSupport.selectedIndex(mLyricsSearchResults, mLyricsSelectedResultKey);
     }
 
     private String getLyricsResultLabel(LyricsResult result) {
@@ -4570,15 +4702,7 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
     }
 
     private String getLyricsResultKey(LyricsResult result) {
-        if (result == null) return "";
-        return TextUtils.join("|", new String[]{
-                String.valueOf(result.getSource()),
-                String.valueOf(result.getTrackName()),
-                String.valueOf(result.getArtistName()),
-                String.valueOf(Math.round(result.getDurationMs() / 1000.0)),
-                String.valueOf(result.hasWordTiming()),
-                String.valueOf(result.getLyrics() == null ? 0 : result.getLyrics().hashCode())
-        });
+        return LyricsSupport.resultKey(result);
     }
 
     private void clearLyrics() {
@@ -4610,7 +4734,7 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
     }
 
     private String getTimedLyrics(String text) {
-        return LyricsController.hasTimedLyrics(text) ? text : "";
+        return LyricsSupport.timedLyrics(text);
     }
 
     private LinearLayout createKaraokeSheetHeader(BottomSheetDialog dialog, String title, Runnable backAction) {
@@ -4809,8 +4933,7 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
     }
 
     private String formatLyricsOffset(long valueMs) {
-        if (valueMs == 0) return "0s";
-        return String.format(Locale.getDefault(), "%+.1fs", valueMs / 1000f);
+        return LyricsSupport.formatOffset(valueMs);
     }
 
     private interface LyricsLongSetter {
@@ -5487,18 +5610,7 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
     }
 
     private String getArtistFromEpisode(String title, String episode) {
-        String name = Objects.toString(title, "").trim();
-        String value = Objects.toString(episode, "").trim();
-        if (name.isEmpty() || value.isEmpty() || TextUtils.equals(name, value)) return "";
-        for (String separator : new String[]{" - ", " – ", " — ", "-"}) {
-            if (value.startsWith(name + separator) && value.length() > name.length() + separator.length()) {
-                return value.substring(name.length() + separator.length()).trim();
-            }
-            if (value.endsWith(separator + name) && value.length() > name.length() + separator.length()) {
-                return value.substring(0, value.length() - name.length() - separator.length()).trim();
-            }
-        }
-        return value;
+        return LyricsSupport.artistFromEpisode(title, episode);
     }
 
     @Override
@@ -5864,6 +5976,8 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
         mBinding.control.action.fullscreen.setVisibility(fullscreen ? View.GONE : View.VISIBLE);
         mBinding.control.action.fullscreen.setText(R.string.play_fullscreen);
         applyActionButtonVisibility();
+        // 详情/选集列统一由 setVideoDetailsVisible 收口，它内部同样会判满屏与音频台
+        setVideoDetailsVisible(!fullscreen);
     }
 
     @Override

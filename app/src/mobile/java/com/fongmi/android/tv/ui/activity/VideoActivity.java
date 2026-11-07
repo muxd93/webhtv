@@ -69,6 +69,7 @@ import androidx.viewbinding.ViewBinding;
 
 import com.bumptech.glide.request.transition.Transition;
 import com.fongmi.android.tv.App;
+import com.fongmi.android.tv.BuildConfig;
 import com.fongmi.android.tv.Constant;
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.api.DanmakuApi;
@@ -321,6 +322,10 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     private final Runnable mCustomButtonStateListener = this::updateCustomButtonStates;
     private final Runnable mDiscMenuStateListener = this::updateDiscMenuTools;
     private PiP mPiP;
+    private final Runnable mUpdatePiP = () -> {
+        if (isFinishing() || isDestroyed()) return;
+        mPiP.update(this, mBinding.video);
+    };
     private String mContextWallUrl;
     private String mContextWallLockedUrl;
     private String playHealthKey;
@@ -999,9 +1004,10 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
         mBinding.control.action.reset.setText(ResUtil.getStringArray(R.array.select_reset)[Setting.getReset()]);
         setupActionButtons();
         mBinding.video.addOnLayoutChangeListener((view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
-            mPiP.update(this, view);
+            // 回调在 layout 通道内：PiP 里的 getGlobalVisibleRect + setPictureInPictureParams 是 binder IPC，不能在此同步做
+            App.post(mUpdatePiP);
             updateCustomButtonLayout();
-            Log.d(SIZE_TAG, "video layout new=" + (right - left) + "x" + (bottom - top)
+            if (BuildConfig.DEBUG) Log.d(SIZE_TAG, "video layout new=" + (right - left) + "x" + (bottom - top)
                     + " old=" + (oldRight - oldLeft) + "x" + (oldBottom - oldTop)
                     + " fullscreen=" + isFullscreen()
                     + " land=" + isLand()
@@ -1161,12 +1167,19 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
         int top = Math.max(margin, Math.round(mBinding.video.getHeight() * 0.65f - height / 2f));
         FrameLayout.LayoutParams leftParams = (FrameLayout.LayoutParams) mCustomLeftButtons.getLayoutParams();
         FrameLayout.LayoutParams rightParams = (FrameLayout.LayoutParams) mCustomRightButtons.getLayoutParams();
+        // 未变化时直接返回：调用来自 layout 回调，写回 LayoutParams 会再触发一次 requestLayout
+        if (!customButtonLayoutChanged(width, top, leftParams.width, leftParams.topMargin)
+                && !customButtonLayoutChanged(width, top, rightParams.width, rightParams.topMargin)) return;
         leftParams.width = width;
         rightParams.width = width;
         leftParams.topMargin = top;
         rightParams.topMargin = top;
         mCustomLeftButtons.setLayoutParams(leftParams);
         mCustomRightButtons.setLayoutParams(rightParams);
+    }
+
+    static boolean customButtonLayoutChanged(int width, int top, int oldWidth, int oldTop) {
+        return width != oldWidth || top != oldTop;
     }
 
     private void updateCustomButtonVisibility() {
@@ -5991,7 +6004,7 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     }
 
     private void logVideoFrame(String step) {
-        if (mBinding == null) return;
+        if (!BuildConfig.DEBUG || mBinding == null) return;
         Log.d(SIZE_TAG, "video " + step
                 + " frameParam=" + (mFrameParams == null ? "null" : mFrameParams.width + "x" + mFrameParams.height)
                 + " frameHeight=" + mFrameHeight

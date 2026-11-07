@@ -11,6 +11,7 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.fongmi.android.tv.bean.Func;
 import com.fongmi.android.tv.databinding.AdapterFuncBinding;
 import com.fongmi.android.tv.utils.KeyUtil;
+import com.fongmi.android.tv.utils.ResUtil;
 
 public class FuncPresenter extends Presenter {
 
@@ -38,6 +39,7 @@ public class FuncPresenter extends Presenter {
         ViewHolder holder = (ViewHolder) viewHolder;
         holder.binding.text.setText(item.getText());
         holder.binding.icon.setImageResource(item.getDrawable());
+        holder.binding.icon.setColorFilter(ResUtil.getColor(item.getColor()));
         setOnClickListener(holder, view -> listener.onItemClick(item));
         holder.view.setOnLongClickListener(view -> listener.onLongClick(item));
         holder.view.setOnKeyListener((view, keyCode, event) -> onKeyDown(view, event));

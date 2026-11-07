@@ -212,10 +212,15 @@ public class PlaybackPerformanceSetting {
     }
 
     public static String getProfileName() {
-        int profile = getProfile();
+        return getProfileName(PlayerSetting.getPlayer());
+    }
+
+    /** 指定 kernel 的档位名：诊断 dump 必须按本次真正运行的引擎取值，而不是配置值 */
+    public static String getProfileName(int kernel) {
+        int profile = getProfile(kernel);
         return switch (profile) {
             case PROFILE_AUTO -> {
-                int count = getOverrideCount(PlayerSetting.getPlayer());
+                int count = getOverrideCount(kernel);
                 yield count == 0 ? "自动" : "自动（已覆盖" + count + "项）";
             }
             case PROFILE_COMPATIBLE,
@@ -547,10 +552,9 @@ public class PlaybackPerformanceSetting {
      * Read-only snapshot of the values a playback session would use right now: profile,
      * each per-option effective value and the layer it came from (auto or fixed/user).
      */
-    public static List<String> describeEffective() {
-        int kernel = PlayerSetting.getPlayer();
+    public static List<String> describeEffective(int kernel) {
         List<String> lines = new ArrayList<>();
-        lines.add("kernel=" + kernelName(kernel) + " profile=" + getProfileName()
+        lines.add("kernel=" + kernelName(kernel) + " profile=" + getProfileName(kernel)
                 + " overrides=" + getOverrideCount(kernel));
         switch (kernel) {
             case PlayerSetting.EXO -> describeExo(lines, kernel);

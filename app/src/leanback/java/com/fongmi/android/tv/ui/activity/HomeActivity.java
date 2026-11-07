@@ -672,6 +672,7 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
     @Override
     public void onItemDelete(History item) {
         mRows.historyAdapter().remove(item.deleteAndSync());
+        mRows.onHistoryDeleted();
         mRows.refresh();
         if (mRows.historyAdapter().size() > 0) return;
         mRows.historyPresenter().setDelete(false);

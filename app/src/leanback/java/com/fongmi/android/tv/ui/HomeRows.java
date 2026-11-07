@@ -45,8 +45,8 @@ public class HomeRows {
     public static final int HISTORY_LIMIT = 10;
 
     /** 铺平铺网格子行的稳定 id 基址，用于 RowDiff 按 id 而非适配器实例做行级 diff */
-    private static final long HISTORY_ID_BASE = 1_000_000L;
-    private static final long KEEP_ID_BASE = 2_000_000L;
+    static final long HISTORY_ID_BASE = 1_000_000L;
+    static final long KEEP_ID_BASE = 2_000_000L;
 
     public interface OnMoreClickListener {
         void onMoreClick(HomeMore.Kind kind);
@@ -79,8 +79,6 @@ public class HomeRows {
     private List<Vod> mVodItems = Collections.emptyList();
     private Style mVodStyle = Style.list();
     private boolean mVodLoading;
-    private Map<String, History> mAppliedProgress = Collections.emptyMap();
-    private Map<Integer, String> mAppliedConfigNames = Collections.emptyMap();
 
     public HomeRows(VodPresenter.OnClickListener vod, HistoryPresenter.OnClickListener history, FuncPresenter.OnClickListener func, KeepPresenter.OnClickListener keep, OnMoreClickListener more) {
         mVodListener = vod;
@@ -143,12 +141,35 @@ public class HomeRows {
 
     /** 删除模式切换时通知所有历史网格子适配器重绑（保留焦点，不整体重建） */
     public void notifyHistoryChanged() {
-        for (ArrayObjectAdapter adapter : mHistoryGrid) adapter.notifyArrayItemRangeChanged(0, adapter.size());
+        notifyRows(mHistoryGrid);
     }
 
     /** 删除模式切换时通知所有收藏网格子适配器重绑 */
     public void notifyKeepChanged() {
-        for (ArrayObjectAdapter adapter : mKeepGrid) adapter.notifyArrayItemRangeChanged(0, adapter.size());
+        notifyRows(mKeepGrid);
+    }
+
+    /**
+     * 只重绑已上屏的行副本：站点名、跨配置标注、观看进度都在绑定时按当前状态实时解析，
+     * 通知源适配器（mHistoryAdapter/mKeepAdapter 没有观察者）不会让卡片更新。
+     */
+    private void notifyRows(List<ArrayObjectAdapter> grid) {
+        for (ArrayObjectAdapter adapter : grid) adapter.notifyArrayItemRangeChanged(0, adapter.size());
+    }
+
+    /** 删除一条历史后立即同步总数与「更多」卡，避免计数滞后到下一次刷新 */
+    public void onHistoryDeleted() {
+        mHistoryTotal = afterHistoryDeleted(mHistoryAdapter, mHistoryTotal);
+    }
+
+    /** 剩余总数已经装得下全部条目时移除「更多」卡，否则只更新卡上的计数 */
+    static int afterHistoryDeleted(ArrayObjectAdapter adapter, int total) {
+        int next = Math.max(0, total - 1);
+        int moreIndex = adapter.size() > 0 && adapter.get(adapter.size() - 1) instanceof HomeMore ? adapter.size() - 1 : -1;
+        if (moreIndex < 0) return next;
+        if (next <= moreIndex) adapter.removeItems(moreIndex, 1);
+        else adapter.replace(moreIndex, new HomeMore(HomeMore.Kind.HISTORY, next));
+        return next;
     }
 
     public void submitFunc(List<Func> items) {
@@ -188,11 +209,11 @@ public class HomeRows {
         List<Object> items = new ArrayList<>(mHistory.subList(0, Math.min(mHistory.size(), limit)));
         if (mHistoryTotal > limit) items.add(new HomeMore(HomeMore.Kind.HISTORY, mHistoryTotal));
         if (sameItems(mHistoryAdapter, items)) {
-            if (mHistoryAdapter.size() > 0 && !mConfigNames.equals(mAppliedConfigNames)) mHistoryAdapter.notifyArrayItemRangeChanged(0, mHistoryAdapter.size());
-            mAppliedConfigNames = mConfigNames;
+            // 内容未变但每次进首页/切配置都会重新取 feed：重绑已上屏的历史行，
+            // 否则站点名等按当前配置实时解析的字段会停留在旧状态
+            notifyRows(mHistoryGrid);
             return;
         }
-        mAppliedConfigNames = mConfigNames;
         mHistoryAdapter.clear();
         mHistoryAdapter.addAll(0, items);
     }
@@ -204,13 +225,10 @@ public class HomeRows {
         List<Object> items = new ArrayList<>(mKeeps.subList(0, Math.min(mKeeps.size(), limit)));
         if (mKeepTotal > limit) items.add(new HomeMore(HomeMore.Kind.KEEP, mKeepTotal));
         if (sameItems(mKeepAdapter, items)) {
-            if (mKeepAdapter.size() > 0 && (!progress.equals(mAppliedProgress) || !configNames.equals(mAppliedConfigNames))) mKeepAdapter.notifyArrayItemRangeChanged(0, mKeepAdapter.size());
-            mAppliedProgress = progress;
-            mAppliedConfigNames = configNames;
+            // 观看进度与跨配置标注存在 presenter 上，重绑已上屏的收藏行才会生效
+            notifyRows(mKeepGrid);
             return;
         }
-        mAppliedProgress = progress;
-        mAppliedConfigNames = configNames;
         mKeepAdapter.clear();
         mKeepAdapter.addAll(0, items);
     }
@@ -302,8 +320,8 @@ public class HomeRows {
         if (item instanceof Vod) return "vod:" + vodKey((Vod) item);
         if (item instanceof ListRow) {
             long id = ((ListRow) item).getId();
-            if (id >= HISTORY_ID_BASE && id < HISTORY_ID_BASE + 1_000_000) return "row:history:" + (id - HISTORY_ID_BASE);
-            if (id >= KEEP_ID_BASE && id < KEEP_ID_BASE + 1_000_000) return "row:keep:" + (id - KEEP_ID_BASE);
+            if (id >= HISTORY_ID_BASE && id < HISTORY_ID_BASE + 1_000_000) return gridKey(HISTORY_ID_BASE, (int) (id - HISTORY_ID_BASE), ((ListRow) item).getAdapter());
+            if (id >= KEEP_ID_BASE && id < KEEP_ID_BASE + 1_000_000) return gridKey(KEEP_ID_BASE, (int) (id - KEEP_ID_BASE), ((ListRow) item).getAdapter());
             ObjectAdapter child = ((ListRow) item).getAdapter();
             if (child == null) return "grid:null";
             if (child == mFuncAdapter) return "row:func";
@@ -316,6 +334,23 @@ public class HomeRows {
 
     private String vodKey(Vod vod) {
         return Objects.toString(vod.getId()) + "|" + Objects.toString(vod.getName());
+    }
+
+    /**
+     * 网格子行 key = 行号 + 内容指纹。已上屏的行适配器是 build() 时另建的副本，
+     * 只按行号命中会把删除/内容的改动留在旧副本里；指纹变化时让 RowDiff 重建该行。
+     */
+    static String gridKey(long idBase, int row, ObjectAdapter adapter) {
+        int size = adapter == null ? 0 : adapter.size();
+        StringBuilder sb = new StringBuilder("row:").append(idBase).append(':').append(row).append(':').append(size);
+        if (size > 0) sb.append(':').append(itemKey(adapter.get(0))).append(':').append(itemKey(adapter.get(size - 1)));
+        return sb.toString();
+    }
+
+    private static String itemKey(Object item) {
+        if (item instanceof History) return ((History) item).getKey();
+        if (item instanceof Keep) return ((Keep) item).getKey();
+        return Objects.toString(item);
     }
 
     private String rowKey(ObjectAdapter adapter) {

@@ -657,10 +657,18 @@
 
     <androidx.appcompat.widget.LinearLayoutCompat
         android:id="@+id/row2"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_alignParentStart="true"
+        android:layout_alignParentEnd="true"
+        android:layout_below="@+id/actor"
+        android:layout_marginTop="20dp"
+        android:orientation="vertical">
+
+    <androidx.appcompat.widget.LinearLayoutCompat
+        android:id="@+id/row2a"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_alignStart="@+id/name"
-        android:layout_alignBottom="@+id/video"
         android:orientation="horizontal">
 
         <com.google.android.material.textview.MaterialTextView
@@ -673,8 +681,6 @@
             android:focusable="true"
             android:focusableInTouchMode="true"
             android:gravity="center"
-            android:nextFocusUp="@id/actor"
-            android:nextFocusDown="@id/flag"
             android:singleLine="true"
             android:text="@string/detail_desc"
             android:textColor="@color/white"
@@ -691,8 +697,6 @@
             android:focusable="true"
             android:focusableInTouchMode="true"
             android:gravity="center"
-            android:nextFocusUp="@id/actor"
-            android:nextFocusDown="@id/flag"
             android:singleLine="true"
             android:text="@string/play_short_display"
             android:textColor="@color/white"
@@ -709,8 +713,6 @@
             android:focusable="true"
             android:focusableInTouchMode="true"
             android:gravity="center"
-            android:nextFocusUp="@id/actor"
-            android:nextFocusDown="@id/flag"
             android:singleLine="true"
             android:text="@string/play_search"
             android:textColor="@color/white"
@@ -727,8 +729,6 @@
             android:focusable="true"
             android:focusableInTouchMode="true"
             android:gravity="center"
-            android:nextFocusUp="@id/actor"
-            android:nextFocusDown="@id/flag"
             android:singleLine="true"
             android:text="@string/keep"
             android:textColor="@color/white"
@@ -745,8 +745,6 @@
             android:focusable="true"
             android:focusableInTouchMode="true"
             android:gravity="center"
-            android:nextFocusUp="@id/actor"
-            android:nextFocusDown="@id/flag"
             android:singleLine="true"
             android:text="@string/download_action"
             android:textColor="@color/white"
@@ -757,14 +755,12 @@
             android:id="@+id/change1"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_marginEnd="24dp"
             android:background="@drawable/selector_video_item"
             android:drawablePadding="6dp"
             android:focusable="true"
             android:focusableInTouchMode="true"
             android:gravity="center"
-            android:nextFocusRight="@id/change1"
-            android:nextFocusUp="@id/actor"
-            android:nextFocusDown="@id/flag"
             android:singleLine="true"
             android:text="@string/play_change"
             android:textColor="@color/white"
@@ -773,11 +769,13 @@
 
     </androidx.appcompat.widget.LinearLayoutCompat>
 
+    </androidx.appcompat.widget.LinearLayoutCompat>
+
     <androidx.appcompat.widget.LinearLayoutCompat
         android:id="@+id/scroll"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:layout_below="@+id/video"
+        android:layout_below="@+id/row2"
         android:layout_alignParentBottom="true"
         android:clipChildren="true"
         android:clipToPadding="true"

@@ -23,6 +23,7 @@ import androidx.media3.ui.PlayerView;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.viewbinding.ViewBinding;
 
+import com.bumptech.glide.Glide;
 import com.bumptech.glide.request.transition.Transition;
 import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.Constant;
@@ -100,6 +101,7 @@ public class LiveActivity extends PlaybackActivity implements GroupAdapter.OnCli
     private Runnable mR2;
     private Runnable mR3;
     private Runnable mR4;
+    private CustomTarget<Drawable> mArtworkTarget;
     private Clock mClock;
     private View mFocus2;
     private boolean playbackCatchup;
@@ -707,17 +709,28 @@ public class LiveActivity extends PlaybackActivity implements GroupAdapter.OnCli
     }
 
     private void setArtwork() {
-        ImgUtil.load(this, mChannel.getLogo(), new CustomTarget<>() {
+        // 切台会连发多次请求：先取消上一个，避免旧请求后到把新台标覆盖掉
+        clearArtworkTarget();
+        if (isFinishing() || isDestroyed()) return;
+        ImgUtil.load(this, mChannel.getLogo(), mArtworkTarget = new CustomTarget<>() {
             @Override
             public void onResourceReady(@NonNull Drawable resource, @Nullable Transition<? super Drawable> transition) {
+                if (isFinishing() || isDestroyed()) return;
                 mBinding.exo.setDefaultArtwork(resource);
             }
 
             @Override
             public void onLoadFailed(@Nullable Drawable errorDrawable) {
+                if (isFinishing() || isDestroyed()) return;
                 mBinding.exo.setDefaultArtwork(errorDrawable);
             }
         });
+    }
+
+    private void clearArtworkTarget() {
+        if (mArtworkTarget == null) return;
+        Glide.with(getApplicationContext()).clear(mArtworkTarget);
+        mArtworkTarget = null;
     }
 
     @Override
@@ -1192,6 +1205,7 @@ public class LiveActivity extends PlaybackActivity implements GroupAdapter.OnCli
         if (mOsd != null) mOsd.release();
         mViewModel.url().removeObserver(mObserveUrl);
         mViewModel.epg().removeObserver(mObserveEpg);
+        clearArtworkTarget();
         super.onDestroy();
     }
 }

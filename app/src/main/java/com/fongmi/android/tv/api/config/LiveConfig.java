@@ -23,6 +23,7 @@ import com.fongmi.android.tv.utils.Task;
 import com.fongmi.android.tv.utils.UrlUtil;
 import com.github.catvod.bean.Header;
 import com.github.catvod.bean.Proxy;
+import com.github.catvod.crawler.SpiderDebug;
 import com.github.catvod.utils.Json;
 import com.google.gson.JsonObject;
 
@@ -276,11 +277,15 @@ public class LiveConfig extends BaseConfig {
 
     /** 第二段：后台补全其余子仓，原地追加（LiveAdapter 持同一引用；不发事件避免重置播放器） */
     private void complete(Config depot, Set<String> names) {
+        Config child = depot;
         try {
             List<Live> fresh = new ArrayList<>();
             List<Rule> rules = new ArrayList<>();
             List<String> ads = new ArrayList<>();
-            for (DepotExpander.Leaf leaf : DepotExpander.expand(depot)) collect(depot, leaf.json, names, fresh, rules, ads);
+            for (DepotExpander.Leaf leaf : DepotExpander.expand(depot)) {
+                child = leaf.config;
+                collect(depot, leaf.json, names, fresh, rules, ads);
+            }
             if (fresh.isEmpty()) return;
             App.post(() -> {
                 if (getConfig() == null || getLives().isEmpty()) return;
@@ -295,7 +300,9 @@ public class LiveConfig extends BaseConfig {
                 // 通知已打开的直播源对话框刷新（不重置播放器）；未打开则下次打开即见全量
                 ConfigEvent.liveList();
             });
-        } catch (Throwable ignored) {
+        } catch (Throwable e) {
+            // 仅补可见性：第二段失败仍中止补全、不弹提示，但日志要能定位到具体子仓与异常类型
+            SpiderDebug.log("live-config", "complete aborted depot=%s child=%s error=%s", depot.getUrl(), child.getUrl(), e.getClass().getSimpleName());
         }
     }
 

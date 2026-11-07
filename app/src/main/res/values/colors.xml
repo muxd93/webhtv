@@ -28,4 +28,15 @@
     <color name="white_80">#CCFFFFFF</color>
     <color name="white_90">#E6FFFFFF</color>
 
+    <!-- 首页功能按钮图标色：全部取中间调（相对亮度约 0.15~0.40），
+         条目底板本身带 black_20/black_40 遮罩，深色与浅色壁纸下都保留可辨识度。
+         新增/调整按钮时只改这里，图标与颜色的映射统一在 Func 里。 -->
+    <color name="func_icon_vod">#A55BD8</color>
+    <color name="func_icon_live">#E5484D</color>
+    <color name="func_icon_search">#1F9FA6</color>
+    <color name="func_icon_keep">#DD9A0B</color>
+    <color name="func_icon_download">#2FA55A</color>
+    <color name="func_icon_push">#8E6FD6</color>
+    <color name="func_icon_setting">#9AA4B2</color>
+
 </resources>

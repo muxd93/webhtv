@@ -6344,7 +6344,7 @@ public class PlayerManager implements ParseCallback {
         lastLoggedRouteTraceId = PlaybackTrace.NONE;
         bindPlaybackTrace();
         playbackTrace.mark(PlaybackTrace.Stage.REQUEST, "reason=" + reason + " player=" + playerType + " decode=" + (engine == null ? -1 : engine.getDecode()));
-        for (String line : PlaybackPerformanceSetting.describeEffective()) SpiderDebug.log("playback-perf", "dump %s", line);
+        for (String line : PlaybackPerformanceSetting.describeEffective(playerType)) SpiderDebug.log("playback-perf", "dump %s", line);
         publishPlaybackTelemetry();
         lastStablePositionMs = 0;
         schedulePlaybackTelemetry();

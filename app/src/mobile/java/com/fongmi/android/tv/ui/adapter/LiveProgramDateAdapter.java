@@ -62,13 +62,17 @@ public class LiveProgramDateAdapter extends RecyclerView.Adapter<LiveProgramDate
         Epg item = items.get(position);
         holder.binding.text.setText(label(item.getDate()));
         holder.binding.text.setSelected(position == selected);
-        holder.binding.text.setOnClickListener(v -> {
-            int old = selected;
-            selected = holder.getBindingAdapterPosition();
-            notifyItemChanged(old);
-            notifyItemChanged(selected);
-            listener.onDateClick(item);
-        });
+        holder.binding.text.setOnClickListener(v -> onDateSelected(holder.getBindingAdapterPosition()));
+    }
+
+    /** 用点击当时的适配器位置取数据：列表被替换后旧捕获项可能已失效，NO_POSITION 直接忽略 */
+    void onDateSelected(int position) {
+        if (position == RecyclerView.NO_POSITION || position < 0 || position >= items.size()) return;
+        int old = selected;
+        selected = position;
+        if (old >= 0 && old < items.size() && old != position) notifyItemChanged(old);
+        notifyItemChanged(position);
+        listener.onDateClick(items.get(position));
     }
 
     private String label(String date) {

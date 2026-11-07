@@ -10,6 +10,7 @@ public class Func implements Diffable<Func> {
 
     private final int resId;
     private int drawable;
+    private int color = R.color.white;
 
     public static Func create(int resId) {
         return new Func(resId);
@@ -28,17 +29,27 @@ public class Func implements Diffable<Func> {
         return drawable;
     }
 
+    public int getColor() {
+        return color;
+    }
+
     public String getText() {
         return ResUtil.getString(resId);
     }
 
     public void setDrawable() {
-        if (resId == R.string.home_vod) this.drawable = R.drawable.ic_home_vod;
-        else if (resId == R.string.home_live) this.drawable = R.drawable.ic_home_live;
-        else if (resId == R.string.home_keep) this.drawable = R.drawable.ic_home_keep;
-        else if (resId == R.string.home_push) this.drawable = R.drawable.ic_home_push;
-        else if (resId == R.string.home_search) this.drawable = R.drawable.ic_home_search;
-        else if (resId == R.string.home_setting) this.drawable = R.drawable.ic_home_setting;
+        if (resId == R.string.home_vod) style(R.drawable.ic_home_vod, R.color.func_icon_vod);
+        else if (resId == R.string.home_live) style(R.drawable.ic_home_live, R.color.func_icon_live);
+        else if (resId == R.string.home_keep) style(R.drawable.ic_home_keep, R.color.func_icon_keep);
+        else if (resId == R.string.home_push) style(R.drawable.ic_home_push, R.color.func_icon_push);
+        else if (resId == R.string.home_search) style(R.drawable.ic_home_search, R.color.func_icon_search);
+        else if (resId == R.string.home_setting) style(R.drawable.ic_home_setting, R.color.func_icon_setting);
+        else if (resId == R.string.download_action) style(R.drawable.ic_detail_download, R.color.func_icon_download);
+    }
+
+    private void style(int drawable, int color) {
+        this.drawable = drawable;
+        this.color = color;
     }
 
     @Override

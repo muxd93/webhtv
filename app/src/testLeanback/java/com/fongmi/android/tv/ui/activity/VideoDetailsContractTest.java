@@ -13,6 +13,7 @@ import androidx.appcompat.widget.LinearLayoutCompat;
 
 import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.R;
+import com.fongmi.android.tv.utils.ResUtil;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -98,7 +99,8 @@ public class VideoDetailsContractTest {
         video.setLayoutParams(params);
         layout(activity);
 
-        assertEquals("layout 回调必须同步把 row2 起点跟随封面右沿", video.getRight(), row2.getPaddingStart());
+        assertEquals("layout 回调必须同步把 row2 起点跟随封面右沿并留出横向间隙",
+                video.getRight() + ResUtil.dp2px(VideoActivity.ROW2_START_GAP_DP), row2.getPaddingStart());
         assertSame("layout 通道内不得重建动作行", firstRow, row2.getChildAt(0));
         assertEquals("layout 通道内不得增删动作按钮", itemsBefore, countItems(row2));
     }
