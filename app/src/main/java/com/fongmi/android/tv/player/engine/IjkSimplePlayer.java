@@ -645,6 +645,22 @@ class IjkSimplePlayer extends SimpleBasePlayer implements IMediaPlayer.Listener 
                 lastHttpStatus,
                 lastNativeOffset,
                 longUrlProxied);
+        // An unmapped native value is otherwise indistinguishable from a genuinely
+        // unspecified failure, so keep the raw what/extra pair (native error) in hex.
+        if (playerError.errorCode == PlaybackException.ERROR_CODE_UNSPECIFIED) {
+            SpiderDebug.log("ijk",
+                    "error unmapped what=%d(0x%08x) extra/native=%d(0x%08x) decode=%d prepared=%s stage=%s http=%d offset=%d longProxy=%s",
+                    what,
+                    what,
+                    extra,
+                    extra,
+                    decode,
+                    prepared,
+                    openStage.label(),
+                    lastHttpStatus,
+                    lastNativeOffset,
+                    longUrlProxied);
+        }
         prepared = false;
         invalidateState();
         return true;

@@ -228,6 +228,10 @@ public class HomeWebController {
         App.post(() -> listener.onWebNetwork(type, method, url, status, durationMs, detail));
     }
 
+    public boolean isDebugTools() {
+        return debugTools;
+    }
+
     public void show() {
         active = this;
         webView.setVisibility(View.VISIBLE);

@@ -6327,16 +6327,33 @@ public class PlayerManager implements ParseCallback {
         pendingIjkRealtimeRecoveryDecision = null;
         playbackTrackSequence = 1;
         playbackMediaFactsCoordinator.beginSession(playbackAutoSession);
-        PlaybackMemoryMonitor.process().beginSession(playbackAutoSession);
-        PlaybackSystemConditionMonitor.process().beginSession(playbackAutoSession);
+        beginAutoFactSampling(playbackAutoSession);
         playbackTelemetryCoordinator.beginSession(playbackAutoSession, now);
         beginPlaybackProfileAbSession(now);
         lastLoggedRouteTraceId = PlaybackTrace.NONE;
         bindPlaybackTrace();
         playbackTrace.mark(PlaybackTrace.Stage.REQUEST, "reason=" + reason + " player=" + playerType + " decode=" + (engine == null ? -1 : engine.getDecode()));
+        for (String line : PlaybackPerformanceSetting.describeEffective()) SpiderDebug.log("playback-perf", "dump %s", line);
         publishPlaybackTelemetry();
         lastStablePositionMs = 0;
         schedulePlaybackTelemetry();
+    }
+
+    /**
+     * Sampling exists only for the automatic policies (and the Auto/Lightweight admission
+     * check, which reads low-RAM facts). A fixed profile has no consumer for these facts,
+     * so no receiver, listener or periodic task is started for it.
+     */
+    private void beginAutoFactSampling(PlaybackAutoContext.SessionToken session) {
+        int kernel = playerType;
+        int profile = PlaybackPerformanceSetting.getProfile(kernel);
+        boolean sampleSystem = PlaybackPerformanceSetting.isAuto(kernel);
+        boolean sampleMemory = sampleSystem || profile == PlaybackPerformanceSetting.PROFILE_LIGHTWEIGHT;
+        if (sampleMemory) PlaybackMemoryMonitor.process().beginSession(session);
+        if (sampleSystem) PlaybackSystemConditionMonitor.process().beginSession(session);
+        if (SpiderDebug.isEnabled() && (!sampleMemory || !sampleSystem)) {
+            SpiderDebug.log("playback-perf", "skip resource sampling kernel=%d profile=%d memory=%s system=%s", kernel, profile, sampleMemory, sampleSystem);
+        }
     }
 
     private void bindPlaybackTrace() {

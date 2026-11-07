@@ -4,8 +4,10 @@ import android.content.SharedPreferences;
 
 import com.github.catvod.utils.Prefers;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -539,6 +541,120 @@ public class PlaybackPerformanceSetting {
         return isAuto(PlayerSetting.EXO, PlaybackPerformanceCatalog.EXO_PRIORITIZE_TIME)
                 ? "自动 · 按资源"
                 : onOff(ExoPerformanceSetting.isPrioritizeTime());
+    }
+
+    /**
+     * Read-only snapshot of the values a playback session would use right now: profile,
+     * each per-option effective value and the layer it came from (auto or fixed/user).
+     */
+    public static List<String> describeEffective() {
+        int kernel = PlayerSetting.getPlayer();
+        List<String> lines = new ArrayList<>();
+        lines.add("kernel=" + kernelName(kernel) + " profile=" + getProfileName()
+                + " overrides=" + getOverrideCount(kernel));
+        switch (kernel) {
+            case PlayerSetting.EXO -> describeExo(lines, kernel);
+            case PlayerSetting.MPV -> describeMpv(lines, kernel);
+            default -> describeIjk(lines, kernel);
+        }
+        return lines;
+    }
+
+    private static String kernelName(int kernel) {
+        return switch (PlayerSetting.sanitizePlayer(kernel)) {
+            case PlayerSetting.MPV -> "mpv";
+            case PlayerSetting.IJK -> "ijk";
+            default -> "exo";
+        };
+    }
+
+    private static void describeExo(List<String> lines, int kernel) {
+        lines.add("buffer: " + entries(kernel,
+                PlaybackPerformanceCatalog.BUFFER_TIME, PlayerSetting.getBuffer(),
+                PlaybackPerformanceCatalog.BUFFER_BYTES, PlayerSetting.getBufferBytesOption(),
+                PlaybackPerformanceCatalog.BACK_BUFFER, PlayerSetting.getBackBufferOption(),
+                PlaybackPerformanceCatalog.EXO_START_BUFFER, ExoPerformanceSetting.getStartBufferMs() + "ms",
+                PlaybackPerformanceCatalog.EXO_REBUFFER, ExoPerformanceSetting.getRebufferMs() + "ms",
+                PlaybackPerformanceCatalog.EXO_PRIORITIZE_TIME, ExoPerformanceSetting.isPrioritizeTime(),
+                PlaybackPerformanceCatalog.EXO_NETWORK_PROTECTION, ExoPerformanceSetting.getNetworkProtectionMode()));
+        lines.add("net: " + entries(kernel,
+                PlaybackPerformanceCatalog.BANDWIDTH_METER, isBandwidthMeterEnabled(),
+                PlaybackPerformanceCatalog.TRACK_LIMIT, isTrackLimitEnabled(),
+                PlaybackPerformanceCatalog.ADAPTIVE_DOWNGRADE, isAdaptiveDowngradeEnabled(),
+                PlaybackPerformanceCatalog.LOAD_SELECTED_TRACKS, isLoadOnlySelectedTracksEnabled()));
+        lines.add("codec: " + entries(kernel,
+                PlaybackPerformanceCatalog.CODEC_ASYNC, ExoPerformanceSetting.getCodecQueueText(),
+                PlaybackPerformanceCatalog.DYNAMIC_SCHEDULING, isDynamicSchedulingEnabled(),
+                PlaybackPerformanceCatalog.DURATION_PROGRESS, isVideoDurationProgressEnabled(),
+                PlaybackPerformanceCatalog.LATE_DROP, isLateDropInputEnabled(),
+                PlaybackPerformanceCatalog.SURFACE_FIXED_SIZE, isSurfaceFixedSizeEnabled(),
+                PlaybackPerformanceCatalog.DECODER_FALLBACK, isDecoderFallbackEnabled(),
+                PlaybackPerformanceCatalog.EXO_FRAME_RATE, ExoPerformanceSetting.getFrameRateText(),
+                PlaybackPerformanceCatalog.DV7_HDR10_FALLBACK, getDv7HandlingText(),
+                PlaybackPerformanceCatalog.SOFT_VIDEO_TUNE, isSoftVideoTuneEnabled()));
+        lines.add("audio: " + entries(kernel,
+                PlaybackPerformanceCatalog.AUDIO_PASSTHROUGH, PlayerSetting.isAudioPassThrough(),
+                PlaybackPerformanceCatalog.PREFER_AAC, PlayerSetting.isPreferAAC(),
+                PlaybackPerformanceCatalog.AUDIO_SOFT_PREFER, PlayerSetting.isAudioPrefer(),
+                PlaybackPerformanceCatalog.VIDEO_SOFT_PREFER, PlayerSetting.isVideoPrefer()));
+    }
+
+    private static void describeMpv(List<String> lines, int kernel) {
+        lines.add("output: " + entries(kernel,
+                PlaybackPerformanceCatalog.MPV_OUTPUT, MpvPerformanceSetting.getOutputModeText(),
+                PlaybackPerformanceCatalog.MPV_HWDEC, MpvPerformanceSetting.getHwdecText(),
+                PlaybackPerformanceCatalog.MPV_VULKAN_BACKEND, MpvPerformanceSetting.getVulkanBackendText(),
+                PlaybackPerformanceCatalog.MPV_OPTION_PRIORITY, MpvPerformanceSetting.getOptionPriorityText(),
+                PlaybackPerformanceCatalog.MPV_FRAME_RATE, MpvPerformanceSetting.getFrameRateText()));
+        lines.add("buffer: " + entries(kernel,
+                PlaybackPerformanceCatalog.BUFFER_TIME, PlayerSetting.getBuffer(),
+                PlaybackPerformanceCatalog.BUFFER_BYTES, PlayerSetting.getBufferBytesOption(),
+                PlaybackPerformanceCatalog.BACK_BUFFER, PlayerSetting.getBackBufferOption(),
+                PlaybackPerformanceCatalog.MPV_REBUFFER, MpvPerformanceSetting.getRebufferMs() + "ms",
+                PlaybackPerformanceCatalog.MPV_HLS_BITRATE, MpvPerformanceSetting.getHlsBitrateText(),
+                PlaybackPerformanceCatalog.PLAY_CACHE, PlayerSetting.getPlayCacheOption()));
+        lines.add("decode: " + entries(kernel,
+                PlaybackPerformanceCatalog.MPV_SYNC, MpvPerformanceSetting.getSyncText(),
+                PlaybackPerformanceCatalog.MPV_FRAME_DROP, MpvPerformanceSetting.getFrameDropText(),
+                PlaybackPerformanceCatalog.MPV_INTERPOLATION, MpvPerformanceSetting.isInterpolation(),
+                PlaybackPerformanceCatalog.MPV_SOFT_TUNE, MpvPerformanceSetting.getSoftTuneText(),
+                PlaybackPerformanceCatalog.DV7_HDR10_FALLBACK, getMpvDv7HandlingText()));
+        lines.add("audio: " + entries(kernel,
+                PlaybackPerformanceCatalog.AUDIO_PASSTHROUGH, PlayerSetting.isAudioPassThrough(),
+                PlaybackPerformanceCatalog.MPV_MULTICHANNEL_AUDIO, MpvPerformanceSetting.getMultichannelAudioText(),
+                PlaybackPerformanceCatalog.PREFER_AAC, PlayerSetting.isPreferAAC()));
+    }
+
+    private static void describeIjk(List<String> lines, int kernel) {
+        lines.add("buffer: " + entries(kernel,
+                PlaybackPerformanceCatalog.IJK_SCENE, IjkPerformanceSetting.getSceneText(),
+                PlaybackPerformanceCatalog.IJK_BUFFER, IjkPerformanceSetting.getBufferMb() + "MB",
+                PlaybackPerformanceCatalog.IJK_WATER, IjkPerformanceSetting.getWaterText()
+                        + "/" + IjkPerformanceSetting.getFirstWaterMs()
+                        + "-" + IjkPerformanceSetting.getNextWaterMs() + "ms",
+                PlaybackPerformanceCatalog.IJK_PICTURE_QUEUE, IjkPerformanceSetting.getPictureQueue(),
+                PlaybackPerformanceCatalog.IJK_PACKET_BUFFERING, IjkPerformanceSetting.isPacketBuffering(),
+                PlaybackPerformanceCatalog.PLAY_CACHE, PlayerSetting.getPlayCacheOption()));
+        lines.add("decode: " + entries(kernel,
+                PlaybackPerformanceCatalog.IJK_FRAME_DROP, IjkPerformanceSetting.getDropText(),
+                PlaybackPerformanceCatalog.IJK_ACCURATE_SEEK, IjkPerformanceSetting.isAccurateSeek(),
+                PlaybackPerformanceCatalog.IJK_PROBE, IjkPerformanceSetting.getProbeText(),
+                PlaybackPerformanceCatalog.IJK_SOFT_TUNE, IjkPerformanceSetting.getSoftTuneText(),
+                PlaybackPerformanceCatalog.IJK_RTSP_TRANSPORT, IjkPerformanceSetting.getRtspTransportText(),
+                PlaybackPerformanceCatalog.IJK_RECONNECT, IjkPerformanceSetting.isReconnect()));
+    }
+
+    /** Formats optionId/value pairs with the layer the effective value came from. */
+    private static String entries(int kernel, Object... pairs) {
+        StringBuilder builder = new StringBuilder();
+        for (int i = 0; i + 1 < pairs.length; i += 2) {
+            if (builder.length() > 0) builder.append(' ');
+            String id = String.valueOf(pairs[i]);
+            builder.append(id).append('=')
+                    .append(isAuto(kernel, id) ? "auto/" : "user/")
+                    .append(pairs[i + 1]);
+        }
+        return builder.toString();
     }
 
     public static String getDetail() {

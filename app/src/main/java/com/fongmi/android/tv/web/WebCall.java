@@ -41,6 +41,7 @@ public class WebCall {
         Request request = null;
         String url = Json.safeString(payload, "url");
         String method = Json.safeString(payload, "method");
+        boolean debug = controller != null && controller.isDebugTools();
         long start = 0;
         try {
             String body = Json.safeString(payload, "body");
@@ -54,12 +55,12 @@ public class WebCall {
             builder.method(getMethod(method), getBody(getMethod(method), body, builder.build().headers()));
             request = builder.build();
             start = System.currentTimeMillis();
-            dispatch(controller, "NATIVE_START", request.method(), request.url().toString(), 0, 0, requestInfo(request));
+            dispatch(controller, "NATIVE_START", request.method(), request.url().toString(), 0, 0, WebDebugCapture.request(request, debug));
             SpiderDebug.log("webhome-net", "%s %s include=%s timeout=%ss headers=%s", request.method(), request.url(), include, timeout, request.headers().names());
             response = client(timeout).newCall(request).execute();
             SpiderDebug.log("webhome-net", "%s %s -> %s in %sms", request.method(), request.url(), response.code(), System.currentTimeMillis() - start);
             CookieBridge.set(url, response.headers());
-            dispatch(controller, "NATIVE_DONE", request.method(), response.request().url().toString(), response.code(), System.currentTimeMillis() - start, responseInfo(response));
+            dispatch(controller, "NATIVE_DONE", request.method(), response.request().url().toString(), response.code(), System.currentTimeMillis() - start, WebDebugCapture.response(response, debug));
             return toJson(response, responseType);
         } catch (Throwable e) {
             SpiderDebug.log("webhome-net", e);
@@ -72,37 +73,6 @@ public class WebCall {
 
     private static void dispatch(HomeWebController controller, String type, String method, String url, int status, long durationMs, String detail) {
         if (controller != null) controller.dispatchDebugNetwork(type, method, url, status, durationMs, detail);
-    }
-
-    private static String requestInfo(Request request) {
-        StringBuilder builder = new StringBuilder();
-        builder.append("Request Headers\n").append(request.headers());
-        RequestBody body = request.body();
-        if (body != null) builder.append("Body\n").append("contentType=").append(body.contentType()).append('\n').append("contentLength=").append(contentLength(body)).append('\n').append(bodyPreview(body));
-        return builder.toString().trim();
-    }
-
-    private static String responseInfo(Response response) {
-        return ("message=" + response.message() + "\nResponse Headers\n" + response.headers()).trim();
-    }
-
-    private static long contentLength(RequestBody body) {
-        try {
-            return body.contentLength();
-        } catch (Throwable e) {
-            return -1;
-        }
-    }
-
-    private static String bodyPreview(RequestBody body) {
-        try {
-            okio.Buffer buffer = new okio.Buffer();
-            body.writeTo(buffer);
-            String text = buffer.readString(StandardCharsets.UTF_8);
-            return "payload:\n" + (text.length() > 2000 ? text.substring(0, 2000) + "\n...truncated" : text);
-        } catch (Throwable e) {
-            return "payloadPreview=" + e.getMessage();
-        }
     }
 
     private static int getTimeout(JsonObject payload) {
