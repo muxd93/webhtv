@@ -216,5 +216,7 @@ public class App extends Application implements Application.ActivityLifecycleCal
 
     @Override
     public void onActivityStopped(@NonNull Activity activity) {
+        // 退到后台/切页前把待落盘的 cookie 写盘：节流后最长 2s 才落盘，冷启动时登录态不能丢
+        com.fongmi.android.tv.web.CookieBridge.flushNow();
     }
 }

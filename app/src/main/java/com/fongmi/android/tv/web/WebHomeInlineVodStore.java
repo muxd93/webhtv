@@ -14,7 +14,9 @@ import com.google.gson.JsonObject;
 import com.google.common.net.HttpHeaders;
 
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -23,7 +25,8 @@ public class WebHomeInlineVodStore {
     public static final String KEY = "webhome_inline";
     private static final String HLS_FORMAT = "application/x-mpegURL";
 
-    private static final Map<String, Entry> ITEMS = new ConcurrentHashMap<>();
+    /** inline 记录索引：容量 8，LRU 淘汰；正在播放/正在浏览的那条被 pin 住不淘汰 */
+    private static final InlineVodIndex<Entry> ITEMS = new InlineVodIndex<>();
     private static final Map<String, HeaderSpec> URL_HEADERS = new ConcurrentHashMap<>();
     private static final Map<String, EpisodeSpec> URL_EPISODES = new ConcurrentHashMap<>();
 
@@ -37,25 +40,33 @@ public class WebHomeInlineVodStore {
         String id = first(vod.getId(), Json.safeString(payload, "vodId"), Json.safeString(payload, "id"), "webhome-" + UUID.randomUUID());
         Map<String, String> headers = HeaderPolicy.withDefaultUa(HeaderPolicy.parse(payload.get("headers")));
         HeaderSpec headerSpec = new HeaderSpec(headers, "include".equals(Json.safeString(payload, "credentials")));
-        String playUrl = playUrl(payload.get("episodes"), headerSpec, resolver);
+        Set<String> urls = new LinkedHashSet<>();
+        String playUrl = playUrl(payload.get("episodes"), headerSpec, resolver, urls);
         vod.setId(id);
         if (vod.getName().isEmpty()) vod.setName(first(Json.safeString(payload, "vodName"), Json.safeString(payload, "title"), id));
         if (vod.getPic().isEmpty()) vod.setPic(first(Json.safeString(payload, "vodPic"), Json.safeString(payload, "pic")));
         if (vod.getPlayFrom().isEmpty()) vod.setPlayFrom(first(Json.safeString(payload, "vodPlayFrom"), Json.safeString(payload, "playFrom"), "WebHome"));
         if (vod.getPlayUrl().isEmpty()) vod.setPlayUrl(playUrl);
-        ITEMS.put(id, new Entry(App.gson().toJson(vod), headerSpec, resolver));
+        Map<String, Set<String>> dropped = ITEMS.put(id, new Entry(App.gson().toJson(vod), headerSpec, resolver), urls);
+        drop(dropped);
+        ITEMS.pin(id);
+        SpiderDebug.log("webhome-inline", "put id=%s urls=%s cached=%s dropped=%s", id, urls.size(), ITEMS.size(), dropped.keySet());
         return id;
     }
 
     public static Result detail(String id) {
         Entry entry = ITEMS.get(id);
         if (entry == null || TextUtils.isEmpty(entry.vod)) return Result.error("WebHome inline VOD not found");
+        // 正在浏览/即将重播的记录：钉住，避免下一次 put 把它当成最旧的一条淘汰
+        ITEMS.pin(id);
         SpiderDebug.log("webhome-inline", "detail id=%s found=%s", id, true);
         return Result.vod(Vod.objectFrom(entry.vod));
     }
 
     public static Result player(String flag, String id) throws Exception {
         Entry entry = ITEMS.get(id);
+        String owner = ITEMS.ownerOf(id);
+        if (owner != null) ITEMS.pin(owner);
         HeaderSpec headerSpec = URL_HEADERS.get(id);
         EpisodeSpec episodeSpec = URL_EPISODES.get(id);
         String url = id;
@@ -94,7 +105,21 @@ public class WebHomeInlineVodStore {
         return result;
     }
 
-    private static String playUrl(JsonElement element, HeaderSpec defaultSpec, Resolver resolver) {
+    /**
+     * 成组淘汰：同一条记录登记过的每个 key 都从 {@code URL_HEADERS} 与 {@code URL_EPISODES} 一起删掉。
+     * 两张表按同一个 url 成组写入、按同一套 key 成组删除，因此不会留下「有 headers 没剧集」的半条记录。
+     */
+    private static void drop(Map<String, Set<String>> changes) {
+        for (Map.Entry<String, Set<String>> entry : changes.entrySet()) {
+            for (String url : entry.getValue()) {
+                URL_HEADERS.remove(url);
+                URL_EPISODES.remove(url);
+            }
+            SpiderDebug.log("webhome-inline", "drop id=%s urls=%s cached=%s", entry.getKey(), entry.getValue().size(), ITEMS.size());
+        }
+    }
+
+    private static String playUrl(JsonElement element, HeaderSpec defaultSpec, Resolver resolver, Set<String> urls) {
         if (element == null || !element.isJsonArray()) return "";
         StringBuilder builder = new StringBuilder();
         JsonArray array = element.getAsJsonArray();
@@ -108,11 +133,15 @@ public class WebHomeInlineVodStore {
             if (TextUtils.isEmpty(url)) continue;
             HeaderSpec episodeHeaders = episodeHeaders(object, defaultSpec);
             URL_HEADERS.put(url, episodeHeaders);
+            urls.add(url);
             if (child != null && child.isJsonObject()) {
                 boolean resolve = bool(object, "resolve") || (!TextUtils.isEmpty(pageUrl) && TextUtils.isEmpty(mediaUrl));
                 String format = first(Json.safeString(object, "format"), isHls(mediaUrl) ? HLS_FORMAT : "");
                 URL_EPISODES.put(url, new EpisodeSpec(object.deepCopy(), episodeHeaders, resolver, resolve, mediaUrl, format));
-                if (!TextUtils.isEmpty(mediaUrl)) URL_HEADERS.put(mediaUrl, episodeHeaders);
+                if (!TextUtils.isEmpty(mediaUrl)) {
+                    URL_HEADERS.put(mediaUrl, episodeHeaders);
+                    urls.add(mediaUrl);
+                }
             }
             String name = first(Json.safeString(object, "name"), Json.safeString(object, "label"), Json.safeString(object, "title"), String.format("%02d", i + 1));
             if (builder.length() > 0) builder.append("#");
@@ -150,6 +179,10 @@ public class WebHomeInlineVodStore {
         String format = first(Json.safeString(resolved, "format"), isHls(url) ? HLS_FORMAT : episodeSpec.format);
         URL_HEADERS.put(url, headerSpec);
         URL_EPISODES.put(id, new EpisodeSpec(episodeSpec.payload.deepCopy(), headerSpec, resolver, false, url, format));
+        // 解析出的直链 url 记到同一条记录下：记录被淘汰时它一起消失，不会留下孤儿 headers
+        String owner = ITEMS.ownerOf(id);
+        if (owner != null) ITEMS.claim(owner, url);
+        else SpiderDebug.log("webhome-inline", "resolve owner missing id=%s url=%s", id, url);
         SpiderDebug.log("webhome-inline", "resolve episode ok cost=%sms id=%s url=%s", System.currentTimeMillis() - start, id, url);
         return new ResolveResult(url, headerSpec, format);
     }

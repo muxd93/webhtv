@@ -18,6 +18,7 @@ import com.github.catvod.utils.Prefers;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.IntConsumer;
 
 public class DownloadManager {
 
@@ -109,8 +110,15 @@ public class DownloadManager {
         });
     }
 
-    /** 批量入队：已存在且未失败的跳过；失败的原地重置为排队（视为重试） */
-    public static int add(String siteKey, String vodId, String vodName, String vodPic, String flag, List<Episode> episodes) {
+    /** 批量入队：已存在且未失败的跳过；失败的原地重置为排队（视为重试）。逐集查询/写入放后台，结果回主线程 */
+    public static void add(String siteKey, String vodId, String vodName, String vodPic, String flag, List<Episode> episodes, IntConsumer onResult) {
+        Task.execute(() -> {
+            int added = addAll(siteKey, vodId, vodName, vodPic, flag, episodes);
+            App.post(() -> onResult.accept(added));
+        });
+    }
+
+    private static int addAll(String siteKey, String vodId, String vodName, String vodPic, String flag, List<Episode> episodes) {
         int added = 0;
         for (Episode episode : episodes) {
             String id = DownloadTask.id(siteKey, vodId, flag, episode.getName(), episode.getUrl());

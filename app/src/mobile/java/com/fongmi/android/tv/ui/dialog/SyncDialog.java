@@ -32,6 +32,7 @@ import com.fongmi.android.tv.ui.custom.SpaceItemDecoration;
 import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.ResUtil;
 import com.fongmi.android.tv.utils.ScanTask;
+import com.fongmi.android.tv.utils.Task;
 import com.github.catvod.net.OkHttp;
 
 import java.io.IOException;
@@ -44,7 +45,6 @@ import okhttp3.Response;
 
 public class SyncDialog extends BaseBottomSheetDialog implements DeviceAdapter.OnClickListener, ScanTask.Listener {
 
-    private final FormBody.Builder body;
     private final OkHttpClient client;
     private final TypedArray mode;
 
@@ -54,7 +54,6 @@ public class SyncDialog extends BaseBottomSheetDialog implements DeviceAdapter.O
     private String type;
 
     public SyncDialog() {
-        body = new FormBody.Builder();
         scanTask = new ScanTask(this);
         client = OkHttp.client(Constant.TIMEOUT_SYNC);
         mode = ResUtil.getTypedArray(R.array.cast_mode);
@@ -65,17 +64,25 @@ public class SyncDialog extends BaseBottomSheetDialog implements DeviceAdapter.O
     }
 
     public SyncDialog history() {
-        body.add("device", Device.get().toString());
-        body.add("config", Config.vod().toString());
-        body.add("targets", App.gson().toJson(History.get()));
         return type("history");
     }
 
     public SyncDialog keep() {
-        body.add("device", Device.get().toString());
-        body.add("targets", App.gson().toJson(Keep.getVod()));
-        body.add("configs", App.gson().toJson(Config.findUrls()));
         return type("keep");
+    }
+
+    /** 全表读取与 JSON 序列化较慢，放到请求线程再构建，字段顺序与原来一致 */
+    private FormBody buildBody() {
+        FormBody.Builder body = new FormBody.Builder();
+        body.add("device", Device.get().toString());
+        if (type.equals("history")) {
+            body.add("config", Config.vod().toString());
+            body.add("targets", App.gson().toJson(History.get()));
+        } else {
+            body.add("targets", App.gson().toJson(Keep.getVod()));
+            body.add("configs", App.gson().toJson(Config.findUrls()));
+        }
+        return body.build();
     }
 
     public void show(FragmentActivity activity) {
@@ -158,17 +165,28 @@ public class SyncDialog extends BaseBottomSheetDialog implements DeviceAdapter.O
 
     @Override
     public void onItemClick(Device item) {
-        OkHttp.newCall(client, String.format(Locale.getDefault(), "%s/action?do=sync&mode=%s&type=%s", item.getIp(), binding.mode.getTag().toString(), type), body.build()).enqueue(getCallback());
+        request(item, binding.mode.getTag().toString(), "");
     }
 
     @Override
     public boolean onLongClick(Device item) {
         String mode = binding.mode.getTag().toString();
         if (mode.equals("0")) return false;
-        if (mode.equals("2")) deleteLocal();
-        String force = mode.equals("1") ? "&force=true" : "";
-        OkHttp.newCall(client, String.format(Locale.getDefault(), "%s/action?do=sync&mode=%s&type=%s%s", item.getIp(), mode, type, force), body.build()).enqueue(getCallback());
+        request(item, mode, mode.equals("1") ? "&force=true" : "");
         return true;
+    }
+
+    /** 先取数据快照再处理本地删除，保持原来的数据时序；弹窗已关闭则整段放弃 */
+    private void request(Device item, String mode, String force) {
+        String url = String.format(Locale.getDefault(), "%s/action?do=sync&mode=%s&type=%s%s", item.getIp(), mode, type, force);
+        Task.execute(() -> {
+            FormBody body = buildBody();
+            App.post(() -> {
+                if (!isAdded()) return;
+                if (mode.equals("2")) deleteLocal();
+                OkHttp.newCall(client, url, body).enqueue(getCallback());
+            });
+        });
     }
 
     private void deleteLocal() {

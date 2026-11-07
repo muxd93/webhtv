@@ -127,10 +127,12 @@ public class DownloadDialog extends DialogFragment {
         if (flag == null || adapter == null) return;
         List<Episode> episodes = adapter.getChecked();
         if (episodes.isEmpty()) return;
-        int added = DownloadManager.add(siteKey, vodId, vodName, vodPic, flag.getFlag(), episodes);
-        if (added > 0) DownloadManager.toastAdded(added);
-        else Notify.show(R.string.download_already);
-        dismiss();
+        // 逐集查库/写入放后台，结果回主线程再给提示
+        DownloadManager.add(siteKey, vodId, vodName, vodPic, flag.getFlag(), episodes, added -> {
+            if (added > 0) DownloadManager.toastAdded(added);
+            else Notify.show(R.string.download_already);
+            dismiss();
+        });
     }
 
     private class EpisodeAdapter extends RecyclerView.Adapter<EpisodeAdapter.ViewHolder> {

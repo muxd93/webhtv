@@ -9,6 +9,7 @@ import android.graphics.drawable.BitmapDrawable;
 import android.net.Uri;
 import android.util.AttributeSet;
 import android.util.DisplayMetrics;
+import android.util.LruCache;
 import android.view.LayoutInflater;
 import android.widget.FrameLayout;
 
@@ -23,12 +24,14 @@ import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.ui.PlayerView;
 import androidx.palette.graphics.Palette;
 
+import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.databinding.ViewWallBinding;
 import com.fongmi.android.tv.event.ConfigEvent;
 import com.fongmi.android.tv.event.RefreshEvent;
 import com.fongmi.android.tv.setting.Setting;
 import com.fongmi.android.tv.utils.FileUtil;
+import com.fongmi.android.tv.utils.Task;
 import com.github.catvod.crawler.SpiderDebug;
 
 import org.greenrobot.eventbus.EventBus;
@@ -37,6 +40,7 @@ import org.greenrobot.eventbus.ThreadMode;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import pl.droidsonroids.gif.GifDrawable;
 
@@ -48,6 +52,16 @@ public class CustomWallView extends FrameLayout implements DefaultLifecycleObser
     private static final int TYPE_RES = 0;
     private static final int TYPE_GIF = 1;
     private static final int TYPE_VIDEO = 2;
+    // 进程级位图复用：key 含文件版本与目标尺寸，避免不同屏宽复用错图；上限取堆的 1/8，不做无界缓存
+    private static final LruCache<String, WallSnapshot> WALL_BITMAPS = new LruCache<>((int) Math.min(Integer.MAX_VALUE, Runtime.getRuntime().maxMemory() / 8)) {
+        @Override
+        protected int sizeOf(String key, WallSnapshot value) {
+            return value.bitmap.getByteCount();
+        }
+    };
+    private static final AtomicInteger DECODE_COUNT = new AtomicInteger();
+    // 最近一次成功解码：供占位阶段直接复用，避免重复解码
+    private static final LruCache<String, WallSnapshot> WALL_LAST = new LruCache<>(4);
     private ViewWallBinding binding;
     private GifDrawable drawable;
     private PlayerView video;
@@ -55,6 +69,8 @@ public class CustomWallView extends FrameLayout implements DefaultLifecycleObser
     private final Runnable refreshRunnable = this::refresh;
     private boolean observerAdded;
     private boolean motionEnabled = true;
+    // 每次请求自增：detach / 新请求都会让迟到的后台结果失效
+    private int requestToken;
 
     public CustomWallView(@NonNull Context context, @Nullable AttributeSet attrs) {
         super(context, attrs);
@@ -86,6 +102,7 @@ public class CustomWallView extends FrameLayout implements DefaultLifecycleObser
 
     @Override
     protected void onDetachedFromWindow() {
+        requestToken++;
         removeCallbacks(refreshRunnable);
         super.onDetachedFromWindow();
     }
@@ -136,7 +153,14 @@ public class CustomWallView extends FrameLayout implements DefaultLifecycleObser
     }
 
     private void theme() {
-        int newColor = getWallColor();
+        int wall = Setting.getWall();
+        int type = Setting.getWallType();
+        // 文件壁纸的取色依赖解码，统一由 requestWallSnapshot 的后台任务回填，主线程不再读文件
+        if (type == TYPE_RES && Setting.isBuiltInWall(wall)) applyWallColor(Setting.getBuiltInWallColor(wall));
+        else if (isGreen(wall, type)) applyWallColor(GREEN_WALL_COLOR);
+    }
+
+    private void applyWallColor(int newColor) {
         int oldColor = Setting.getWallColor();
         if (newColor == oldColor) return;
         Setting.putWallColor(newColor);
@@ -162,16 +186,14 @@ public class CustomWallView extends FrameLayout implements DefaultLifecycleObser
 
     private void loadImage() {
         if (!isReady()) return;
-        Drawable cache = cache();
-        if (cache != null) binding.image.setImageDrawable(cache);
-        else loadPlaceholder();
+        requestWallSnapshot();
     }
 
     private void loadPlaceholder() {
         if (binding == null || binding.image == null) return;
         int wall = Setting.getWall();
         int type = Setting.getWallType();
-        Drawable cache = cache();
+        Drawable cache = cachedWallDrawable();
         if (isBuiltInColor(wall, type)) binding.image.setImageDrawable(new ColorDrawable(Setting.getBuiltInWallColor(wall)));
         else if (isBuiltInDesign(wall, type)) loadDesign(wall);
         else if (isGreen(wall, type)) binding.image.setImageResource(R.drawable.wallpaper_1);
@@ -218,7 +240,7 @@ public class CustomWallView extends FrameLayout implements DefaultLifecycleObser
         ensureVideoView();
         video.setPlayer(player);
         video.setVisibility(VISIBLE);
-        binding.image.setImageDrawable(cache());
+        requestWallSnapshot();
         player.setMediaItem(MediaItem.fromUri(Uri.fromFile(file)));
         player.prepare();
     }
@@ -230,36 +252,127 @@ public class CustomWallView extends FrameLayout implements DefaultLifecycleObser
         else loadImage();
     }
 
-    private Drawable cache() {
+    /** 只在内存缓存里取，未命中返回 null：主线程不读文件、不解码 */
+    private Drawable cachedWallDrawable() {
         File file = FileUtil.getWallCache();
-        Bitmap bitmap = file.exists() ? decodeWallBitmap(file) : null;
-        return bitmap == null ? null : new BitmapDrawable(getResources(), bitmap);
+        WallSnapshot snapshot = file.exists() ? WALL_LAST.get(bufferKey(file)) : null;
+        return snapshot == null ? null : new BitmapDrawable(getResources(), snapshot.bitmap);
     }
 
-    private Bitmap decodeWallBitmap(File file) {
+    /** 后台解码+取色，一次读文件；结果回主线程，且只有当前请求（未 detach）才允许回填 */
+    private void requestWallSnapshot() {
+        if (!isReady()) return;
+        File file = FileUtil.getWallCache();
+        if (!file.exists()) {
+            loadPlaceholder();
+            return;
+        }
+        int width = targetWallWidth();
+        int height = targetWallHeight();
+        String key = wallKey(file, width, height);
+        WallSnapshot cached = WALL_BITMAPS.get(key);
+        if (cached != null) {
+            applyWallSnapshot(cached);
+            return;
+        }
+        int token = beginWallRequest();
+        Task.execute(() -> {
+            WallSnapshot snapshot = loadWallSnapshot(file, width, height);
+            App.post(() -> applyWallSnapshot(token, snapshot));
+        });
+    }
+
+    /** 命中进程缓存直接返回，未命中才读文件解码 */
+    static WallSnapshot loadWallSnapshot(File file, int width, int height) {
+        String key = wallKey(file, width, height);
+        WallSnapshot cached = WALL_BITMAPS.get(key);
+        return cached != null ? cached : decodeWallSnapshot(file, key, width, height);
+    }
+
+    static WallSnapshot decodeWallSnapshot(File file, String key, int reqWidth, int reqHeight) {
         try {
             BitmapFactory.Options bounds = new BitmapFactory.Options();
             bounds.inJustDecodeBounds = true;
             BitmapFactory.decodeFile(file.getAbsolutePath(), bounds);
             if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null;
             BitmapFactory.Options options = new BitmapFactory.Options();
-            options.inSampleSize = getWallSampleSize(bounds);
+            options.inSampleSize = sampleSize(bounds.outWidth, bounds.outHeight, reqWidth, reqHeight);
             options.inPreferredConfig = Bitmap.Config.RGB_565;
             options.inDither = true;
-            return BitmapFactory.decodeFile(file.getAbsolutePath(), options);
+            Bitmap bitmap = BitmapFactory.decodeFile(file.getAbsolutePath(), options);
+            if (bitmap == null) return null;
+            DECODE_COUNT.incrementAndGet();
+            WallSnapshot snapshot = new WallSnapshot(bitmap, swatchColor(bitmap));
+            WALL_BITMAPS.put(key, snapshot);
+            WALL_LAST.put(bufferKey(file), snapshot);
+            return snapshot;
         } catch (OutOfMemoryError | RuntimeException e) {
-            SpiderDebug.log("startup", "wall bitmap decode fallback file=%s error=%s", file.getName(), e.getClass().getSimpleName());
+            SpiderDebug.log("startup", "wall bitmap decode failed file=%s error=%s", file.getName(), e.getClass().getSimpleName());
             return null;
         }
     }
 
-    private int getWallSampleSize(BitmapFactory.Options bounds) {
-        DisplayMetrics metrics = getResources().getDisplayMetrics();
-        int reqWidth = Math.max(1, Math.min(metrics.widthPixels, MAX_WALL_BITMAP_SIDE));
-        int reqHeight = Math.max(1, Math.min(metrics.heightPixels, MAX_WALL_BITMAP_SIDE));
+    static int sampleSize(int outWidth, int outHeight, int reqWidth, int reqHeight) {
         int sampleSize = 1;
-        while (bounds.outWidth / sampleSize > reqWidth || bounds.outHeight / sampleSize > reqHeight) sampleSize *= 2;
+        while (outWidth / sampleSize > reqWidth || outHeight / sampleSize > reqHeight) sampleSize *= 2;
         return sampleSize;
+    }
+
+    static String wallKey(File file, int width, int height) {
+        return file.getAbsolutePath() + "|" + file.length() + "|" + file.lastModified() + "|" + width + "x" + height;
+    }
+
+    private static String bufferKey(File file) {
+        return file.getAbsolutePath() + "|" + file.length() + "|" + file.lastModified();
+    }
+
+    private int targetWallWidth() {
+        DisplayMetrics metrics = getResources().getDisplayMetrics();
+        return Math.max(1, Math.min(metrics.widthPixels, MAX_WALL_BITMAP_SIDE));
+    }
+
+    private int targetWallHeight() {
+        DisplayMetrics metrics = getResources().getDisplayMetrics();
+        return Math.max(1, Math.min(metrics.heightPixels, MAX_WALL_BITMAP_SIDE));
+    }
+
+    int beginWallRequest() {
+        return ++requestToken;
+    }
+
+    boolean isCurrentWallRequest(int token) {
+        return token == requestToken && isReady();
+    }
+
+    void applyWallSnapshot(int token, WallSnapshot snapshot) {
+        if (snapshot == null || !isCurrentWallRequest(token)) return;
+        applyWallSnapshot(snapshot);
+    }
+
+    private void applyWallSnapshot(WallSnapshot snapshot) {
+        if (binding == null || binding.image == null) return;
+        binding.image.setImageDrawable(new BitmapDrawable(getResources(), snapshot.bitmap));
+        applyWallColor(snapshot.color);
+    }
+
+    static int decodeCount() {
+        return DECODE_COUNT.get();
+    }
+
+    static void resetForTest() {
+        DECODE_COUNT.set(0);
+        WALL_BITMAPS.evictAll();
+        WALL_LAST.evictAll();
+    }
+
+    static final class WallSnapshot {
+        final Bitmap bitmap;
+        final int color;
+
+        WallSnapshot(Bitmap bitmap, int color) {
+            this.bitmap = bitmap;
+            this.color = color;
+        }
     }
 
     private GifDrawable gif(File file) {
@@ -288,33 +401,16 @@ public class CustomWallView extends FrameLayout implements DefaultLifecycleObser
         return player != null && video != null && video.getVisibility() == VISIBLE && player.getMediaItemCount() > 0;
     }
 
-    private int getWallColor() {
-        int wall = Setting.getWall();
-        int type = Setting.getWallType();
-        if (type == TYPE_RES && Setting.isBuiltInWall(wall)) return Setting.getBuiltInWallColor(wall);
-        if (isGreen(wall, type)) return GREEN_WALL_COLOR;
-        File file = FileUtil.getWallCache();
-        return file.exists() ? paletteColor(file) : DEFAULT_WALL_COLOR;
-    }
-
-    private int paletteColor(File file) {
-        Bitmap bitmap = decodeBitmap(file);
-        if (bitmap == null) return DEFAULT_WALL_COLOR;
-        Palette palette = Palette.from(bitmap).maximumColorCount(8).generate();
-        bitmap.recycle();
-        return swatchColor(palette);
-    }
-
-    private Bitmap decodeBitmap(File file) {
-        BitmapFactory.Options opts = new BitmapFactory.Options();
-        opts.inSampleSize = 8;
-        return BitmapFactory.decodeFile(file.getAbsolutePath(), opts);
-    }
-
-    private int swatchColor(Palette palette) {
-        Palette.Swatch swatch = palette.getVibrantSwatch();
-        if (swatch == null) swatch = palette.getDominantSwatch();
-        return swatch != null ? swatch.getRgb() : DEFAULT_WALL_COLOR;
+    private static int swatchColor(Bitmap bitmap) {
+        try {
+            Palette palette = Palette.from(bitmap).maximumColorCount(8).generate();
+            Palette.Swatch swatch = palette.getVibrantSwatch();
+            if (swatch == null) swatch = palette.getDominantSwatch();
+            return swatch != null ? swatch.getRgb() : DEFAULT_WALL_COLOR;
+        } catch (RuntimeException e) {
+            SpiderDebug.log("startup", "wall palette failed error=%s", e.getClass().getSimpleName());
+            return DEFAULT_WALL_COLOR;
+        }
     }
 
     private boolean isBuiltInColor(int wall, int type) {

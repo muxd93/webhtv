@@ -7,6 +7,7 @@ import android.os.Bundle;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.viewbinding.ViewBinding;
 
+import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.Product;
 import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.bean.Config;
@@ -18,9 +19,12 @@ import com.fongmi.android.tv.ui.adapter.KeepAdapter;
 import com.fongmi.android.tv.ui.base.BaseActivity;
 import com.fongmi.android.tv.ui.custom.SpaceItemDecoration;
 import com.fongmi.android.tv.utils.Notify;
+import com.fongmi.android.tv.utils.Task;
 
 import org.greenrobot.eventbus.Subscribe;
 import org.greenrobot.eventbus.ThreadMode;
+
+import java.util.List;
 
 public class KeepActivity extends BaseActivity implements KeepAdapter.OnClickListener {
 
@@ -51,7 +55,14 @@ public class KeepActivity extends BaseActivity implements KeepAdapter.OnClickLis
     }
 
     private void getKeep() {
-        mAdapter.setItems(Keep.getVod(), () -> mBinding.progressLayout.showContent(true, mAdapter.getItemCount()));
+        // 全表读取放后台，回投时页面可能已销毁
+        Task.execute(() -> {
+            List<Keep> items = Keep.getVod();
+            App.post(() -> {
+                if (isFinishing() || isDestroyed() || mBinding == null) return;
+                mAdapter.setItems(items, () -> mBinding.progressLayout.showContent(true, mAdapter.getItemCount()));
+            });
+        });
     }
 
     private void loadConfig(Config config, Keep item) {

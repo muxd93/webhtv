@@ -64,12 +64,7 @@ public class SettingClipboardOverlay {
     private final ViewTreeObserver.OnGlobalFocusChangeListener focusListener = (oldFocus, newFocus) -> {
         if (newFocus instanceof EditText) lastInput = (EditText) newFocus;
     };
-    private final ViewTreeObserver.OnGlobalLayoutListener layoutListener = () -> {
-        if (expanded) {
-            updatePanelSize();
-            updateDialogAvoidance();
-        }
-    };
+    private final ViewTreeObserver.OnGlobalLayoutListener layoutListener = this::onGlobalLayout;
     private Dialog triggerDialog;
     private Dialog panelDialog;
     private LinearLayoutCompat panel;
@@ -83,6 +78,9 @@ public class SettingClipboardOverlay {
     private int downLeft;
     private int downTop;
     private int panelHeight;
+    private String lastLayoutKey;
+    // 测试接缝：被等值守卫拦下的布局不再增长这里，真机上一次自增对应一次 window.setAttributes IPC
+    int windowUpdates;
 
     private SettingClipboardOverlay(Activity activity, DialogFragment fragment, View root, ViewGroup host) {
         this.activity = activity;
@@ -193,6 +191,7 @@ public class SettingClipboardOverlay {
 
     private void render() {
         if (trigger == null || panel == null || list == null) return;
+        lastLayoutKey = null;   // 内容/展开状态变了：下一次布局无论如何都要重算一次
         trigger.setChecked(expanded);
         if (expanded) {
             showDialog(panelDialog, Gravity.BOTTOM | Gravity.START, 0, panelBottomOffset());
@@ -385,6 +384,50 @@ public class SettingClipboardOverlay {
         return statusBarHeight() + dp(8);
     }
 
+    /**
+     * 面板展开期间每次全局布局都会重算尺寸并重设窗口属性（window.setAttributes 一次就是一次 WindowManager IPC），
+     * 而输入法弹收、列表滚动、行内控件刷新都会连带触发布局。参与计算的输入没变就直接返回，真的变了才刷新；
+     * 首帧 lastLayoutKey 为空（render 也会清空），必定放行一次。
+     */
+    private void onGlobalLayout() {
+        if (!expanded) return;
+        if (layoutKey().equals(lastLayoutKey)) return;
+        updatePanelSize();
+        updateDialogAvoidance();
+        // 以刷新之后的输入作为基线：本次刷新自己引起的那一轮布局不该再刷一遍
+        lastLayoutKey = layoutKey();
+    }
+
+    /**
+     * 覆盖 updatePanelSize / updateDialogAvoidance 的全部输入：宿主尺寸（面板高度与兜底面板顶）、
+     * 面板自身可见区与计算高度、锚点对话框的可见区、焦点输入框的可见区与身份、两个窗口是否已显示。
+     * dp 与状态栏高度是配置常量（界面重建会重新 attach），不重复计入。
+     */
+    private String layoutKey() {
+        boolean dialogWindow = fragment.getDialog() != null && fragment.getDialog().getWindow() != null;
+        return host.getWidth() + "," + host.getHeight()
+                + "," + panelHeight
+                + "," + (panelDialog != null && panelDialog.isShowing())
+                + "," + dialogWindow
+                + "," + visibleRect(root)
+                + "," + visibleRect(panel)
+                + "," + inputKey();
+    }
+
+    private String inputKey() {
+        EditText input = activeInput();
+        if (input == null) return "-";
+        Rect rect = new Rect();
+        return (input.getGlobalVisibleRect(rect) ? rect.top + ":" + rect.bottom : "hidden") + ":" + System.identityHashCode(input);
+    }
+
+    private static String visibleRect(View view) {
+        if (view == null) return "-";
+        Rect rect = new Rect();
+        if (!view.getGlobalVisibleRect(rect)) return "hidden";
+        return rect.left + ":" + rect.top + ":" + rect.right + ":" + rect.bottom;
+    }
+
     private void updatePanelSize() {
         if (panel == null || scroll == null || host.getHeight() == 0) return;
         int target = Math.min(dp(320), Math.max(dp(220), host.getHeight() * 42 / 100));
@@ -461,6 +504,7 @@ public class SettingClipboardOverlay {
         params.height = height;
         params.dimAmount = 0;
         window.setAttributes(params);
+        windowUpdates++;
     }
 
     private void prepareWindow(Window window, int width, int height, boolean allowOutOfBounds) {

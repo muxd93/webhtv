@@ -7,6 +7,7 @@ import android.os.Bundle;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.viewbinding.ViewBinding;
 
+import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.bean.Config;
 import com.fongmi.android.tv.bean.DownloadTask;
@@ -19,14 +20,18 @@ import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.ui.adapter.DownloadAdapter;
 import com.fongmi.android.tv.ui.base.BaseActivity;
 import com.fongmi.android.tv.utils.Notify;
+import com.fongmi.android.tv.utils.Task;
 
 import org.greenrobot.eventbus.Subscribe;
 import org.greenrobot.eventbus.ThreadMode;
+
+import java.util.List;
 
 public class DownloadActivity extends BaseActivity implements DownloadAdapter.OnClickListener {
 
     private ActivityDownloadBinding mBinding;
     private DownloadAdapter mAdapter;
+    private final QueryGate mGate = new QueryGate();
 
     public static void start(Activity activity) {
         activity.startActivity(new Intent(activity, DownloadActivity.class));
@@ -50,8 +55,44 @@ public class DownloadActivity extends BaseActivity implements DownloadAdapter.On
         mBinding.recycler.setAdapter(mAdapter = new DownloadAdapter(this));
     }
 
+    /**
+     * 全表查询放后台；进度事件会连续多次触发刷新，查询在途时只记一个待处理标记，
+     * 避免事件风暴时排队重查同一张表。
+     */
     private void getTask() {
-        mAdapter.setItems(DownloadManager.tasks(), () -> mBinding.progressLayout.showContent(true, mAdapter.getItemCount()));
+        if (!mGate.tryStart()) return;
+        Task.execute(() -> {
+            List<DownloadTask> tasks = DownloadManager.tasks();
+            App.post(() -> onTasksLoaded(tasks));
+        });
+    }
+
+    private void onTasksLoaded(List<DownloadTask> tasks) {
+        if (isFinishing() || isDestroyed() || mBinding == null) return;
+        mAdapter.setItems(tasks, () -> mBinding.progressLayout.showContent(true, mAdapter.getItemCount()));
+        if (mGate.finish()) getTask();
+    }
+
+    /** 查询闸门：在途时把后续事件合并成一次待刷新请求 */
+    static final class QueryGate {
+        private boolean running;
+        private boolean pending;
+
+        boolean tryStart() {
+            if (running) {
+                pending = true;
+                return false;
+            }
+            running = true;
+            return true;
+        }
+
+        boolean finish() {
+            running = false;
+            boolean again = pending;
+            pending = false;
+            return again;
+        }
     }
 
     @Override

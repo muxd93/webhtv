@@ -59,7 +59,7 @@ public class HomeWebBridge {
 
     @JavascriptInterface
     public void invoke(String requestId, String method, String payload) {
-        Task.execute(() -> handle(requestId, method, WebCall.object(payload)));
+        Task.bridge().execute(() -> handle(requestId, method, WebCall.object(payload)));
     }
 
     @JavascriptInterface
@@ -221,6 +221,12 @@ public class HomeWebBridge {
     }
 
     private JsonObject resolveInlineEpisode(JsonObject payload) throws Exception {
+        // 外层只等任务完成：inline 池是单线程，排队时间不能计入工作超时；
+        // 20s 由内层 evaluateInlineEpisode 从真正开始执行时计时
+        return InlineTasks.submit(Task.inline(), () -> evaluateInlineEpisode(payload));
+    }
+
+    private JsonObject evaluateInlineEpisode(JsonObject payload) throws Exception {
         String id = "inline_" + UUID.randomUUID().toString().replace("-", "");
         CompletableFuture<String> future = new CompletableFuture<>();
         inlineResults.put(id, future);
@@ -250,7 +256,7 @@ public class HomeWebBridge {
         try {
             SpiderDebug.log("webhome-inline", "resolve start id=%s page=%s lease=%s", id, Json.safeString(payload, "pageUrl"), lease);
             eval(script);
-            String result = future.get(INLINE_RESOLVE_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            String result = InlineTasks.awaitWork(future, INLINE_RESOLVE_TIMEOUT_SECONDS, TimeUnit.SECONDS);
             JsonObject object = WebCall.object(result);
             String error = Json.safeString(object, "error");
             if (!TextUtils.isEmpty(error)) throw new IllegalStateException(error);
