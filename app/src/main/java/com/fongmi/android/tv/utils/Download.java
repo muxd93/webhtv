@@ -54,32 +54,57 @@ public class Download {
         if (future != null) future.cancel(true);
         OkHttp.cancel(tag);
         Path.clear(file);
+        Path.clear(tmp(file));
         future = null;
         return this;
     }
 
     private void doInBackground() {
+        File tmp = tmp(file);
         try (Response res = OkHttp.newCall(url, tag).execute()) {
             if (!res.isSuccessful()) throw new IOException("Download failed: HTTP " + res.code());
             if (res.body() == null) throw new IOException("Download failed: empty response");
-            boolean completed = download(res.body().byteStream(), getLength(res));
+            boolean completed = download(res.body().byteStream(), getLength(res), tmp);
             if (!completed || canceled) {
-                Path.clear(file);
+                discard(tmp);
                 return;
             }
+            if (!install(tmp, file)) throw new IOException("Download failed: install " + tmp.getName());
             if (callback != null) App.post(() -> {
                 if (!canceled) callback.success(file);
             });
         } catch (Exception e) {
-            Path.clear(file);
+            discard(tmp);
             if (canceled || isCanceled(e)) return;
             if (callback != null) App.post(() -> callback.error(e.getMessage()));
             else throw new RuntimeException(e.getMessage(), e);
         }
     }
 
-    private boolean download(InputStream is, long length) throws IOException {
-        try (BufferedInputStream input = new BufferedInputStream(is); FileOutputStream os = new FileOutputStream(Path.create(file))) {
+    /** 临时文件：与目标同目录，保证 rename 为同分区原子替换 */
+    static File tmp(File file) {
+        File tmp = new File(file.getAbsolutePath() + ".tmp");
+        File parent = tmp.getParentFile();
+        if (parent != null && !parent.exists()) parent.mkdirs();
+        return tmp;
+    }
+
+    /** 成功后原子替换目标；失败时目标文件保持原样（不删除、不截断） */
+    static boolean install(File tmp, File target) {
+        if (tmp == null || !tmp.exists() || tmp.length() <= 0) return false;
+        tmp.setReadable(true, false);
+        tmp.setWritable(true, false);
+        tmp.setExecutable(true, false);
+        return tmp.renameTo(target);
+    }
+
+    /** 只清理临时文件，绝不触碰目标文件 */
+    static void discard(File tmp) {
+        if (tmp != null && tmp.exists()) tmp.delete();
+    }
+
+    private boolean download(InputStream is, long length, File tmp) throws IOException {
+        try (BufferedInputStream input = new BufferedInputStream(is); FileOutputStream os = new FileOutputStream(tmp)) {
             byte[] buffer = new byte[16384];
             int readBytes;
             int lastProgress = -1;

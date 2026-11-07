@@ -35,6 +35,7 @@ import com.fongmi.android.tv.receiver.ShortcutReceiver;
 import com.fongmi.android.tv.server.Server;
 import com.fongmi.android.tv.service.PlaybackService;
 import com.fongmi.android.tv.setting.Setting;
+import com.fongmi.android.tv.ui.StartupPageRouter;
 import com.fongmi.android.tv.ui.base.BaseActivity;
 import com.fongmi.android.tv.ui.custom.FragmentStateManager;
 import com.fongmi.android.tv.ui.fragment.SettingEnhanceFragment;
@@ -50,6 +51,7 @@ import com.fongmi.android.tv.utils.UrlUtil;
 import com.fongmi.android.tv.utils.Util;
 import com.fongmi.android.tv.web.WebHomeChromeStartup;
 import com.fongmi.android.tv.web.WebHomeViewport;
+import com.github.catvod.crawler.SpiderDebug;
 import com.github.catvod.net.OkHttp;
 import com.google.android.material.navigation.NavigationBarView;
 import com.google.gson.JsonObject;
@@ -79,6 +81,8 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
+        // 任务仍在时从启动器重新进入走这里（不会重新路由启动页）；记录 action/categories 便于区分冷启动
+        SpiderDebug.log("startup", "newIntent action=%s categories=%s", intent == null ? "null" : intent.getAction(), intent == null ? "null" : String.valueOf(intent.getCategories()));
         checkAction(intent);
     }
 
@@ -91,14 +95,16 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
     }
 
     private void routeStartupPage(Bundle savedInstanceState) {
-        // 进程重建（恢复栈）不重复路由；仅 launcher 冷启动路由，应用内 CLEAR_TOP 拉起不跳转
-        if (savedInstanceState != null) return;
-        android.content.Intent intent = getIntent();
-        if (intent == null || !Intent.ACTION_MAIN.equals(intent.getAction()) || !intent.hasCategory(Intent.CATEGORY_LAUNCHER)) return;
+        // 进程重建（恢复栈）不重复路由；仅外部 ACTION_MAIN 启动路由，应用内 CLEAR_TOP 拉起不跳转。
+        // 不要求 CATEGORY_LAUNCHER：部分 TV 启动器（getLeanbackLaunchIntentForPackage）只带 CATEGORY_LEANBACK_LAUNCHER。
+        Intent intent = getIntent();
         int page = Setting.getStartupPage();
-        if (page == Setting.STARTUP_LIVE) LiveActivity.start(this);
-        else if (page == Setting.STARTUP_HISTORY) HistoryActivity.start(this);
-        else if (page == Setting.STARTUP_KEEP) KeepActivity.start(this);
+        boolean launcherMain = intent != null && Intent.ACTION_MAIN.equals(intent.getAction());
+        StartupPageRouter.Target target = StartupPageRouter.route(page, savedInstanceState != null, launcherMain);
+        SpiderDebug.log("startup", "route restoring=%s action=%s categories=%s page=%d target=%s", savedInstanceState != null, intent == null ? "null" : intent.getAction(), intent == null ? "null" : String.valueOf(intent.getCategories()), page, target);
+        if (target == StartupPageRouter.Target.LIVE) LiveActivity.start(this);
+        else if (target == StartupPageRouter.Target.HISTORY) HistoryActivity.start(this);
+        else if (target == StartupPageRouter.Target.KEEP) KeepActivity.start(this);
     }
 
     @Override

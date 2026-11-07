@@ -11,6 +11,7 @@ import androidx.viewbinding.ViewBinding;
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.Updater;
 import com.fongmi.android.tv.api.config.LiveConfig;
+import com.fongmi.android.tv.api.config.SourceRetry;
 import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.api.config.WallConfig;
 import com.fongmi.android.tv.bean.Config;
@@ -240,10 +241,12 @@ public class SettingActivity extends BaseActivity implements ConfigListener, Sit
     }
 
     private void onVodRefresh(View view) {
+        SourceRetry.reset(VodConfig.get().getConfig());
         VodConfig.get().init().load(getCallback());
     }
 
     private void onLiveRefresh(View view) {
+        SourceRetry.reset(LiveConfig.get().getConfig());
         LiveConfig.get().init().load(getCallback());
     }
 
@@ -275,6 +278,7 @@ public class SettingActivity extends BaseActivity implements ConfigListener, Sit
     }
 
     private void setWallRefresh(View view) {
+        SourceRetry.reset(WallConfig.get().getConfig());
         Setting.putWall(0);
         WallConfig.get().load(getCallback());
     }

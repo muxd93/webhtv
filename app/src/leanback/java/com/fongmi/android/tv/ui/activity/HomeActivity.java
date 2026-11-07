@@ -52,6 +52,7 @@ import com.fongmi.android.tv.setting.Setting;
 import com.fongmi.android.tv.ui.HomeFeed;
 import com.fongmi.android.tv.ui.HomeFeedLoader;
 import com.fongmi.android.tv.ui.HomeRows;
+import com.fongmi.android.tv.ui.StartupPageRouter;
 import com.fongmi.android.tv.ui.adapter.TypeAdapter;
 import com.fongmi.android.tv.ui.base.BaseActivity;
 import com.fongmi.android.tv.ui.custom.CustomTitleView;
@@ -71,6 +72,7 @@ import com.fongmi.android.tv.utils.Task;
 import com.fongmi.android.tv.utils.UrlUtil;
 import com.fongmi.android.tv.utils.Util;
 import com.fongmi.android.tv.web.HomeWebController;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.fongmi.android.tv.web.WebHomeViewport;
 import com.github.catvod.crawler.SpiderDebug;
 import com.github.catvod.net.OkHttp;
@@ -106,11 +108,13 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
     private Result mResult;
     private Result mHomeResult;
     private Clock mClock;
+    private boolean mSourceGuideShown;
     private String webChromeMode = TV_NORMAL;
     private String webDefaultChromeMode = TV_FULL;
     private boolean webToolbarVisible = true;
     private boolean loadingHomeCategory;
     private long mLastBackPressedTime = 0;
+    private StartupPageRouter.Target mStartupTarget = StartupPageRouter.Target.NONE;
 
     private Site getHome() {
         return VodConfig.get().getHome();
@@ -128,6 +132,8 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
+        // 任务仍在时从启动器重新进入走这里（不会重新路由启动页）；记录 action/categories 便于区分冷启动
+        SpiderDebug.log("startup", "newIntent action=%s categories=%s", intent == null ? "null" : intent.getAction(), intent == null ? "null" : String.valueOf(intent.getCategories()));
         checkAction(intent);
     }
 
@@ -140,14 +146,17 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
     }
 
     private void routeStartupPage(Bundle savedInstanceState) {
-        // 进程重建（恢复栈）不重复路由；仅 launcher 冷启动路由，应用内 CLEAR_TOP 拉起不跳转
-        if (savedInstanceState != null) return;
-        android.content.Intent intent = getIntent();
-        if (intent == null || !Intent.ACTION_MAIN.equals(intent.getAction()) || !intent.hasCategory(Intent.CATEGORY_LAUNCHER)) return;
+        // 进程重建（恢复栈）不重复路由；仅外部 ACTION_MAIN 启动路由，应用内 CLEAR_TOP 拉起不跳转。
+        // 不要求 CATEGORY_LAUNCHER：部分 TV 启动器（getLeanbackLaunchIntentForPackage）只带 CATEGORY_LEANBACK_LAUNCHER。
+        Intent intent = getIntent();
         int page = Setting.getStartupPage();
-        if (page == Setting.STARTUP_LIVE) LiveActivity.start(this);
-        else if (page == Setting.STARTUP_HISTORY) HistoryActivity.start(this);
-        else if (page == Setting.STARTUP_KEEP) KeepActivity.start(this);
+        boolean launcherMain = intent != null && Intent.ACTION_MAIN.equals(intent.getAction());
+        StartupPageRouter.Target target = StartupPageRouter.route(page, savedInstanceState != null, launcherMain);
+        mStartupTarget = target;
+        SpiderDebug.log("startup", "route restoring=%s action=%s categories=%s page=%d target=%s", savedInstanceState != null, intent == null ? "null" : intent.getAction(), intent == null ? "null" : String.valueOf(intent.getCategories()), page, target);
+        if (target == StartupPageRouter.Target.LIVE) LiveActivity.start(this);
+        else if (target == StartupPageRouter.Target.HISTORY) HistoryActivity.start(this);
+        else if (target == StartupPageRouter.Target.KEEP) KeepActivity.start(this);
     }
 
     @Override
@@ -326,7 +335,8 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
     private void initConfig() {
         SpiderDebug.log("startup", "config load start cost=%sms", System.currentTimeMillis() - App.time());
         VodConfig.get().init().load(getCallback());
-        LiveConfig.get().init().load();
+        // 启动页已路由到直播时，直播页已发起并持有直播配置的加载回调；首页再发一次会取消它且不回报结果
+        if (StartupPageRouter.shouldHomeLoadLive(mStartupTarget)) LiveConfig.get().init().load();
         WallConfig.get().init();
     }
 
@@ -335,16 +345,37 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
             @Override
             public void success() {
                 SpiderDebug.log("startup", "config load success cost=%sms", System.currentTimeMillis() - App.time());
+                mSourceGuideShown = false;
                 showContent();
             }
 
             @Override
             public void error(String msg) {
                 SpiderDebug.log("startup", "config load error cost=%sms msg=%s", System.currentTimeMillis() - App.time(), msg);
-                Notify.show(msg);
+                // 没有任何源时给出添加指引；源存在但加载失败仍按原样提示错误
+                if (isEmptySource(getConfig())) showSourceGuide();
+                else Notify.show(msg);
                 showContent();
             }
         };
+    }
+
+    /** 首装且没有配置任何源：只判断配置为空，不预填、不自动导入默认源 */
+    static boolean isEmptySource(Config config) {
+        return config != null && config.isEmpty();
+    }
+
+    private void showSourceGuide() {
+        if (mSourceGuideShown || isFinishing() || isDestroyed()) return;
+        mSourceGuideShown = true;
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.home_source_empty_title)
+                .setMessage(R.string.home_source_empty_message)
+                // 源对话框要求宿主实现 ConfigListener（onPositive 会强转宿主回调 setConfig），首页不满足该约束，
+                // 交给设置页承接：它是真正的 ConfigListener 宿主，且首焦点就在点播源一行
+                .setPositiveButton(R.string.remote_trust_config_add, (dialog, which) -> SettingActivity.start(this))
+                .setNegativeButton(R.string.dialog_negative, null)
+                .show();
     }
 
     private void showContent() {

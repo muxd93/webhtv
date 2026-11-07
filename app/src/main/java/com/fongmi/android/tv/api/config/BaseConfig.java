@@ -13,6 +13,7 @@ import com.fongmi.android.tv.utils.Task;
 import com.fongmi.android.tv.utils.UrlUtil;
 import com.github.catvod.bean.Header;
 import com.github.catvod.bean.Proxy;
+import com.github.catvod.crawler.SpiderDebug;
 import com.github.catvod.net.OkHttp;
 import com.github.catvod.utils.Json;
 import com.google.gson.JsonArray;
@@ -70,7 +71,12 @@ abstract class BaseConfig {
     }
 
     public boolean needSync(String url) {
-        return sync || config == null || TextUtils.isEmpty(config.getUrl()) || url.equals(config.getUrl());
+        return needSync(sync, config == null ? null : config.getUrl(), url);
+    }
+
+    /** 纯逻辑：本次加载是否应接管当前源——跟随同步、当前没有源、或当前源就是同一个 url 时接管 */
+    static boolean needSync(boolean sync, String currentUrl, String url) {
+        return sync || currentUrl == null || currentUrl.isEmpty() || url.equals(currentUrl);
     }
 
     public Config getConfig() {
@@ -100,7 +106,11 @@ abstract class BaseConfig {
     public void load(Callback callback) {
         beforeLoad();
         int id = taskId.incrementAndGet();
-        if (future != null && !future.isDone()) future.cancel(true);
+        // 新一轮加载会取消上一轮：必须留痕，否则被取消的调用方既收不到 success 也收不到 error，只能靠日志定位
+        if (future != null && !future.isDone()) {
+            SpiderDebug.log(getTag(), "config load supersedes id=%d url=%s", id, config == null ? "" : config.getUrl());
+            future.cancel(true);
+        }
         future = Task.submit(() -> loadConfig(id, config, callback));
         callback.start();
     }
@@ -121,7 +131,10 @@ abstract class BaseConfig {
             if (!cacheShown) App.post(callback::success);
         } catch (Throwable e) {
             e.printStackTrace();
-            if (isCanceled(e)) return;
+            if (isCanceled(e)) {
+                SpiderDebug.log(getTag(), "config load canceled id=%d current=%d cause=%s", id, taskId.get(), e.getClass().getSimpleName());
+                return;
+            }
             if (taskId.get() != id) return;
             if (cacheShown) return;
             if (this.config == null || TextUtils.isEmpty(this.config.getUrl())) App.post(() -> callback.error(""));

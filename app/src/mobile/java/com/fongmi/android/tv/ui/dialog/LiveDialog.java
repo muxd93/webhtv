@@ -86,6 +86,8 @@ public class LiveDialog extends BaseBottomSheetDialog implements LiveAdapter.OnC
         configureWindow(getDialog());
         if (adapter.getItemCount() == 0) dismiss();
         EventBus.getDefault().register(this);
+        // 打开直播源列表即补全多仓其余子仓；补齐后由 LIVE_LIST 事件刷新本列表
+        LiveConfig.get().expandPending();
     }
 
     @Override

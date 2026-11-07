@@ -28,16 +28,46 @@ import com.fongmi.android.tv.impl.CustomTarget;
 import com.github.catvod.utils.Json;
 import com.google.common.net.HttpHeaders;
 
-import java.util.Collections;
-import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Set;
 
 import jahirfiquitiva.libs.textdrawable.TextDrawable;
 
 public class ImgUtil {
 
-    private static final Set<String> failed = Collections.synchronizedSet(new HashSet<>());
+    /**
+     * 加载失败的图片：容量 200（超出淘汰最旧）+ 5 分钟过期。
+     * 过期是为了自愈——DNS 抖动/瞬时断网恢复后同一张图必须能重新出图；
+     * 容量上限则把内存和「坏图重试」的频率同时锁死：同一坏图最多每 5 分钟重试一次，不会变成重试风暴。
+     */
+    static final int FAILED_MAX = 200;
+    static final long FAILED_TTL = 5 * 60 * 1000L;
+
+    private static final Map<String, Long> failed = new LinkedHashMap<>(16, 0.75f, false) {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<String, Long> eldest) {
+            return size() > FAILED_MAX;
+        }
+    };
+
+    /** 失败记录是否仍生效；过期即清掉，调用方随后会重新发起加载 */
+    static boolean isFailed(String url, long now) {
+        synchronized (failed) {
+            Long at = failed.get(url);
+            if (at == null) return false;
+            if (now - at >= FAILED_TTL) {
+                failed.remove(url);
+                return false;
+            }
+            return true;
+        }
+    }
+
+    static void markFailed(String url, long now) {
+        synchronized (failed) {
+            failed.put(url, now);
+        }
+    }
 
     public static void logo(ImageView view) {
         try {
@@ -95,7 +125,7 @@ public class ImgUtil {
     public static void load(String text, String url, ImageView view, boolean vod, int width, int height) {
         view.setScaleType(vod ? CENTER_CROP : FIT_CENTER);
         if (!vod) view.setVisibility(TextUtils.isEmpty(url) ? View.GONE : View.VISIBLE);
-        if (TextUtils.isEmpty(url) || failed.contains(url)) view.setImageDrawable(getTextDrawable(text, vod));
+        if (TextUtils.isEmpty(url) || isFailed(url, System.currentTimeMillis())) view.setImageDrawable(getTextDrawable(text, vod));
         else try {
             RequestBuilder<Drawable> builder = Glide.with(view).load(getUrl(url)).listener(getListener(text, url, view, vod));
             if (width > 0 && height > 0) builder.override(width, height);
@@ -136,7 +166,7 @@ public class ImgUtil {
             @Override
             public boolean onLoadFailed(@Nullable GlideException e, Object model, @NonNull Target<Drawable> target, boolean isFirstResource) {
                 view.setImageDrawable(getTextDrawable(text, vod));
-                failed.add(url);
+                markFailed(url, System.currentTimeMillis());
                 return true;
             }
 

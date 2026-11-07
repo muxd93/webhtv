@@ -291,6 +291,8 @@ public class LiveActivity extends PlaybackActivity implements GroupAdapter.OnCli
     }
 
     private void getLive() {
+        // 多仓第二段改为进入直播页时才补全（幂等，同一轮只跑一次）
+        LiveConfig.get().expandPending();
         mViewModel.parse(getHome());
         showProgress();
     }

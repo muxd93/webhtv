@@ -114,6 +114,8 @@ public class LiveDialog extends BaseAlertDialog implements LiveAdapter.OnClickLi
         else if (drawer) setDrawerWindow();
         else setWidth(0.4f);
         EventBus.getDefault().register(this);
+        // 打开直播源列表即补全多仓其余子仓；补齐后由 LIVE_LIST 事件刷新本列表
+        LiveConfig.get().expandPending();
     }
 
     @Override

@@ -31,7 +31,8 @@ public final class ConfigService {
             if (item == null || TextUtils.isEmpty(item.getUrl())) continue;
             String url = ConfigRepository.canonicalize(item.getUrl());
             if (url.equals(self)) continue;
-            Config child = ConfigRepository.upsert(new Config().type(depot.getType()).kind(Config.SINGLE).url(url).name(item.getName()));
+            // 复用已落库的子仓行：只更新名称/类型标记，保留 json/time/active/home/parse/logo 等字段
+            Config child = ConfigRepository.upsert(DepotRow.resolve(ConfigRepository.findByUrl(url, depot.getType()), url, depot.getType(), item.getName(), Config.SINGLE));
             children.add(child);
             relations.add(new ConfigDepot().configId(depot.getId()).url(url).name(item.getName()).ord(ord++));
         }

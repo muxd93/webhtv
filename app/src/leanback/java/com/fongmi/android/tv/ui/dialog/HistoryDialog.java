@@ -7,12 +7,15 @@ import androidx.viewbinding.ViewBinding;
 
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.api.config.ConfigLister;
+import com.fongmi.android.tv.api.config.SourceRetry;
 import com.fongmi.android.tv.bean.Config;
 import com.fongmi.android.tv.databinding.DialogHistoryBinding;
 import com.fongmi.android.tv.impl.ConfigListener;
 import com.fongmi.android.tv.ui.adapter.ConfigAdapter;
 import com.fongmi.android.tv.ui.custom.SpaceItemDecoration;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+
+import java.util.List;
 
 public class HistoryDialog extends BaseAlertDialog implements ConfigAdapter.OnClickListener {
 
@@ -72,33 +75,40 @@ public class HistoryDialog extends BaseAlertDialog implements ConfigAdapter.OnCl
         binding.recycler.setItemAnimator(null);
         binding.recycler.setHasFixedSize(false);
         binding.recycler.addItemDecoration(new SpaceItemDecoration(1, 16));
-        binding.recycler.setAdapter(adapter.readOnly(readOnly).addAll(type));
+        binding.recycler.setAdapter(adapter.readOnly(readOnly).addAll(type).onLoaded(this::onRowsLoaded));
+    }
+
+    /** 构建在后台完成；空列表沿用旧语义直接关闭，交互重建后把焦点还给对应行 */
+    private void onRowsLoaded(List<ConfigLister.Row> rows, int position) {
+        if (binding == null) return;
+        if (rows.isEmpty()) {
+            if (isAdded()) dismiss();
+            return;
+        }
+        if (position >= 0) focusPosition(position);
     }
 
     @Override
     public void onTextClick(Config item) {
-        if (listener != null) listener.setConfig(item);
+        if (listener != null) listener.setConfig(ConfigLister.hydrate(item));
         dismiss();
     }
 
     @Override
     public void onDepotToggle(Config item) {
-        focusPosition(adapter.toggle(item));
+        adapter.toggle(item);
     }
 
     @Override
     public void onDepotRefresh(Config item) {
-        listener.setConfig(item);
+        SourceRetry.reset(item);
+        listener.setConfig(ConfigLister.hydrate(item));
         dismiss();
     }
 
     @Override
     public void onDeleteClick(Config item) {
-        AlertDialog dialog = builder().setTitle(R.string.config_delete_title).setMessage(getString(item.isDepot() ? R.string.config_delete_depot : R.string.config_delete_single, ConfigLister.childCount(item))).setNegativeButton(R.string.dialog_negative, null).setPositiveButton(R.string.dialog_positive, (d, w) -> {
-            int position = adapter.remove(item);
-            if (adapter.getItemCount() == 0) dismiss();
-            else focusPosition(position);
-        }).create();
+        AlertDialog dialog = builder().setTitle(R.string.config_delete_title).setMessage(getString(item.isDepot() ? R.string.config_delete_depot : R.string.config_delete_single, ConfigLister.childCount(item))).setNegativeButton(R.string.dialog_negative, null).setPositiveButton(R.string.dialog_positive, (d, w) -> adapter.remove(item)).create();
         dialog.show();
         // 破坏性操作默认焦点落「取消」，避免遥控器误按确定
         dialog.getButton(AlertDialog.BUTTON_NEGATIVE).requestFocus();

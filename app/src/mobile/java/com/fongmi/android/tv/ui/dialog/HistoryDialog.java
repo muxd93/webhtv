@@ -16,6 +16,7 @@ import androidx.viewbinding.ViewBinding;
 
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.api.config.ConfigLister;
+import com.fongmi.android.tv.api.config.SourceRetry;
 import com.fongmi.android.tv.bean.Config;
 import com.fongmi.android.tv.databinding.DialogHistoryBinding;
 import com.fongmi.android.tv.impl.ConfigListener;
@@ -97,7 +98,7 @@ public class HistoryDialog extends BaseAlertDialog implements ConfigAdapter.OnCl
 
     @Override
     public void onTextClick(Config item) {
-        listener.setConfig(item);
+        listener.setConfig(ConfigLister.hydrate(item));
         dismiss();
     }
 
@@ -108,7 +109,8 @@ public class HistoryDialog extends BaseAlertDialog implements ConfigAdapter.OnCl
 
     @Override
     public void onDepotRefresh(Config item) {
-        listener.setConfig(item);
+        SourceRetry.reset(item);
+        listener.setConfig(ConfigLister.hydrate(item));
         dismiss();
     }
 

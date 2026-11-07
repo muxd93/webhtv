@@ -56,26 +56,16 @@ public final class ConfigRepository {
     public static Config upsert(Config config) {
         if (config == null || config.isEmpty()) return config;
         if (!TextUtils.isEmpty(config.getUrl())) config.setUrl(canonicalize(config.getUrl()));
-        long id = AppDatabase.get().getConfigDao().insert(config);
-        if (id == -1) {
-            Config current = AppDatabase.get().getConfigDao().find(config.getUrl(), config.getType());
-            if (current == null && config.getId() > 0) current = AppDatabase.get().getConfigDao().findById(config.getId());
-            if (current == null) return config;
-            config.setId(current.getId());
-            AppDatabase.get().getConfigDao().update(config);
-        } else {
-            config.setId(Math.toIntExact(id));
-        }
-        return config;
+        return AppDatabase.get().getConfigDao().upsert(config);
     }
 
-    /** 激活为当前源：显式 active 标志 + 清同类型其他激活 + Prefers 镜像（替代 time DESC 隐式推断） */
+    /** 激活为当前源：显式 active 标志 + 清同类型其他激活 + Prefers 镜像（两处写库在同一个事务内完成） */
     public static Config activate(Config config) {
         if (config == null || config.isEmpty()) return config;
+        if (!TextUtils.isEmpty(config.getUrl())) config.setUrl(canonicalize(config.getUrl()));
         config.setActive(true);
         config.setTime(System.currentTimeMillis());
-        upsert(config);
-        if (config.getId() > 0) AppDatabase.get().getConfigDao().clearActive(config.getType(), config.getId());
+        AppDatabase.get().getConfigDao().activate(config);
         Prefers.put("config_" + config.getType(), config.getUrl());
         return config;
     }

@@ -20,6 +20,7 @@ import com.fongmi.android.tv.web.ext.WebHomeExtensionRegistry;
 import com.github.catvod.bean.Doh;
 import com.github.catvod.bean.Header;
 import com.github.catvod.bean.Proxy;
+import com.github.catvod.crawler.SpiderDebug;
 import com.github.catvod.utils.Json;
 import com.google.gson.JsonObject;
 
@@ -166,10 +167,23 @@ public class VodConfig extends BaseConfig {
     private void parseDepot(Config config, JsonObject object) throws Throwable {
         List<Depot> items = Depot.arrayFrom(object.getAsJsonArray("urls").toString());
         // 多仓入口本身保留为 Config(kind=DEPOT)，子源平铺但可溯源、可整组刷新/删除
-        Config depot = ConfigRepository.upsert(new Config().type(VOD).depot().url(config.getUrl()).name(config.getName()));
+        // 复用已落库的多仓入口行，避免整行覆盖清掉 json/time/active
+        Config depot = ConfigRepository.upsert(DepotRow.resolve(ConfigRepository.findByUrl(config.getUrl(), VOD), config.getUrl(), VOD, config.getName(), Config.DEPOT));
         List<Config> children = ConfigService.registerDepot(depot, items);
-        Config target = children.stream().filter(Config::isActive).findFirst().orElse(children.get(0));
-        load(this.config = target);
+        boolean[] active = new boolean[children.size()];
+        for (int i = 0; i < active.length; i++) active[i] = children.get(i).isActive();
+        // 首个 active（无 active 时第一个）优先，失败才按 urls 顺序顺延，全部失败才抛给上层报错
+        int selected = DepotFallback.run(active, this::isCanceled, index -> {
+            Config target = children.get(index);
+            SpiderDebug.log(TAG, "depot child try name=%s url=%s active=%s", target.getName(), target.getUrl(), target.isActive());
+            try {
+                load(this.config = target);
+            } catch (Throwable e) {
+                SpiderDebug.log(TAG, "depot child skip name=%s url=%s stage=%s error=%s", target.getName(), target.getUrl(), DepotFallback.stage(e), String.valueOf(e.getMessage()));
+                throw e;
+            }
+        });
+        SpiderDebug.log(TAG, "depot child selected name=%s url=%s", children.get(selected).getName(), children.get(selected).getUrl());
     }
 
     private void parseConfig(Config config, JsonObject object) {
@@ -199,25 +213,39 @@ public class VodConfig extends BaseConfig {
         if (Json.isEmpty(object, "lives")) return;
         // 多仓子源：直播侧指向多仓本体，打开直播时聚合全部子仓直播源（无需切单仓）
         Config depot = ConfigRepository.findParentDepot(config);
+        String url = depot != null ? depot.getUrl() : config.getUrl();
+        String name = depot != null ? depot.getName() : config.getName();
+        // 复用已落库的直播行：整行新建会让 upsert 清掉 json/time/active 等缓存字段
+        Config temp = ConfigRepository.upsert(liveRow(ConfigRepository.findByUrl(url, LIVE), url, name));
         if (depot != null) {
-            Config temp = ConfigRepository.upsert(new Config().type(LIVE).url(depot.getUrl()).name(depot.getName()));
+            // 用户手选了独立直播源（既不是这个多仓、也不跟随点播）：不覆盖、也不清空已解析的直播内容
+            if (!LiveConfig.get().needSync(temp.getUrl())) return;
             Config current = LiveConfig.get().getConfig();
             boolean same = current != null && !current.isEmpty() && current.getUrl().equals(temp.getUrl());
             LiveConfig.get().config(ConfigRepository.activate(temp));
             if (!same) LiveConfig.get().clear();
             return;
         }
-        Config temp = ConfigRepository.upsert(new Config().type(LIVE).url(config.getUrl()).name(config.getName()));
-        boolean sync = LiveConfig.get().needSync(config.getUrl());
+        boolean sync = LiveConfig.get().needSync(url);
         if (sync) LiveConfig.get().config(ConfigRepository.activate(temp)).parse(object);
     }
 
     private void initWall(Config config, JsonObject object) {
         if (Json.isEmpty(object, "wallpaper")) return;
         this.wall = Json.safeString(object, "wallpaper");
-        Config temp = ConfigRepository.upsert(new Config().type(WALL).url(wall).name(config.getName()));
+        Config temp = ConfigRepository.upsert(wallRow(ConfigRepository.findByUrl(wall, WALL), wall, config.getName()));
         boolean sync = WallConfig.get().needSync(wall);
         if (sync) WallConfig.get().config(ConfigRepository.activate(temp));
+    }
+
+    /** 直播行：已有行只更新 url/name，缓存字段与 kind 原样保留（不降级已登记的多仓） */
+    static Config liveRow(Config existing, String url, String name) {
+        return DepotRow.resolve(existing, url, LIVE, name, Config.SINGLE);
+    }
+
+    /** 壁纸行：同上，避免每次加载点播配置都清掉壁纸行的 json/time */
+    static Config wallRow(Config existing, String url, String name) {
+        return DepotRow.resolve(existing, url, WALL, name, Config.SINGLE);
     }
 
     private void initSite(Config config, JsonObject object) {

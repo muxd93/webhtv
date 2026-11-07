@@ -10,7 +10,7 @@ import java.util.List;
 @Dao
 public abstract class ConfigDepotDao extends BaseDao<ConfigDepot> {
 
-    @Query("SELECT * FROM ConfigDepot")
+    @Query("SELECT * FROM ConfigDepot ORDER BY configId, ord")
     public abstract List<ConfigDepot> findAll();
 
     @Query("SELECT * FROM ConfigDepot WHERE configId = :configId ORDER BY ord")

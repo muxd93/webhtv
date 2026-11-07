@@ -32,6 +32,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -43,6 +44,9 @@ public class LiveConfig extends BaseConfig {
     private List<Live> lives;
     private List<Rule> rules;
     private List<String> ads;
+    private volatile Config pendingDepot;
+    private volatile Set<String> pendingNames;
+    private final AtomicBoolean expanding = new AtomicBoolean();
 
     public static LiveConfig get() {
         return Loader.INSTANCE;
@@ -104,6 +108,8 @@ public class LiveConfig extends BaseConfig {
         home = null;
         lives = null;
         rules = null;
+        pendingDepot = null;
+        pendingNames = null;
         RuleConfig.get().invalidate();
         return this;
     }
@@ -201,7 +207,8 @@ public class LiveConfig extends BaseConfig {
     private void parseDepot(Config config, JsonObject object) throws Throwable {
         List<Depot> items = Depot.arrayFrom(object.getAsJsonArray("urls").toString());
         // 多仓入口本身保留为 Config(kind=DEPOT)，直播侧聚合全部子仓直播源（不切单仓）
-        Config depot = ConfigRepository.upsert(new Config().type(LIVE).depot().url(config.getUrl()).name(config.getName()));
+        // 复用已落库的多仓入口行，避免整行覆盖清掉 json/time/active
+        Config depot = ConfigRepository.upsert(DepotRow.resolve(ConfigRepository.findByUrl(config.getUrl(), LIVE), config.getUrl(), LIVE, config.getName(), Config.DEPOT));
         ConfigService.registerDepot(depot, items);
         aggregate(depot);
     }
@@ -229,7 +236,34 @@ public class LiveConfig extends BaseConfig {
         setRules(rules);
         setAds(ads);
         finishLive(depot);
-        Task.submit(() -> complete(depot, new LinkedHashSet<>(names)));
+        // 第二段不再随配置加载执行：先记录待补全，等用户真正进入直播页/打开直播源列表时再展开
+        markPending(depot, names);
+    }
+
+    /**
+     * 多仓直播第二段按需执行：用户进入直播页或打开直播源列表时才补全其余子仓。
+     * 可重入，同一轮展开只提交一次；写入仍受 complete 内的入口失效保护约束。
+     */
+    public void expandPending() {
+        Config depot = pendingDepot;
+        Set<String> names = pendingNames;
+        if (depot == null || names == null) return;
+        if (!expanding.compareAndSet(false, true)) return;
+        pendingDepot = null;
+        pendingNames = null;
+        // 第二段展开放到配置专用池：它会阻塞等待子仓，放进共享池会与首页/搜索/图片排队
+        Task.config().submit(() -> {
+            try {
+                complete(depot, names);
+            } finally {
+                expanding.set(false);
+            }
+        });
+    }
+
+    private void markPending(Config depot, Set<String> names) {
+        pendingDepot = depot;
+        pendingNames = names;
     }
 
     /** 当前点播激活子源（若属于本多仓，则其 lives 作为第一段优先内容，且 json 刚拉过必命中缓存） */

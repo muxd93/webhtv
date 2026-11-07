@@ -2,12 +2,15 @@ package com.fongmi.android.tv.api.loader;
 
 import android.text.TextUtils;
 
+import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.api.config.LiveConfig;
 import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.bean.Live;
 import com.fongmi.android.tv.bean.Site;
+import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.Task;
 import com.github.catvod.crawler.Spider;
+import com.github.catvod.crawler.SpiderDebug;
 import com.github.catvod.crawler.SpiderNull;
 import com.github.catvod.utils.Util;
 
@@ -16,16 +19,21 @@ import org.json.JSONObject;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import dalvik.system.DexClassLoader;
 
 public class BaseLoader {
 
+    private static final String MSG_JAR_UNAVAILABLE = "当前站点组件加载失败，部分内容可能无法显示";
+
+    private final AtomicBoolean jarNotified;
     private final JarLoader jarLoader;
     private final PyLoader pyLoader;
     private final JsLoader jsLoader;
 
     private BaseLoader() {
+        jarNotified = new AtomicBoolean();
         jarLoader = new JarLoader();
         pyLoader = new PyLoader();
         jsLoader = new JsLoader();
@@ -86,8 +94,36 @@ public class BaseLoader {
     public void parseJar(String jar, boolean recent) {
         if (TextUtils.isEmpty(jar)) return;
         String key = Util.md5(jar);
-        jarLoader.parseJar(key, jar);
+        boolean available = jarLoader.parseJar(key, jar);
         if (recent) jarLoader.setRecent(key);
+        if (!available) notifyJarUnavailable(key);
+    }
+
+    /**
+     * jar 不可用但未抛异常时（退避窗口跳过、本地文件缺失、加载失败）：
+     * 只对当前激活站点/直播源提示一次；首次下载失败仍由既有配置加载异常路径提示，此处不重复。
+     */
+    private void notifyJarUnavailable(String key) {
+        if (!isActiveJar(key)) {
+            SpiderDebug.log("jar-loader", "jar unavailable key=%s inactive, log only", key);
+            return;
+        }
+        if (!jarNotified.compareAndSet(false, true)) return;
+        SpiderDebug.log("jar-loader", "active jar unavailable key=%s, notify once", key);
+        App.post(() -> Notify.show(MSG_JAR_UNAVAILABLE));
+    }
+
+    /** 激活判定：当前激活配置登记的 recent、首页站点 jar、当前选中直播源 jar */
+    private boolean isActiveJar(String key) {
+        if (key.equals(jarLoader.getRecent())) return true;
+        try {
+            Site site = VodConfig.get().getHome();
+            if (!site.isEmpty() && !site.getJar().isEmpty() && Util.md5(site.getJar()).equals(key)) return true;
+            Live live = LiveConfig.get().getHome();
+            return !live.isEmpty() && !live.getJar().isEmpty() && Util.md5(live.getJar()).equals(key);
+        } catch (Throwable e) {
+            return false;
+        }
     }
 
     public DexClassLoader dex(String jar) {
