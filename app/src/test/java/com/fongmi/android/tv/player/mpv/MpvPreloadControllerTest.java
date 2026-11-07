@@ -6,6 +6,7 @@ import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertTrue;
 
 public class MpvPreloadControllerTest {
@@ -49,17 +50,23 @@ public class MpvPreloadControllerTest {
     }
 
     @Test
-    public void lowRatioImmediatelyCancelsAllowedPreload() {
+    public void lowRatioDegradesAllowedPreloadToSingleBootstrapWorker() {
         MpvPreloadController controller = allowedController("ratio", 2);
         PlaybackAutoContext.SessionToken token = controller.snapshot().session();
+        assertEquals(MpvPreloadController.State.ALLOWED, controller.snapshot().state());
 
-        MpvPreloadController.Decision blocked = controller.evaluate(
+        MpvPreloadController.Decision degraded = controller.evaluate(
                 token, token, request(4, 20_000, 20_000, 11_000_000L,
                         20_000, 0, 0), 20_000);
 
-        assertFalse(blocked.preloadAllowed());
-        assertTrue(blocked.cancellationRequested());
-        assertEquals(MpvPreloadPolicy.Reason.RATIO_LOW, blocked.policyReason());
+        // 码率比跌破暂停线不是取消，而是从放开降级为单个 bootstrap worker：
+        // 保留 ready 与 1 个 worker，让磁盘预取保持连续（14e985586f 的语义）。
+        assertEquals(MpvPreloadController.State.BOOTSTRAP, degraded.state());
+        assertEquals(MpvPreloadController.Action.BOOTSTRAP, degraded.action());
+        assertTrue(degraded.ready());
+        assertEquals(1, degraded.concurrency());
+        assertFalse(degraded.cancellationRequested());
+        assertEquals(MpvPreloadPolicy.Reason.RATIO_LOW, degraded.policyReason());
     }
 
     @Test
@@ -111,6 +118,7 @@ public class MpvPreloadControllerTest {
         controller.evaluate(token, token,
                 request(2, 10_000, 10_000, 11_000_000L,
                         20_000, 0, 0), 10_000);
+        MpvPreloadController.Snapshot accepted = controller.snapshot();
 
         MpvPreloadController.Decision staleRevision = controller.evaluate(
                 token, token, request(1, 15_000, 15_000, 20_000_000L,
@@ -129,7 +137,13 @@ public class MpvPreloadControllerTest {
                 outOfOrder.reason());
         assertEquals(MpvPreloadController.Reason.STALE_SESSION,
                 staleSession.reason());
-        assertFalse(controller.snapshot().ready());
+
+        // 不变量（上一条被接受的样本是 rev2）：陈旧 / 乱序 / 跨会话样本既不能推进
+        // 已接受位次，也不能累积恢复采样，更不能把状态升级到 ALLOWED。
+        MpvPreloadController.Snapshot settled = controller.snapshot();
+        assertEquals(accepted.lastAcceptedRevision(), settled.lastAcceptedRevision());
+        assertEquals(accepted.recoverySamples(), settled.recoverySamples());
+        assertNotEquals(MpvPreloadController.State.ALLOWED, settled.state());
     }
 
     @Test

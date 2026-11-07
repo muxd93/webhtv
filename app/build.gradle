@@ -139,6 +139,10 @@ android {
 
     testOptions {
         unitTests.includeAndroidResources = true
+        // Avs3ExtractionTest 从 -Davs3.fixtures 读取仓库内已有的码流样本，仅作测试输入路径，不改测试逻辑。
+        unitTests.all {
+            systemProperty 'avs3.fixtures', file('src/test/java/androidx/media3/extractor/fixtures').absolutePath
+        }
     }
 
     // ASS rendering is part of normal builds; package the matching prebuilt ABI.

@@ -25,6 +25,9 @@ import androidx.media3.exoplayer.Renderer;
 import androidx.media3.exoplayer.analytics.PlayerId;
 
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.robolectric.RobolectricTestRunner;
+import org.robolectric.annotation.Config;
 
 import java.lang.reflect.Field;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -33,6 +36,8 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.lang.reflect.Proxy;
 import java.nio.ByteBuffer;
 
+@RunWith(RobolectricTestRunner.class)
+@Config(sdk = 28)
 public class ExoCompressedAudioDirectPolicyTest {
 
     @Test

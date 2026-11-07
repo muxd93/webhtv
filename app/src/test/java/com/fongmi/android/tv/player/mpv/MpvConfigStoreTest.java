@@ -104,7 +104,9 @@ public class MpvConfigStoreTest {
         String lua = MpvConfigStore.buildCustomButtonScript(Collections.singletonList(button), script -> "toggle_script()");
 
         assertTrue(lua.contains("buttons[\"startup\"].short = function()\ntoggle_script()\nend\n"));
-        assertTrue(lua.contains("run(buttons[\"startup\"].short)\n"));
+        // startup 执行被条件包裹，执行成功后同步按钮激活状态（不再是裸 run 调用）。
+        assertTrue(lua.contains("if run(buttons[\"startup\"].short) then"));
+        assertTrue(lua.contains("webhtv_toggle_button_state(\"startup\")"));
         assertEquals(lua.indexOf("toggle_script()"), lua.lastIndexOf("toggle_script()"));
         assertFalse(lua.contains("stale_metadata"));
         assertFalse(lua.contains(".long ="));
