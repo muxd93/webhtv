@@ -13,8 +13,12 @@ import com.github.catvod.net.interceptor.ResponseInterceptor;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.net.ProxySelector;
+import java.net.SocketAddress;
+import java.net.URI;
 import java.security.SecureRandom;
 import java.security.cert.X509Certificate;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
@@ -45,6 +49,7 @@ public class OkHttp {
     private AuthInterceptor authInterceptor;
     private OkAuthenticator authenticator;
     private OkProxySelector selector;
+    private ProxySelector playerSelector;
     private OkHttpClient client;
     private OkHttpClient player;
     private OkDns dns;
@@ -105,9 +110,29 @@ public class OkHttp {
     public static synchronized OkHttpClient player() {
         if (get().player != null) return get().player;
         return get().player = getBuilder()
+                .proxySelector(playerSelector())
                 .addInterceptor(new KuaishouMediaFallbackInterceptor())
                 .eventListenerFactory(call -> SpiderDebug.isEnabled() ? new DebugEventListener() : EventListener.NONE)
                 .build();
+    }
+
+    /**
+     * Playback traffic only honors explicit proxy rules; a miss stays direct so a
+     * system-wide proxy setting cannot hijack media requests.
+     */
+    private static ProxySelector playerSelector() {
+        if (get().playerSelector != null) return get().playerSelector;
+        return get().playerSelector = new ProxySelector() {
+            @Override
+            public List<java.net.Proxy> select(URI uri) {
+                return selector().selectForPlayback(uri);
+            }
+
+            @Override
+            public void connectFailed(URI uri, SocketAddress sa, IOException e) {
+                selector().connectFailed(uri, sa, e);
+            }
+        };
     }
 
     public static OkHttpClient client(long timeout) {

@@ -31,6 +31,22 @@ public class IjkBufferControllerTest {
     }
 
     @Test
+    public void staleInitialStageKeepsWhatThePreviousItemStaged() {
+        IjkBufferController controller = controller("carry", 14, 0);
+        PlaybackAutoContext.SessionToken current = controller.snapshot().session();
+        controller.stageInitial(current, current,
+                policy(FIFTEEN, IjkBufferPolicy.Reason.REBUFFER_HEADROOM));
+
+        IjkBufferController.Decision stale = controller.stageInitial(
+                current, token("previous", 13), policy(
+                        IjkBufferPolicy.safeInitialConfig(),
+                        IjkBufferPolicy.Reason.MEMORY_UNKNOWN));
+
+        assertEquals(IjkBufferController.Reason.STALE_SESSION, stale.reason());
+        assertEquals(FIFTEEN, controller.snapshot().stagedConfig());
+    }
+
+    @Test
     public void staleSessionCannotMutateController() {
         IjkBufferController controller = controller("current", 2, 0);
         PlaybackAutoContext.SessionToken current = controller.snapshot().session();
@@ -76,7 +92,7 @@ public class IjkBufferControllerTest {
     }
 
     @Test
-    public void newRebufferCanExpandDuringExistingStall() {
+    public void firstShortRebufferExpansionIsDeferredUntilNextPrepare() {
         IjkBufferController controller = controller("rebuffer", 5, 0);
         PlaybackAutoContext.SessionToken token = controller.snapshot().session();
 
@@ -85,9 +101,76 @@ public class IjkBufferControllerTest {
                         IjkBufferPolicy.Reason.REBUFFER_HEADROOM), EIGHT,
                 IjkBufferController.Trigger.RUNTIME, true, true, 1, 30_000);
 
-        assertTrue(decision.requestsReload());
+        // One stall of unknown length must not restart the media session: the
+        // resumed position and the buffered payload would both be thrown away.
+        // The deeper buffer is only staged, so the next prepare picks it up.
+        assertEquals(IjkBufferController.Action.STAGE, decision.action());
+        assertFalse(decision.requestsReload());
         assertTrue(decision.newRebuffer());
+        assertEquals(IjkBufferController.Reason.REBUFFER_EXPANSION_DEFERRED,
+                decision.reason());
+        assertEquals(EIGHT, decision.appliedConfig());
+        assertEquals(FIFTEEN, decision.targetConfig());
+        assertEquals(FIFTEEN, controller.snapshot().stagedConfig());
+        assertEquals(0, controller.snapshot().reloadAttempts());
+    }
+
+    @Test
+    public void longStallWithoutTheCountGateStaysDeferred() {
+        IjkBufferController controller = controller("rebuffer-long-stall", 24, 0);
+        PlaybackAutoContext.SessionToken token = controller.snapshot().session();
+        controller.evaluate(
+                token, token, policy(FIFTEEN,
+                        IjkBufferPolicy.Reason.REBUFFER_HEADROOM), EIGHT,
+                IjkBufferController.Trigger.RUNTIME, true, true, 1, 30_000);
+
+        IjkBufferController.Decision decision = controller.evaluate(
+                token, token, policy(FIFTEEN,
+                        IjkBufferPolicy.Reason.REBUFFER_HEADROOM), EIGHT,
+                IjkBufferController.Trigger.RUNTIME, true, true, 1, 32_000);
+
+        // Stall length is not a reload signal on its own: the gate was never
+        // evaluated mid-stall on device, the deeper buffer was already enough
+        // (36.8s cached while the disk preload was 36.8s ahead), and a reload
+        // historically cost a 2.5s reopen plus another stall afterwards.
+        assertFalse(decision.requestsReload());
+        assertEquals(IjkBufferController.Reason.REBUFFER_EXPANSION_DEFERRED,
+                decision.reason());
+        assertEquals(EIGHT, decision.appliedConfig());
+        assertEquals(FIFTEEN, decision.targetConfig());
+    }
+
+    @Test
+    public void repeatedRebufferCountExpansionStillRequestsReload() {
+        IjkBufferController controller = controller("rebuffer-repeat", 25, 0);
+        PlaybackAutoContext.SessionToken token = controller.snapshot().session();
+
+        IjkBufferController.Decision decision = controller.evaluate(
+                token, token, policy(FIFTEEN,
+                        IjkBufferPolicy.Reason.REBUFFER_HEADROOM), EIGHT,
+                IjkBufferController.Trigger.RUNTIME, true, true,
+                IjkBufferController.REBUFFER_RELOAD_MIN_COUNT, 30_000);
+
+        assertTrue(decision.requestsReload());
         assertEquals(IjkBufferController.Reason.REBUFFER_RELOAD,
+                decision.reason());
+    }
+
+    @Test
+    public void rebufferCountBelowTheGateStillDefersTheExpansion() {
+        IjkBufferController controller = controller("rebuffer-below", 26, 0);
+        PlaybackAutoContext.SessionToken token = controller.snapshot().session();
+
+        // Two short dips are not enough evidence that the depth is too small,
+        // so the deeper config is staged for the next prepare instead.
+        IjkBufferController.Decision decision = controller.evaluate(
+                token, token, policy(FIFTEEN,
+                        IjkBufferPolicy.Reason.REBUFFER_HEADROOM), EIGHT,
+                IjkBufferController.Trigger.RUNTIME, true, true,
+                IjkBufferController.REBUFFER_RELOAD_MIN_COUNT - 1, 1_000);
+
+        assertFalse(decision.requestsReload());
+        assertEquals(IjkBufferController.Reason.REBUFFER_EXPANSION_DEFERRED,
                 decision.reason());
     }
 
@@ -104,7 +187,8 @@ public class IjkBufferControllerTest {
         IjkBufferController.Decision second = controller.evaluate(
                 token, token, policy(FIFTEEN,
                         IjkBufferPolicy.Reason.REBUFFER_HEADROOM), FOUR,
-                IjkBufferController.Trigger.RUNTIME, true, true, 1, 5_000);
+                IjkBufferController.Trigger.RUNTIME, true, true,
+                IjkBufferController.REBUFFER_RELOAD_MIN_COUNT, 5_000);
 
         assertEquals(IjkBufferController.Action.HOLD, second.action());
         assertEquals(IjkBufferController.Reason.RELOAD_COOLDOWN,
@@ -410,8 +494,8 @@ public class IjkBufferControllerTest {
         IjkBufferController.Decision reload = controller.evaluate(
                 token, token, policy(FIFTEEN,
                         IjkBufferPolicy.Reason.REBUFFER_HEADROOM), EIGHT,
-                IjkBufferController.Trigger.RUNTIME, true, true, 1,
-                30_000);
+                IjkBufferController.Trigger.RUNTIME, true, true,
+                IjkBufferController.REBUFFER_RELOAD_MIN_COUNT, 30_000);
 
         IjkBufferController.Decision deferred =
                 controller.deferExperimentalReload(token, reload);
@@ -435,8 +519,8 @@ public class IjkBufferControllerTest {
         IjkBufferController.Decision reload = controller.evaluate(
                 current, current, policy(FIFTEEN,
                         IjkBufferPolicy.Reason.REBUFFER_HEADROOM), EIGHT,
-                IjkBufferController.Trigger.RUNTIME, true, true, 1,
-                30_000);
+                IjkBufferController.Trigger.RUNTIME, true, true,
+                IjkBufferController.REBUFFER_RELOAD_MIN_COUNT, 30_000);
 
         IjkBufferController.Decision deferred =
                 controller.deferExperimentalReload(stale, reload);

@@ -170,8 +170,11 @@ public final class IjkBufferPolicy {
                     ? new Watermarks(100, 500, 1_500)
                     : new Watermarks(100, 300, 1_000);
         }
-        if (scene == Scene.VOD) return new Watermarks(100, 1_000, 5_000);
-        return new Watermarks(100, 1_000, 3_000);
+        // VOD and a not-yet-classified stream share the same stop-fetching
+        // point: the first decision is taken before manifest facts exist, and
+        // that value is what stays applied until the next prepare, so 3s would
+        // keep the short buffer for the whole episode.
+        return new Watermarks(100, 1_000, 5_000);
     }
 
     private static long targetOffsetMs(Request input, Scene scene) {

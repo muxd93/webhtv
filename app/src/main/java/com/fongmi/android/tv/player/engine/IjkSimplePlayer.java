@@ -33,9 +33,11 @@ import com.fongmi.android.tv.player.cache.PlaybackDiskBufferStore;
 import com.fongmi.android.tv.player.exo.ExoUtil;
 import com.fongmi.android.tv.player.PlaybackResourceClassifier;
 import com.fongmi.android.tv.player.PlaybackRoute;
+import com.fongmi.android.tv.player.PlaybackTrace;
 import com.fongmi.android.tv.player.ijk.IjkBufferPolicy;
 import com.fongmi.android.tv.player.ijk.IjkDecodePressurePolicy;
 import com.fongmi.android.tv.player.ijk.IjkRealtimeRecoveryPolicy;
+import com.fongmi.android.tv.player.ijk.IjkStablePositionPolicy;
 import com.fongmi.android.tv.setting.IjkPerformanceSetting;
 import com.fongmi.android.tv.setting.PlaybackPerformanceCatalog;
 import com.fongmi.android.tv.setting.PlaybackPerformanceSetting;
@@ -61,6 +63,22 @@ class IjkSimplePlayer extends SimpleBasePlayer implements IMediaPlayer.Listener 
 
     private static final long STATE_REFRESH_INTERVAL_MS = 1000;
 
+    // ijk's native BIT_RATE property can report values orders of magnitude below
+    // the observed segment rate (186/223/247 vs ~1.5-4.7 Mbps). No real video
+    // stream is that small, so treat it as unknown instead of a demand signal.
+    private static final long MIN_PLAUSIBLE_BITRATE_BPS = 10_000;
+
+    // A seek issued from the prepared callback can be dropped while ijk is still
+    // opening the decoder: the device log showed seekTo(1076) followed by
+    // playback from ~0. Re-check shortly after and re-issue it once.
+    private static final long SEEK_VERIFY_DELAY_MS = 300;
+    private static final int SEEK_VERIFY_MAX_RETRIES = 1;
+
+    // One structured row per buffering window answers "is the native cache
+    // capped by the watermark, or is the reported reading itself broken".
+    private static final long BUFFER_WINDOW_LOG_INTERVAL_MS = 1_000;
+    private static final long DISK_PRELOAD_GAP_MS = 2_000;
+
     private static final Commands COMMANDS = new Commands.Builder()
             .add(COMMAND_PLAY_PAUSE)
             .add(COMMAND_PREPARE)
@@ -84,6 +102,7 @@ class IjkSimplePlayer extends SimpleBasePlayer implements IMediaPlayer.Listener 
     private final IjkMediaPlayer ijk;
     private final MpvHlsProxy hlsProxy;
     private final Runnable stateRefreshRunnable;
+    private final Runnable seekVerifyRunnable;
     private MediaItem mediaItem;
     private SurfaceHolder surfaceHolder;
     private Surface surface;
@@ -100,6 +119,14 @@ class IjkSimplePlayer extends SimpleBasePlayer implements IMediaPlayer.Listener 
     private int decode;
     private long pendingSeekPositionMs;
     private long pendingSeekRequestedAtMs;
+    // ijk reports 0 while re-buffering, so keep the last trustworthy readout.
+    // This only protects the reported position; the position snapshot used for
+    // rebuild/resume recovery stays in PlayerManager.lastStablePositionMs.
+    private long lastStablePositionMs = C.TIME_UNSET;
+    private long seekVerifyTargetMs = C.TIME_UNSET;
+    private int seekVerifyRetries;
+    private long lastBufferWindowLogAtMs;
+    private long lastRejectedBitrate = -1;
     private boolean playWhenReady;
     private boolean loading;
     private boolean repeatOne;
@@ -144,6 +171,7 @@ class IjkSimplePlayer extends SimpleBasePlayer implements IMediaPlayer.Listener 
         ijk.setOnNativeInvokeListener(this::onNativeInvoke);
         hlsProxy = new MpvHlsProxy(PlayerSetting.IJK);
         stateRefreshRunnable = this::refreshPlaybackState;
+        seekVerifyRunnable = this::verifyPendingSeek;
         playbackParameters = PlaybackParameters.DEFAULT;
         currentTracks = Tracks.EMPTY;
         videoSize = VideoSize.UNKNOWN;
@@ -285,11 +313,20 @@ class IjkSimplePlayer extends SimpleBasePlayer implements IMediaPlayer.Listener 
 
     long getBitrateSnapshot() {
         try {
-            return Math.max(0, ijk.getBitRate());
+            return plausibleBitrate(Math.max(0, ijk.getBitRate()));
         } catch (Throwable error) {
             if (SpiderDebug.isEnabled()) SpiderDebug.log("ijk", "bitrate fact unavailable type=%s", error.getClass().getSimpleName());
             return 0;
         }
+    }
+
+    private long plausibleBitrate(long raw) {
+        if (raw <= 0 || raw >= MIN_PLAUSIBLE_BITRATE_BPS) return raw;
+        if (SpiderDebug.isEnabled() && raw != lastRejectedBitrate) {
+            lastRejectedBitrate = raw;
+            SpiderDebug.log("ijk", "media bitrate implausible raw=%d bps action=drop", raw);
+        }
+        return 0;
     }
 
     Long getLiveLagLowerBoundSnapshot() {
@@ -385,6 +422,7 @@ class IjkSimplePlayer extends SimpleBasePlayer implements IMediaPlayer.Listener 
         invalidateResourceObservation();
         mediaItem = mediaItems.isEmpty() ? null : mediaItems.get(0);
         setPendingSeek(mediaItem != null && startPositionMs > 0 ? startPositionMs : C.TIME_UNSET);
+        lastStablePositionMs = C.TIME_UNSET;
         playbackState = mediaItem == null ? Player.STATE_IDLE : Player.STATE_IDLE;
         loading = false;
         currentTracks = Tracks.EMPTY;
@@ -507,6 +545,8 @@ class IjkSimplePlayer extends SimpleBasePlayer implements IMediaPlayer.Listener 
         bufferingPercent = 0;
         bufferingPositionMs = Math.max(0, positionMs);
         setPendingSeek(positionMs > 0 ? positionMs : C.TIME_UNSET);
+        // A seek invalidates the previous readout, including a seek back to 0.
+        lastStablePositionMs = C.TIME_UNSET;
         if (playbackState == Player.STATE_READY || playbackState == Player.STATE_ENDED) {
             ijk.seekTo(positionMs);
         }
@@ -556,6 +596,7 @@ class IjkSimplePlayer extends SimpleBasePlayer implements IMediaPlayer.Listener 
         refreshTracks();
         if (pendingSeekPositionMs != C.TIME_UNSET) {
             ijk.seekTo(pendingSeekPositionMs);
+            scheduleSeekVerify();
         }
         requestPreload(Math.max(0, position()));
         if (playWhenReady) ijk.start();
@@ -625,9 +666,11 @@ class IjkSimplePlayer extends SimpleBasePlayer implements IMediaPlayer.Listener 
         if (what == IMediaPlayer.MEDIA_INFO_BUFFERING_START) {
             loading = true;
             playbackState = Player.STATE_BUFFERING;
+            logNativeBufferWindow("start");
             startStateRefresh();
         } else if (what == IMediaPlayer.MEDIA_INFO_BUFFERING_END
                 || what == IMediaPlayer.MEDIA_INFO_VIDEO_RENDERING_START) {
+            if (what == IMediaPlayer.MEDIA_INFO_BUFFERING_END) logNativeBufferWindow("end");
             loading = false;
             playbackState = Player.STATE_READY;
             startStateRefresh();
@@ -1209,10 +1252,16 @@ class IjkSimplePlayer extends SimpleBasePlayer implements IMediaPlayer.Listener 
     private long position() {
         try {
             long actual = Math.max(0, ijk.getCurrentPosition());
-            if (pendingSeekPositionMs == C.TIME_UNSET) return actual;
-            boolean reached = Math.abs(actual - pendingSeekPositionMs) <= 1500;
+            if (pendingSeekPositionMs == C.TIME_UNSET) return stablePosition(actual);
+            boolean reached = Math.abs(actual - pendingSeekPositionMs) <= seekTolerance(pendingSeekPositionMs);
             boolean expired = pendingSeekRequestedAtMs != C.TIME_UNSET && SystemClock.elapsedRealtime() - pendingSeekRequestedAtMs >= 15_000;
             if (reached || expired) {
+                // The pending target is usually consumed here before the 300ms
+                // verification fires, which used to leave zero trace of the
+                // outcome in the device log.
+                SpiderDebug.log("ijk", "action=seek-verify result=%s pending=%d actual=%d",
+                        expired ? "expired-consumed-by-position" : "landed-consumed-by-position",
+                        pendingSeekPositionMs, actual);
                 setPendingSeek(C.TIME_UNSET);
                 return actual;
             }
@@ -1222,15 +1271,138 @@ class IjkSimplePlayer extends SimpleBasePlayer implements IMediaPlayer.Listener 
         }
     }
 
+    private long stablePosition(long actual) {
+        IjkStablePositionPolicy.Decision decision = IjkStablePositionPolicy.resolve(
+                actual, lastStablePositionMs, playbackState, positionPastDuration(actual));
+        if (decision.cache()) lastStablePositionMs = decision.positionMs();
+        return decision.positionMs();
+    }
+
+    // ijk can report the absolute container timeline (12,203,935ms) while
+    // getDuration() returns the trimmed length (628,000ms), so a value far past
+    // the end is a different clock, not a position. Only a positive duration
+    // can make a position implausible, and a live stream is exempt because its
+    // duration is a window or unknown rather than an upper bound.
+    private boolean positionPastDuration(long actual) {
+        long duration = safeDuration();
+        return duration > 0
+                && actual > duration + 2_000
+                && !streamSceneDecision(duration).live();
+    }
+
     private void setPendingSeek(long positionMs) {
         pendingSeekPositionMs = positionMs;
         pendingSeekRequestedAtMs = positionMs == C.TIME_UNSET ? C.TIME_UNSET : SystemClock.elapsedRealtime();
+    }
+
+    // A flat 1.5s window is wider than a short resume target, so a seek that
+    // never happened (pending 1076ms, actual 7ms) still looked "landed". The
+    // window shrinks with the target and keeps the historical 1500ms at 3s and
+    // above. Seek-to-zero never sets a pending target (handleSeek and
+    // handleSetMediaItems store TIME_UNSET for position 0), and live keeps a
+    // large absolute target, so neither is judged by a narrow window.
+    private static long seekTolerance(long targetMs) {
+        return Math.min(1500L, Math.max(500L, targetMs / 2));
+    }
+
+    private void scheduleSeekVerify() {
+        seekVerifyTargetMs = pendingSeekPositionMs;
+        seekVerifyRetries = 0;
+        SpiderDebug.log("ijk", "action=seek-verify result=scheduled pending=%d delay=%d",
+                seekVerifyTargetMs, SEEK_VERIFY_DELAY_MS);
+        App.post(seekVerifyRunnable, SEEK_VERIFY_DELAY_MS);
+    }
+
+    private void verifyPendingSeek() {
+        long target = seekVerifyTargetMs;
+        seekVerifyTargetMs = C.TIME_UNSET;
+        if (target == C.TIME_UNSET) {
+            SpiderDebug.log("ijk", "action=seek-verify result=skipped reason=no-target");
+            return;
+        }
+        // stop/release/finish clears the state before this fires.
+        if (playbackState != Player.STATE_READY) {
+            SpiderDebug.log("ijk", "action=seek-verify result=skipped reason=state-not-ready pending=%d state=%d",
+                    target, playbackState);
+            return;
+        }
+        // A newer seek or a resolved target supersedes this verification.
+        if (pendingSeekPositionMs != target) {
+            SpiderDebug.log("ijk", "action=seek-verify result=skipped reason=pending-consumed pending=%d current=%d",
+                    target, pendingSeekPositionMs);
+            return;
+        }
+        long actual;
+        try {
+            actual = Math.max(0, ijk.getCurrentPosition());
+        } catch (Throwable ignored) {
+            SpiderDebug.log("ijk", "action=seek-verify result=skipped reason=exception pending=%d", target);
+            return;
+        }
+        if (Math.abs(actual - target) <= seekTolerance(target)) {
+            SpiderDebug.log("ijk", "action=seek-verify result=landed pending=%d actual=%d retry=%d", target, actual, seekVerifyRetries);
+            return;
+        }
+        if (seekVerifyRetries >= SEEK_VERIFY_MAX_RETRIES) {
+            SpiderDebug.log("ijk", "action=seek-verify result=giveup pending=%d actual=%d retry=%d", target, actual, seekVerifyRetries);
+            // Stop claiming a position the stream never reached.
+            setPendingSeek(C.TIME_UNSET);
+            invalidateState();
+            return;
+        }
+        seekVerifyRetries++;
+        SpiderDebug.log("ijk", "action=seek-verify result=mismatch pending=%d actual=%d retry=%d", target, actual, seekVerifyRetries);
+        ijk.seekTo(target);
+        seekVerifyTargetMs = target;
+        App.post(seekVerifyRunnable, SEEK_VERIFY_DELAY_MS);
     }
 
     private long bufferedPosition(long position, long duration) {
         return IjkBufferedDurationPolicy.bufferedPosition(
                 position, duration, bufferingPercent,
                 getNativeBufferedDurationSnapshot(), bufferingPositionMs);
+    }
+
+    // Observation only: one row at the start and at the end of a buffering
+    // window. Nothing here feeds a decision or a watermark.
+    private void logNativeBufferWindow(String phase) {
+        long now = SystemClock.elapsedRealtime();
+        if (now - lastBufferWindowLogAtMs < BUFFER_WINDOW_LOG_INTERVAL_MS) return;
+        lastBufferWindowLogAtMs = now;
+        long rawAudio;
+        long rawVideo;
+        long position;
+        long duration;
+        try {
+            rawAudio = Math.max(0, ijk.getAudioCachedDuration());
+            rawVideo = Math.max(0, ijk.getVideoCachedDuration());
+            position = Math.max(0, ijk.getCurrentPosition());
+            duration = ijk.getDuration();
+        } catch (Throwable ignored) {
+            return;
+        }
+        Tracks tracks = currentTracks;
+        // Same merge the engine reports: min of the two queues when both exist.
+        long cached = IjkBufferedDurationPolicy.resolve(
+                tracks.containsType(C.TRACK_TYPE_AUDIO),
+                tracks.containsType(C.TRACK_TYPE_VIDEO),
+                rawAudio, rawVideo);
+        long bufferedPosition = IjkBufferedDurationPolicy.bufferedPosition(
+                position, duration, bufferingPercent, cached, bufferingPositionMs);
+        // Derived as reported end minus reported position. It is not the queue
+        // duration (cachedMs above) because percent and bufferingPositionMs can
+        // lift the end.
+        long bufferedDuration = Math.max(0, bufferedPosition - position);
+        PlaybackTrace.log("playback-buffer", diagnosticTrace,
+                "event=ijk-native-buffer-window phase=%s rawAudioCachedMs=%d rawVideoCachedMs=%d cachedMs=%d positionMs=%d bufferedPositionMs=%d bufferedDurationMs=%d bufferingPercent=%d durationMs=%d first=%d next=%d last=%d proxyPreloadEndMs=%d",
+                phase, rawAudio, rawVideo, cached, position, bufferedPosition,
+                bufferedDuration, bufferingPercent, duration > 0 ? duration : -1,
+                appliedInputBufferConfig.firstWaterMs(),
+                appliedInputBufferConfig.nextWaterMs(),
+                appliedInputBufferConfig.lastWaterMs(),
+                PlaybackDiskBufferStore.process().contiguousEnd(
+                        PlaybackDiskBufferStore.mediaKey(mediaItem),
+                        bufferedPosition, DISK_PRELOAD_GAP_MS));
     }
 
     private boolean isPlayingInternal() {
@@ -1339,8 +1511,9 @@ class IjkSimplePlayer extends SimpleBasePlayer implements IMediaPlayer.Listener 
         } else if (type == C.TRACK_TYPE_AUDIO) {
             if (info.getChannelCount() > 0) builder.setChannelCount(info.getChannelCount());
         }
-        int bitrate = info.getBitrate();
-        if (bitrate <= 0 && type == C.TRACK_TYPE_VIDEO) bitrate = safeIntBitrate(ijk.getBitRate());
+        int rawBitrate = info.getBitrate();
+        if (rawBitrate <= 0 && type == C.TRACK_TYPE_VIDEO) rawBitrate = safeIntBitrate(ijk.getBitRate());
+        int bitrate = (int) Math.min(Integer.MAX_VALUE, plausibleBitrate(rawBitrate));
         if (bitrate > 0) builder.setAverageBitrate(bitrate);
         return builder.build();
     }

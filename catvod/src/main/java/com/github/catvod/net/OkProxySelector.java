@@ -77,6 +77,29 @@ public class OkProxySelector extends ProxySelector {
         return fallback(uri, "no-match");
     }
 
+    /**
+     * Rule-only selection for playback traffic: an explicit site proxy rule still
+     * applies, but a miss never falls back to the system/global proxy.
+     */
+    List<java.net.Proxy> selectForPlayback(URI uri) {
+        String host = uri == null ? null : uri.getHost();
+        if (host == null || proxy.isEmpty()) {
+            logFallback(uri, "playback-no-rule", 0);
+            return List.of(java.net.Proxy.NO_PROXY);
+        }
+        if ("127.0.0.1".equals(host) || "localhost".equalsIgnoreCase(host)) return List.of(java.net.Proxy.NO_PROXY);
+        for (Proxy item : proxy) {
+            for (String rule : item.getHosts()) {
+                if (!matches(host, rule)) continue;
+                List<java.net.Proxy> selected = item.getProxies().isEmpty() ? List.of(java.net.Proxy.NO_PROXY) : item.getProxies();
+                logSelection(uri, "hit", host, rule, item.getName(), selected.size());
+                return selected;
+            }
+        }
+        logFallback(uri, "playback-no-match", 0);
+        return List.of(java.net.Proxy.NO_PROXY);
+    }
+
     private List<java.net.Proxy> fallback(URI uri, String reason) {
         List<java.net.Proxy> selected = fallback(uri);
         logFallback(uri, reason, selected.size());

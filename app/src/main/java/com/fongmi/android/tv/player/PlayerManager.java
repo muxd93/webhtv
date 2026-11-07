@@ -98,6 +98,7 @@ import com.fongmi.android.tv.player.mpv.MpvHlsVariantPolicy;
 import com.fongmi.android.tv.player.mpv.MpvPreloadController;
 import com.fongmi.android.tv.player.mpv.MpvPreloadPolicy;
 import com.fongmi.android.tv.player.mpv.MpvResourcePressureController;
+import com.fongmi.android.tv.player.mpv.MpvStartupStallPolicy;
 import com.fongmi.android.tv.player.mpv.MpvVulkanBackendPolicy;
 import com.fongmi.android.tv.player.mpv.MpvResourcePressurePolicy;
 import com.fongmi.android.tv.setting.DanmakuSetting;
@@ -222,6 +223,7 @@ public class PlayerManager implements ParseCallback {
     private volatile boolean liveDanmakuPlaybackActive;
     private long pendingSwitchPositionMs = C.TIME_UNSET;
     private long pendingInitialStartPositionMs = C.TIME_UNSET;
+    private long lastStablePositionMs;
     private float pendingSwitchSpeed = 1f;
     private boolean danmakuLoadInProgress;
     private boolean danmakuForeground = true;
@@ -232,6 +234,8 @@ public class PlayerManager implements ParseCallback {
     private boolean resumeOnAudioFocusGain;
     private Object audioFocusRequest;
 
+    private List<Track> userTrackSelection;
+    private String userTrackSelectionScope;
     private boolean initTrack;
     private boolean videoEffectsActive;
     private boolean videoEffectsDirty;
@@ -264,6 +268,12 @@ public class PlayerManager implements ParseCallback {
     private boolean playbackForeground;
     private boolean exoDecoderResourceRecoveryInProgress;
     private int playerType;
+    private int previousPlayerType = C.INDEX_UNSET;
+    private boolean mpvStartupFallbackDone;
+    private MpvStartupStallPolicy.Sample mpvStartupStallSample =
+            MpvStartupStallPolicy.Sample.none();
+    // seek/暂停会让位置回退或停在原地，如果不作废采样，下一次 tick 会把它误判成卡死
+    private boolean mpvStartupStallInterrupted;
     private int retry;
     private int localProxyRetry;
     private int prepareSeq;
@@ -1229,7 +1239,10 @@ public class PlayerManager implements ParseCallback {
         if (mpvExplicitSubtitlePreference && engine instanceof MpvPlayerEngine mpv) {
             mpv.retainSubtitleSurfaceForCurrentItem();
         }
-        if (!tracks.isEmpty()) engine.setTrack(tracks);
+        if (!tracks.isEmpty()) {
+            rememberUserTrackSelection(tracks);
+            engine.setTrack(tracks);
+        }
     }
 
     public void setSecondarySubtitleTrack(Track track) {
@@ -1248,6 +1261,7 @@ public class PlayerManager implements ParseCallback {
     public void pause() {
         invalidatePlaybackProfileAssessments(
                 PlaybackProfileAbCoordinator.InvalidationReason.PAUSED);
+        invalidateMpvStartupStall();
         player.pause();
         stopNativeAudioSession();
     }
@@ -1281,6 +1295,7 @@ public class PlayerManager implements ParseCallback {
         rtspLiveLagController.onUserSeek(playbackAutoSession, now);
         ijkRealtimeRecoveryController.onUserSeek(playbackAutoSession, now);
         ijkDecodePressureController.onUserSeek(playbackAutoSession, now);
+        invalidateMpvStartupStall();
         resetNetworkProtectionSession("user-seek");
         if (isExo()) {
             PlaybackAnalyticsListener.onUserSeekRequested(
@@ -1333,6 +1348,7 @@ public class PlayerManager implements ParseCallback {
         resetNetworkProtectionSession("clear");
         resetMpvOutputRuntime();
         spec = null;
+        dropUserTrackSelection();
         clearPendingSwitchRestore();
         clearDanmaku("clear");
         lutAppliedForItem = false;
@@ -1350,6 +1366,7 @@ public class PlayerManager implements ParseCallback {
     }
 
     public void resetTrack() {
+        dropUserTrackSelection();
         engine.resetTrack();
     }
 
@@ -1511,6 +1528,7 @@ public class PlayerManager implements ParseCallback {
         if (engine == null || player == null) return;
         type = PlayerSetting.sanitizePlayer(type);
         if (type == playerType) return;
+        if (engine != null) previousPlayerType = playerType;
         beginIjkRuntimeManualOverride();
         beginPlaybackTrace("switch-player");
         long position = getPosition();
@@ -1935,7 +1953,12 @@ public class PlayerManager implements ParseCallback {
         IjkBufferController.Decision decision =
                 ijkBufferController.stageInitial(
                         playbackAutoSession, context.session(), policy);
-        if (policy.managed()) {
+        // The first decision of an item runs before its manifest facts exist, so
+        // a stale fact session resolves to the safe initial. Staging that here
+        // would throw away what the previous item staged, and prepare is the
+        // only moment a staged buffer config can be applied.
+        if (policy.managed()
+                && decision.reason() != IjkBufferController.Reason.STALE_SESSION) {
             ijk.stageAutomaticInputBufferConfig(decision.targetConfig());
         }
         IjkDecodePressureController.Decision decodeDecision =
@@ -2429,6 +2452,17 @@ public class PlayerManager implements ParseCallback {
         }
     }
 
+    /**
+     * Keeps the last position that was observed while playback was genuinely
+     * ready, so a reload started during BUFFERING never resumes from 0.
+     */
+    private void rememberStablePlaybackPosition() {
+        if (player == null || player.getPlaybackState() != Player.STATE_READY
+                || !player.isPlaying()) return;
+        long position = player.getCurrentPosition();
+        if (position > 0) lastStablePositionMs = position;
+    }
+
     private boolean restartIjkBuffer(
             IjkPlayerEngine ijk,
             IjkBufferController.Decision decision) {
@@ -2437,8 +2471,13 @@ public class PlayerManager implements ParseCallback {
         boolean wasPlayWhenReady = player.getPlayWhenReady();
         float speed = getSpeed();
         boolean repeat = isRepeatOne();
-        long position = ijk.isVod()
-                ? Math.max(0, player.getCurrentPosition()) : C.TIME_UNSET;
+        long current = Math.max(0, player.getCurrentPosition());
+        if (current <= 0) current = Math.max(0, lastStablePositionMs);
+        // isVod() needs a finished classification or a parsed duration, so it is
+        // false during the first seconds and would resume from zero. Only a
+        // positively identified live stream must drop the position; an unknown
+        // scene keeps it, because replaying from zero is the worse outcome.
+        long position = ijk.isLive() ? C.TIME_UNSET : current;
         try {
             prepareSeq++;
             App.removeCallbacks(runnable);
@@ -4976,6 +5015,66 @@ public class PlayerManager implements ParseCallback {
         if (tracks != null && !tracks.isEmpty()) engine.setTrack(tracks);
     }
 
+    private String trackScope() {
+        String key = getKey();
+        return getCid() + "|" + (key == null ? "" : key);
+    }
+
+    private void dropUserTrackSelection() {
+        userTrackSelection = null;
+        userTrackSelectionScope = null;
+    }
+
+    /**
+     * Remembers a track choice made through the user-facing API only. Selections applied
+     * automatically (persisted preference, player defaults) never reach this path, so an
+     * internal rebuild of the same item can restore the user's own choice instead of
+     * freezing an automatic result.
+     */
+    private void rememberUserTrackSelection(List<Track> tracks) {
+        String scope = trackScope();
+        if (!scope.equals(userTrackSelectionScope)) {
+            userTrackSelection = null;
+            userTrackSelectionScope = scope;
+        }
+        if (userTrackSelection == null) userTrackSelection = new ArrayList<>();
+        for (Track track : tracks) {
+            userTrackSelection.removeIf(item -> item.getType() == track.getType());
+            // The runtime player id is not stable across a rebuilt player, so only the
+            // persisted description is kept; engines match on it as a fallback.
+            Track copy = new Track(track.getType(), track.getName(), track.getFormat());
+            copy.setSelected(track.isSelected());
+            userTrackSelection.add(copy);
+        }
+    }
+
+    private List<Track> explicitTrackSelection(Tracks tracks) {
+        if (userTrackSelection == null || userTrackSelection.isEmpty()) return null;
+        if (!trackScope().equals(userTrackSelectionScope)) return null;
+        if (SpiderDebug.isEnabled()) SpiderDebug.log("track", "restore user selection scope=%s entries=%s", userTrackSelectionScope, describeTrackRestore(tracks, userTrackSelection));
+        return userTrackSelection;
+    }
+
+    private static String describeTrackRestore(Tracks tracks, List<Track> selection) {
+        StringBuilder builder = new StringBuilder();
+        for (Track track : selection) {
+            if (builder.length() > 0) builder.append(',');
+            builder.append(track.getType()).append('=').append(track.isDisabled() || trackExists(tracks, track) ? "present" : "missing");
+        }
+        return builder.toString();
+    }
+
+    private static boolean trackExists(Tracks tracks, Track track) {
+        if (track.getFormat() == null) return false;
+        for (Tracks.Group group : tracks.getGroups()) {
+            if (group.getType() != track.getType()) continue;
+            for (int i = 0; i < group.length; i++) {
+                if (track.getFormat().equals(PlayerHelper.describeFormat(group.getTrackFormat(i)))) return true;
+            }
+        }
+        return false;
+    }
+
     private void onMpvVideoSizeProbed(Integer width, Integer height) {
         if (width == null || height == null || width <= 0 || height <= 0) return;
         if (!isMpv()
@@ -6215,6 +6314,9 @@ public class PlayerManager implements ParseCallback {
         mpvResourcePressureController.beginSession(playbackAutoSession);
         mpvPreloadController.beginSession(playbackAutoSession);
         mpvHlsManagedReload = false;
+        mpvStartupStallSample = MpvStartupStallPolicy.Sample.none();
+        mpvStartupStallInterrupted = false;
+        mpvStartupFallbackDone = false;
         ijkBufferController.beginSession(playbackAutoSession, now);
         ijkDecodePressureController.beginSession(playbackAutoSession);
         ijkRealtimeRecoveryController.beginSession(playbackAutoSession);
@@ -6233,6 +6335,7 @@ public class PlayerManager implements ParseCallback {
         bindPlaybackTrace();
         playbackTrace.mark(PlaybackTrace.Stage.REQUEST, "reason=" + reason + " player=" + playerType + " decode=" + (engine == null ? -1 : engine.getDecode()));
         publishPlaybackTelemetry();
+        lastStablePositionMs = 0;
         schedulePlaybackTelemetry();
     }
 
@@ -6437,6 +6540,7 @@ public class PlayerManager implements ParseCallback {
             boolean evaluateMpvHlsVariant) {
         if (!playbackAutoSession.active()) return;
         long now = SystemClock.elapsedRealtime();
+        rememberStablePlaybackPosition();
         PlaybackTelemetry.RuntimeObservation observation =
                 collectPlaybackTelemetry(phaseOverride, now);
         playbackTelemetryCoordinator.publishRuntime(
@@ -6458,7 +6562,74 @@ public class PlayerManager implements ParseCallback {
                     MpvBackCacheController.Trigger.RUNTIME,
                     MpvBackCachePolicy.SeekObservation.none(),
                     now);
+            evaluateMpvStartupStall(observation, now);
         }
+    }
+
+    // mpv can present a first frame and then stop advancing its clock without
+    // raising PlaybackException: the device log showed dec=0 out=0, the playhead
+    // frozen for 12.9s and an end-file reason=stop error=success. Nothing else
+    // moves the user off that black frame, so fall back for this session only.
+    private void evaluateMpvStartupStall(
+            PlaybackTelemetry.RuntimeObservation observation,
+            long now) {
+        if (mpvStartupFallbackDone || player == null) return;
+        PlaybackTelemetry.Metric<Long> position = observation == null
+                ? PlaybackTelemetry.Metric.unknown() : observation.positionMs();
+        long positionMs = position.known()
+                ? Math.max(0, position.value()) : currentPositionSnapshot();
+        boolean interrupted = mpvStartupStallInterrupted;
+        mpvStartupStallInterrupted = false;
+        MpvStartupStallPolicy.Decision decision = MpvStartupStallPolicy.evaluate(
+                playbackTrace.hasStage(PlaybackTrace.Stage.FIRST_FRAME),
+                player.getPlayWhenReady(),
+                player.getPlaybackState(),
+                positionMs,
+                true,
+                mpvStartupStallSample,
+                interrupted,
+                now);
+        mpvStartupStallSample = decision.next();
+        if (decision.action() != MpvStartupStallPolicy.Action.FALLBACK) return;
+        fallbackFromMpvStartupStall(positionMs);
+    }
+
+    /** 用户 seek/暂停后作废卡死采样：位置回退或原地不动都不再代表播放器卡住 */
+    private void invalidateMpvStartupStall() {
+        mpvStartupStallSample = MpvStartupStallPolicy.Sample.none();
+        mpvStartupStallInterrupted = true;
+    }
+
+    private void fallbackFromMpvStartupStall(long positionMs) {
+        if (mpvStartupFallbackDone) return;
+        mpvStartupFallbackDone = true;
+        mpvStartupStallSample = MpvStartupStallPolicy.Sample.none();
+        int target = mpvFallbackTarget();
+        // switchPlayer carries position/speed/repeat/playWhenReady itself and
+        // persist=false keeps the user's saved engine untouched.
+        PlaybackTrace.log("mpv-startup-stall", playbackTrace.current(),
+                "action=fallback reason=position-frozen target=%d position=%d previous=%d source=telemetry",
+                target, positionMs, previousPlayerType);
+        Notify.show("mpv 播放位置已卡住，本视频已切回 " + mpvFallbackLabel(target));
+        switchPlayer(target, false);
+    }
+
+    private int mpvFallbackTarget() {
+        if (previousPlayerType != C.INDEX_UNSET) {
+            int previous = PlayerSetting.sanitizePlayer(previousPlayerType);
+            if (previous != PlayerSetting.MPV) return previous;
+        }
+        int configured = PlayerSetting.sanitizePlayer(PlayerSetting.getPlayer());
+        return configured == PlayerSetting.MPV
+                ? PlayerSetting.sanitizePlayer(PlayerSetting.IJK) : configured;
+    }
+
+    private String mpvFallbackLabel(int type) {
+        return switch (type) {
+            case PlayerSetting.IJK -> "ijk";
+            case PlayerSetting.MPV -> "mpv";
+            default -> "exo";
+        };
     }
 
     private void evaluateMpvHlsVariant(
@@ -7597,7 +7768,8 @@ public class PlayerManager implements ParseCallback {
             if (isExo()) scheduleNetworkProtection(0);
             if (!tracks.isEmpty() && !initTrack) {
                 playbackTrace.mark(PlaybackTrace.Stage.TRACKS, trackSummary(tracks));
-                restoreTrackSelection(Track.find(getCid(), getKey()));
+                List<Track> userTracks = explicitTrackSelection(tracks);
+                restoreTrackSelection(userTracks != null ? userTracks : Track.find(getCid(), getKey()));
                 if (engine instanceof MpvPlayerEngine mpv) {
                     mpv.completeInitialSubtitleTrackRestore();
                 }

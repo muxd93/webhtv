@@ -39,7 +39,7 @@ public class IjkBufferPolicyTest {
         assertEquals(8, decision.target().bufferMb());
         assertEquals(100, decision.target().firstWaterMs());
         assertEquals(1_000, decision.target().nextWaterMs());
-        assertEquals(3_000, decision.target().lastWaterMs());
+        assertEquals(5_000, decision.target().lastWaterMs());
         assertEquals(IjkBufferPolicy.Reason.MEMORY_UNKNOWN, decision.reason());
     }
 

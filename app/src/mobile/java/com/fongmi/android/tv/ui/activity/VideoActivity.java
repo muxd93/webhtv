@@ -111,6 +111,7 @@ import com.fongmi.android.tv.player.lyrics.LyricsLine;
 import com.fongmi.android.tv.player.lyrics.LyricsRepository;
 import com.fongmi.android.tv.player.lyrics.LyricsRequest;
 import com.fongmi.android.tv.player.lyrics.LyricsResult;
+import com.fongmi.android.tv.player.lyrics.LyricsSupport;
 import com.fongmi.android.tv.player.lut.LutPreset;
 import com.fongmi.android.tv.player.lut.LutSetting;
 import com.fongmi.android.tv.player.lut.LutStore;
@@ -1349,6 +1350,8 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
         };
     }
 
+    private DownloadTask mLocalTask;
+
     private void setOther(TextView view, Vod item) {
         StringBuilder sb = new StringBuilder();
         if (!item.getYear().isEmpty()) sb.append(getString(R.string.detail_year, item.getYear())).append("  ");
@@ -1373,6 +1376,8 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
         clearKaraokeState();
         if (shouldUseImmersiveAudio()) setAudioStageVisible(true);
         DownloadTask localTask = service() != null ? com.fongmi.android.tv.download.DownloadManager.findPlayable(getKey(), getId(), episode.getUrl()) : null;
+        // 记住当前是否为本地缓存播放：换源搜索的关键词要取缓存任务的剧名，而不是播放器上显示的文件路径
+        mLocalTask = localTask;
         if (localTask != null) {
             // 命中离线缓存：本地文件直拨，跳过 spider 解析与嗅探（边下边播时为已下分片的本地 playlist）
             updateHistory(episode);
@@ -1659,7 +1664,8 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     }
 
     private void onName() {
-        String name = mBinding.name.getText().toString();
+        // 本地缓存播放时播放器标题是文件/缓存名，用下载记录里的剧名搜回到还有效的源
+        String name = mLocalTask != null && !TextUtils.isEmpty(mLocalTask.getVodName()) ? mLocalTask.getVodName() : mBinding.name.getText().toString();
         Notify.show(getString(R.string.detail_search, name));
         showQuickSearch(name);
         initSearch(name, false);
@@ -3294,8 +3300,7 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     }
 
     private String formatLyricsOffset(long valueMs) {
-        if (valueMs == 0) return "0s";
-        return String.format(Locale.getDefault(), "%+.1fs", valueMs / 1000f);
+        return LyricsSupport.formatOffset(valueMs);
     }
 
     private interface LyricsLongSetter {
@@ -5057,10 +5062,7 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     }
 
     private String cleanAudioEpisodeForArtist(String episode) {
-        String value = Objects.toString(episode, "").trim();
-        if (value.isEmpty()) return "";
-        String[] parts = value.split("[|｜]");
-        return parts.length == 0 ? value : parts[parts.length - 1].trim();
+        return LyricsSupport.cleanEpisodeForArtist(episode);
     }
 
     private void refreshLyrics() {
@@ -5153,22 +5155,11 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     }
 
     private List<String> withLastLyricsSearchSuggestion(List<String> suggestions, String signature) {
-        String keyword = Objects.toString(mLyricsLastSearchKeyword, "").trim();
-        if (TextUtils.isEmpty(keyword) || !TextUtils.equals(mLyricsLastSearchSignature, signature)) return suggestions;
-        List<String> values = new ArrayList<>();
-        values.add(keyword);
-        for (String suggestion : suggestions) {
-            String value = Objects.toString(suggestion, "").trim();
-            if (TextUtils.isEmpty(value) || containsLyricsSearchSuggestion(values, value)) continue;
-            values.add(value);
-            if (values.size() >= 8) break;
-        }
-        return values;
+        return LyricsSupport.withLastSuggestion(suggestions, mLyricsLastSearchKeyword, mLyricsLastSearchSignature, signature);
     }
 
     private boolean containsLyricsSearchSuggestion(List<String> suggestions, String keyword) {
-        for (String suggestion : suggestions) if (suggestion.equalsIgnoreCase(keyword)) return true;
-        return false;
+        return LyricsSupport.containsSuggestion(suggestions, keyword);
     }
 
     private void searchLyrics(String keyword) {
@@ -5691,11 +5682,7 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     }
 
     private int getLyricsSelectedIndex() {
-        if (TextUtils.isEmpty(mLyricsSelectedResultKey) || mLyricsSearchResults == null) return -1;
-        for (int i = 0; i < mLyricsSearchResults.size(); i++) {
-            if (TextUtils.equals(mLyricsSelectedResultKey, getLyricsResultKey(mLyricsSearchResults.get(i)))) return i;
-        }
-        return -1;
+        return LyricsSupport.selectedIndex(mLyricsSearchResults, mLyricsSelectedResultKey);
     }
 
     private String getLyricsResultLabel(LyricsResult result) {
@@ -5706,15 +5693,7 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     }
 
     private String getLyricsResultKey(LyricsResult result) {
-        if (result == null) return "";
-        return TextUtils.join("|", new String[]{
-                String.valueOf(result.getSource()),
-                String.valueOf(result.getTrackName()),
-                String.valueOf(result.getArtistName()),
-                String.valueOf(Math.round(result.getDurationMs() / 1000.0)),
-                String.valueOf(result.hasWordTiming()),
-                String.valueOf(result.getLyrics() == null ? 0 : result.getLyrics().hashCode())
-        });
+        return LyricsSupport.resultKey(result);
     }
 
     private void clearLyrics() {
@@ -5753,7 +5732,7 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     }
 
     private String getTimedLyrics(String text) {
-        return LyricsController.hasTimedLyrics(text) ? text : "";
+        return LyricsSupport.timedLyrics(text);
     }
 
     private boolean showInlineLyrics() {
@@ -5777,18 +5756,7 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     }
 
     private String getArtistFromEpisode(String title, String episode) {
-        String name = Objects.toString(title, "").trim();
-        String value = Objects.toString(episode, "").trim();
-        if (name.isEmpty() || value.isEmpty() || TextUtils.equals(name, value)) return "";
-        for (String separator : new String[]{" - ", " – ", " — ", "-"}) {
-            if (value.startsWith(name + separator) && value.length() > name.length() + separator.length()) {
-                return value.substring(name.length() + separator.length()).trim();
-            }
-            if (value.endsWith(separator + name) && value.length() > name.length() + separator.length()) {
-                return value.substring(0, value.length() - name.length() - separator.length()).trim();
-            }
-        }
-        return value;
+        return LyricsSupport.artistFromEpisode(title, episode);
     }
 
     @Override

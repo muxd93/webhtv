@@ -26,18 +26,13 @@ public class LyricsController {
     private static final List<String> AUDIO_EXTS = List.of(".mp3", ".flac", ".wav", ".m4a", ".aac", ".ogg", ".oga", ".opus", ".ape", ".wma", ".alac", ".amr", ".mka");
 
     private final LyricsRepository repository = new LyricsRepository();
+    private final LyricsSession session = new LyricsSession();
     private final LyricsOverlayView view;
     private LyricsOverlayView secondaryView;
     private Listener listener;
-    private List<LyricsLine> lines = Collections.emptyList();
-    private LyricsResult result;
-    private String loadingSignature;
-    private String activeSignature;
-    private String emptySignature;
     private String durationWaitSignature;
     private int durationWaitAttempts;
     private Runnable durationWaitRunnable;
-    private int sequence;
 
     public interface Callback {
         void onResult(LyricsResult result);
@@ -61,7 +56,7 @@ public class LyricsController {
 
     public void setListener(Listener listener) {
         this.listener = listener;
-        if (result != null && !lines.isEmpty()) notifyListener();
+        if (session.result() != null && !session.lines().isEmpty()) notifyListener();
     }
 
     public void refresh(PlayerManager player) {
@@ -83,39 +78,35 @@ public class LyricsController {
             return;
         }
         String signature = request.stableSignature();
-        if (signature.equals(activeSignature) || signature.equals(loadingSignature) || signature.equals(emptySignature)) {
-            if (SpiderDebug.isEnabled()) SpiderDebug.log(TAG, "refresh skip title=%s artist=%s parse=%s active=%s loading=%s empty=%s", request.getTitle(), request.getArtist(), request.getParseInfo(), signature.equals(activeSignature), signature.equals(loadingSignature), signature.equals(emptySignature));
+        if (session.isKnown(signature)) {
+            if (SpiderDebug.isEnabled()) SpiderDebug.log(TAG, "refresh skip title=%s artist=%s parse=%s active=%s loading=%s empty=%s", request.getTitle(), request.getArtist(), request.getParseInfo(), signature.equals(session.active()), signature.equals(session.loading()), signature.equals(session.empty()));
             return;
         }
         if (shouldWaitDuration(player, audioOnly, request)) return;
         if (request.getDurationMs() > 0) cancelDurationWait();
         if (SpiderDebug.isEnabled()) SpiderDebug.log(TAG, "refresh start title=%s artist=%s parse=%s duration=%d", request.getTitle(), request.getArtist(), request.getParseInfo(), request.getDurationMs());
-        loadingSignature = signature;
-        activeSignature = null;
-        lines = Collections.emptyList();
+        int current = session.begin(signature);
         clearViews();
-        int current = ++sequence;
         repository.loadPreferWord(request, result -> {
-            if (current != sequence) {
-                if (SpiderDebug.isEnabled()) SpiderDebug.log(TAG, "refresh drop stale title=%s current=%d sequence=%d", request.getTitle(), current, sequence);
+            if (!session.isCurrent(current)) {
+                if (SpiderDebug.isEnabled()) SpiderDebug.log(TAG, "refresh drop stale title=%s current=%d sequence=%d", request.getTitle(), current, session.getSequence());
                 return;
             }
-            loadingSignature = null;
+            session.settleLoading();
             if (result == null || !result.isValid()) {
                 if (SpiderDebug.isEnabled()) SpiderDebug.log(TAG, "refresh empty title=%s artist=%s parse=%s", request.getTitle(), request.getArtist(), request.getParseInfo());
-                emptySignature = signature;
+                session.markEmpty(signature);
                 clearViews();
                 return;
             }
             ArrayList<LyricsLine> parsed = new ArrayList<>(result.getLines(request.getDurationMs()));
             if (parsed.isEmpty()) {
                 if (SpiderDebug.isEnabled()) SpiderDebug.log(TAG, "refresh parsed empty source=%s track=%s artist=%s synced=%s word=%s lyrics=%d", result.getSource(), result.getTrackName(), result.getArtistName(), result.isSynced(), result.hasWordTiming(), result.getLyrics() == null ? 0 : result.getLyrics().length());
-                emptySignature = signature;
+                session.markEmpty(signature);
                 clearViews();
                 return;
             }
-            activeSignature = signature;
-            lines = parsed;
+            session.applyLoaded(signature, result, parsed);
             setLyrics(result, parsed);
             update(player);
             if (SpiderDebug.isEnabled()) SpiderDebug.log(TAG, "refresh applied source=%s track=%s artist=%s lines=%d synced=%s word=%s", result.getSource(), result.getTrackName(), result.getArtistName(), parsed.size(), result.isSynced(), result.hasWordTiming());
@@ -145,31 +136,26 @@ public class LyricsController {
             return;
         }
         String signature = request.stableSignature();
-        loadingSignature = signature;
-        activeSignature = null;
-        emptySignature = null;
-        lines = Collections.emptyList();
+        int current = session.beginReload(signature);
         clearViews();
         notifyListener();
-        int current = ++sequence;
         repository.loadPreferWord(request, true, result -> {
-            if (current != sequence) return;
-            loadingSignature = null;
+            if (!session.isCurrent(current)) return;
+            session.settleLoading();
             if (result == null || !result.isValid()) {
-                emptySignature = signature;
+                session.markEmpty(signature);
                 clearViews();
                 if (callback != null) callback.onResult(null);
                 return;
             }
             ArrayList<LyricsLine> parsed = new ArrayList<>(result.getLines(request.getDurationMs()));
             if (parsed.isEmpty()) {
-                emptySignature = signature;
+                session.markEmpty(signature);
                 clearViews();
                 if (callback != null) callback.onResult(null);
                 return;
             }
-            activeSignature = signature;
-            lines = parsed;
+            session.applyLoaded(signature, result, parsed);
             setLyrics(result, parsed);
             update(player);
             if (callback != null) callback.onResult(result);
@@ -206,35 +192,29 @@ public class LyricsController {
             if (callback != null) callback.onResult(null);
             return;
         }
-        int current = ++sequence;
-        loadingSignature = null;
-        emptySignature = null;
-        activeSignature = request.stableSignature();
-        lines = parsed;
+        int current = session.nextSequence();
+        session.applyChoice(request.stableSignature(), result, parsed);
         setLyrics(result, parsed);
         update(player);
         if (remember) repository.remember(request, result);
-        if (current == sequence && callback != null) callback.onResult(result);
+        if (session.isCurrent(current) && callback != null) callback.onResult(result);
     }
 
     public boolean setInlineLyrics(String signature, String title, String artist, String lyrics, long durationMs, long positionMs) {
         if (!hasTimedLyrics(lyrics)) return false;
         String key = Util.md5(TextUtils.join("|", new String[]{safe(signature), safe(title), safe(artist), String.valueOf(lyrics.hashCode())}));
-        if (key.equals(activeSignature) && !lines.isEmpty()) {
+        if (session.isInlineActive(key)) {
             update(positionMs);
             return true;
         }
-        int current = ++sequence;
+        int current = session.nextSequence();
         LyricsResult result = new LyricsResult("Detail", title, artist, "", lyrics, durationMs, true, 100);
         ArrayList<LyricsLine> parsed = new ArrayList<>(result.getLines(durationMs));
-        if (current != sequence || parsed.isEmpty()) {
+        if (!session.isCurrent(current) || parsed.isEmpty()) {
             clear();
             return false;
         }
-        loadingSignature = null;
-        emptySignature = null;
-        activeSignature = key;
-        lines = parsed;
+        session.applyChoice(key, result, parsed);
         setLyrics(result, parsed);
         update(positionMs);
         if (!result.hasWordTiming()) upgradeInlineLyrics(current, key, signature, title, artist, durationMs, positionMs);
@@ -245,31 +225,31 @@ public class LyricsController {
         LyricsRequest request = new LyricsRequest(signature, "", title, artist, "", durationMs);
         if (!request.isValid()) return;
         String requestSignature = request.stableSignature();
-        if (requestSignature.equals(loadingSignature) || requestSignature.equals(emptySignature)) return;
-        loadingSignature = requestSignature;
+        if (requestSignature.equals(session.loading()) || requestSignature.equals(session.empty())) return;
+        session.markLoading(requestSignature);
         repository.loadPreferWord(request, result -> {
-            if (current != sequence || !inlineKey.equals(activeSignature)) return;
-            if (requestSignature.equals(loadingSignature)) loadingSignature = null;
+            if (!session.isCurrent(current) || !inlineKey.equals(session.active())) return;
+            session.settleLoading(requestSignature);
             if (result == null || !result.isValid() || !result.hasWordTiming()) {
-                emptySignature = requestSignature;
+                session.markEmpty(requestSignature);
                 return;
             }
             ArrayList<LyricsLine> parsed = new ArrayList<>(result.getLines(durationMs));
             if (parsed.isEmpty() || !hasWordTiming(parsed)) {
-                emptySignature = requestSignature;
+                session.markEmpty(requestSignature);
                 return;
             }
-            emptySignature = null;
-            lines = parsed;
+            session.clearEmpty();
+            session.applyLines(result, parsed);
             setLyrics(result, parsed);
             update(positionMs);
         });
     }
 
     public void update(long positionMs) {
-        if (lines.isEmpty()) return;
-        view.update(adjust(positionMs));
-        if (secondaryView != null) secondaryView.update(adjust(positionMs));
+        if (session.lines().isEmpty()) return;
+        view.update(LyricsSupport.adjust(positionMs, PlayerSetting.getLyricsTimeOffsetMs()));
+        if (secondaryView != null) secondaryView.update(LyricsSupport.adjust(positionMs, PlayerSetting.getLyricsTimeOffsetMs()));
     }
 
     public void update(PlayerManager player) {
@@ -278,8 +258,8 @@ public class LyricsController {
     }
 
     public void update(PlayerManager player, boolean playing) {
-        if (player == null || lines.isEmpty()) return;
-        long position = adjust(player.getPosition());
+        if (player == null || session.lines().isEmpty()) return;
+        long position = LyricsSupport.adjust(player.getPosition(), PlayerSetting.getLyricsTimeOffsetMs());
         view.update(position, playing);
         if (secondaryView != null) secondaryView.update(position, playing);
     }
@@ -290,7 +270,7 @@ public class LyricsController {
     }
 
     public List<LyricsLine> getLines() {
-        return lines;
+        return session.lines();
     }
 
     public void applySnapshot(LyricsResult result, List<LyricsLine> lines, PlayerManager player) {
@@ -299,22 +279,16 @@ public class LyricsController {
             return;
         }
         cancelDurationWait();
-        sequence++;
-        loadingSignature = null;
-        emptySignature = null;
-        activeSignature = "snapshot";
-        this.lines = new ArrayList<>(lines);
-        setLyrics(result, this.lines);
+        session.nextSequence();
+        List<LyricsLine> copy = new ArrayList<>(lines);
+        session.applyChoice("snapshot", result, copy);
+        setLyrics(result, copy);
         update(player);
     }
 
     public void clear() {
         cancelDurationWait();
-        sequence++;
-        loadingSignature = null;
-        activeSignature = null;
-        emptySignature = null;
-        lines = Collections.emptyList();
+        session.clear();
         clearViews();
     }
 
@@ -344,7 +318,6 @@ public class LyricsController {
     }
 
     private void setLyrics(LyricsResult result, List<LyricsLine> lines) {
-        this.result = result;
         view.setLyrics(result, lines);
         if (secondaryView != null) secondaryView.setLyrics(result, lines);
         notifyListener();
@@ -352,13 +325,13 @@ public class LyricsController {
 
     private void clearViews() {
         if (SpiderDebug.isEnabled()) SpiderDebug.log(TAG, "views clear");
-        result = null;
+        session.clearResult();
         view.clear();
         if (secondaryView != null) secondaryView.clear();
     }
 
     private void notifyListener() {
-        if (listener != null) listener.onLyricsChanged(result, new ArrayList<>(lines));
+        if (listener != null) listener.onLyricsChanged(session.result(), new ArrayList<>(session.lines()));
     }
 
     public void release() {
@@ -434,9 +407,5 @@ public class LyricsController {
     private static boolean hasWordTiming(List<LyricsLine> lines) {
         for (LyricsLine line : lines) if (line.hasWords()) return true;
         return false;
-    }
-
-    private static long adjust(long positionMs) {
-        return Math.max(0, positionMs + PlayerSetting.getLyricsTimeOffsetMs());
     }
 }

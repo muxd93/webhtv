@@ -82,9 +82,7 @@ public class MediaSourceFactory implements MediaSource.Factory {
     }
 
     static DataSource.Factory createUpstreamDataSourceFactory(Map<String, String> headers) {
-        OkHttpDataSource.Factory factory = new OkHttpDataSource.Factory(OkHttp.player());
-        applyHeaders(factory, headers);
-        DataSource.Factory upstream = new DefaultDataSource.Factory(App.get(), factory);
+        DataSource.Factory upstream = new DefaultDataSource.Factory(App.get(), createHttpDataSourceFactory(headers));
         DataSource.Factory recovered = new HttpEofRecoveryDataSource.Factory(upstream);
         return new PriorityTaskDataSource.Factory(recovered, PLAYBACK_PRIORITY_MANAGER, C.PRIORITY_PLAYBACK_PRELOAD, true);
     }
@@ -207,23 +205,27 @@ public class MediaSourceFactory implements MediaSource.Factory {
     @NonNull
     @Override
     public MediaSource createMediaSource(@NonNull MediaItem mediaItem) {
-        applyHeaders(getHttpDataSourceFactory(), ExoUtil.extractHeaders(mediaItem));
+        // Headers belong to this MediaSource only. Mutating a shared factory would
+        // let a previous source's loader threads observe the next item's credentials.
+        DataSource.Factory itemDataSource = buildDataSourceFactory(createHttpDataSourceFactory(ExoUtil.extractHeaders(mediaItem)));
         String url = mediaItem.requestMetadata.mediaUri != null ? mediaItem.requestMetadata.mediaUri.toString() : "";
         AssFontSet fonts = assSession == null ? null : assSession.beginMediaFonts();
-        if (isConcatenatingUrl(url)) return createConcatenatingMediaSource(mediaItem, url);
+        if (isConcatenatingUrl(url)) return createConcatenatingMediaSource(mediaItem, url, itemDataSource);
         if (fonts != null || mediaItem.localConfiguration != null && mediaItem.localConfiguration.tag instanceof com.fongmi.android.tv.player.PlaybackDiagnosticCollector.Context) {
             // Bind the collection to this source's extractors. Old loaders cannot populate a new video.
             // Container ASS needs its attachments even when no external subtitle was configured.
-            return new DefaultMediaSourceFactory(getDataSourceFactory(), Media3DiagnosticBridge.extractors(buildExtractorsFactory(fonts), mediaItem))
+            return new DefaultMediaSourceFactory(itemDataSource, Media3DiagnosticBridge.extractors(buildExtractorsFactory(fonts), mediaItem))
                     .setLoadOnlySelectedTracks(PlaybackPerformanceSetting.isLoadOnlySelectedTracksEnabled())
                     .createMediaSource(mediaItem);
         }
-        else return defaultMediaSourceFactory.createMediaSource(mediaItem);
+        else return new DefaultMediaSourceFactory(itemDataSource, getExtractorsFactory())
+                .setLoadOnlySelectedTracks(PlaybackPerformanceSetting.isLoadOnlySelectedTracksEnabled())
+                .createMediaSource(mediaItem);
     }
 
-    private MediaSource createConcatenatingMediaSource(MediaItem mediaItem, String url) {
+    private MediaSource createConcatenatingMediaSource(MediaItem mediaItem, String url, DataSource.Factory itemDataSource) {
         ConcatenatingMediaSource2.Builder builder = new ConcatenatingMediaSource2.Builder();
-        DefaultMediaSourceFactory sourceFactory = new DefaultMediaSourceFactory(getDataSourceFactory(),
+        DefaultMediaSourceFactory sourceFactory = new DefaultMediaSourceFactory(itemDataSource,
                 Media3DiagnosticBridge.extractors(getExtractorsFactory(), mediaItem))
                 .setLoadOnlySelectedTracks(PlaybackPerformanceSetting.isLoadOnlySelectedTracksEnabled());
         for (String split : url.split(CONCAT_SOURCE_SEPARATOR_REGEX)) {
@@ -268,12 +270,14 @@ public class MediaSourceFactory implements MediaSource.Factory {
     }
 
     private DataSource.Factory getDataSourceFactory() {
-        if (dataSourceFactory == null) {
-            DataSource.Factory cacheDataSource = getCacheDataSource(new DefaultDataSource.Factory(App.get(), getHttpDataSourceFactory()));
-            DataSource.Factory trackedDataSource = new PlaybackBytePositionDataSource.Factory(cacheDataSource);
-            dataSourceFactory = new PriorityTaskDataSource.Factory(trackedDataSource, PLAYBACK_PRIORITY_MANAGER, C.PRIORITY_PLAYBACK, false);
-        }
+        if (dataSourceFactory == null) dataSourceFactory = buildDataSourceFactory(getHttpDataSourceFactory());
         return dataSourceFactory;
+    }
+
+    private DataSource.Factory buildDataSourceFactory(OkHttpDataSource.Factory httpFactory) {
+        DataSource.Factory cacheDataSource = getCacheDataSource(new DefaultDataSource.Factory(App.get(), httpFactory));
+        DataSource.Factory trackedDataSource = new PlaybackBytePositionDataSource.Factory(cacheDataSource);
+        return new PriorityTaskDataSource.Factory(trackedDataSource, PLAYBACK_PRIORITY_MANAGER, C.PRIORITY_PLAYBACK, false);
     }
 
     private CacheDataSource.Factory getCacheDataSource(DataSource.Factory upstreamFactory) {
@@ -288,6 +292,16 @@ public class MediaSourceFactory implements MediaSource.Factory {
     private OkHttpDataSource.Factory getHttpDataSourceFactory() {
         if (httpDataSourceFactory == null) httpDataSourceFactory = new OkHttpDataSource.Factory(OkHttp.player());
         return httpDataSourceFactory;
+    }
+
+    /**
+     * Builds a header-carrying http factory for a single MediaSource, so the
+     * per-item credentials never leak into a factory that older sources still use.
+     */
+    private static OkHttpDataSource.Factory createHttpDataSourceFactory(Map<String, String> headers) {
+        OkHttpDataSource.Factory factory = new OkHttpDataSource.Factory(OkHttp.player());
+        applyHeaders(factory, headers);
+        return factory;
     }
 
     private static void applyHeaders(OkHttpDataSource.Factory factory, Map<String, String> headers) {

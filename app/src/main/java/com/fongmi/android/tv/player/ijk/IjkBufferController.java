@@ -8,6 +8,14 @@ public final class IjkBufferController {
     public static final long RELOAD_COOLDOWN_MS = 30_000L;
     public static final long EARLY_SCENE_WINDOW_MS = 20_000L;
     public static final int MAX_RELOAD_ATTEMPTS = 3;
+    /**
+     * Cumulative rebuffers that prove the current buffer depth is insufficient.
+     * Stall duration alone no longer qualifies: the device log showed 2s stalls
+     * with 36.8s of native cache and the disk preload 36.8s ahead, while the gate
+     * was only ever evaluated 12-22ms into the stall, and a reload cost 2.5s of
+     * reopen plus another 1.4s of stalling afterwards.
+     */
+    public static final int REBUFFER_RELOAD_MIN_COUNT = 3;
 
     private PlaybackAutoContext.SessionToken session =
             PlaybackAutoContext.SessionToken.none();
@@ -121,14 +129,23 @@ public final class IjkBufferController {
         boolean earlySceneShrink = trigger == Trigger.MANIFEST
                 && shrinks
                 && now - startedAtElapsedMs <= EARLY_SCENE_WINDOW_MS;
-        boolean rebufferExpansion = newRebuffer && expands && buffering;
+        boolean rebufferConfirmed = buffering
+                && rebufferCount >= REBUFFER_RELOAD_MIN_COUNT;
+        boolean rebufferExpansion = rebufferConfirmed && expands;
+        boolean deferredRebufferExpansion = expands && buffering
+                && rebufferCount > 0 && !rebufferExpansion;
         boolean reload = hardSafety || earlySceneShrink || rebufferExpansion;
         if (!reload) {
             stagedConfig = target;
-            Reason reason = expands
-                    ? firstFrameRendered ? Reason.HEALTHY_EXPANSION_DEFERRED
-                    : Reason.STARTUP_EXPANSION_DEFERRED
-                    : Reason.NONCRITICAL_CHANGE_DEFERRED;
+            Reason reason;
+            if (deferredRebufferExpansion) {
+                reason = Reason.REBUFFER_EXPANSION_DEFERRED;
+            } else if (expands) {
+                reason = firstFrameRendered ? Reason.HEALTHY_EXPANSION_DEFERRED
+                        : Reason.STARTUP_EXPANSION_DEFERRED;
+            } else {
+                reason = Reason.NONCRITICAL_CHANGE_DEFERRED;
+            }
             return new Decision(Action.STAGE, current, target, safe, reason,
                     cooldownRemaining(now), newRebuffer);
         }
@@ -366,6 +383,7 @@ public final class IjkBufferController {
         SAFETY_RELOAD("safety-reload"),
         EARLY_SCENE_RELOAD("early-scene-reload"),
         REBUFFER_RELOAD("rebuffer-reload"),
+        REBUFFER_EXPANSION_DEFERRED("rebuffer-expansion-deferred"),
         REALTIME_RECOVERY_RELOAD("realtime-recovery-reload"),
         DECODE_PRESSURE_RELOAD("decode-pressure-reload"),
         EXPERIMENT_DISABLED("experiment-disabled"),
