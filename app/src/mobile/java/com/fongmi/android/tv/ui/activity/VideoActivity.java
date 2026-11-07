@@ -154,6 +154,7 @@ import com.fongmi.android.tv.ui.dialog.TrackDialog;
 import com.fongmi.android.tv.ui.dialog.VideoContentDialog;
 import com.fongmi.android.tv.utils.Clock;
 import com.fongmi.android.tv.utils.EpisodeTitleCompact;
+import com.fongmi.android.tv.utils.FeatureGate;
 import com.fongmi.android.tv.utils.FileChooser;
 import com.fongmi.android.tv.utils.ImgUtil;
 import com.fongmi.android.tv.utils.Notify;
@@ -994,7 +995,7 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     }
 
     private void setVideoView() {
-        mBinding.control.action.danmaku.setVisibility(View.VISIBLE);
+        mBinding.control.action.danmaku.setVisibility(FeatureGate.danmaku() ? View.VISIBLE : View.GONE);
         mBinding.control.action.reset.setText(ResUtil.getStringArray(R.array.select_reset)[Setting.getReset()]);
         setupActionButtons();
         mBinding.video.addOnLayoutChangeListener((view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
@@ -4213,7 +4214,7 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
         }
         setTrackVisible();
         hideWidgetOverlay();
-        mBinding.control.danmaku.setVisibility(isLock() || !player().haveDanmaku() ? View.GONE : View.VISIBLE);
+        mBinding.control.danmaku.setVisibility(isLock() || !player().haveDanmaku() || !FeatureGate.danmaku() ? View.GONE : View.VISIBLE);
         mBinding.control.setting.setVisibility(View.GONE);
         mBinding.control.right.rotate.setVisibility(isFullscreen() && !isLock() ? View.VISIBLE : View.GONE);
         mBinding.control.fullscreen.setVisibility(isLock() ? View.GONE : View.VISIBLE);

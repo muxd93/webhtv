@@ -68,6 +68,7 @@ import com.fongmi.android.tv.player.ijk.IjkRealtimeRecoveryPolicy;
 import com.fongmi.android.tv.player.ijk.IjkRuntimeProfileController;
 import com.fongmi.android.tv.player.ijk.IjkRuntimeProfilePolicy;
 import com.fongmi.android.tv.player.ijk.IjkRuntimeProfiles;
+import com.fongmi.android.tv.player.danmaku.DanmakuGate;
 import com.fongmi.android.tv.player.danmaku.DanmakuUrlPolicy;
 import com.fongmi.android.tv.player.danmaku.LiveDanmakuBatcher;
 import com.fongmi.android.tv.player.danmaku.LiveDanmakuBuffer;
@@ -958,6 +959,7 @@ public class PlayerManager implements ParseCallback {
     }
 
     private void restoreDanmakuDataSource() {
+        if (!danmakuEnabled()) return;
         if (danmakuController == null || TextUtils.isEmpty(currentDanmakuUrl)) return;
         if (!DanmakuUrlPolicy.classify(currentDanmakuUrl).isStatic()) return;
         loadingDanmakuKey = currentDanmakuKey;
@@ -6032,7 +6034,16 @@ public class PlayerManager implements ParseCallback {
         }
     }
 
+    /** 静态加载=是否拉取，显示=是否上屏；两者都关闭才算禁用，避免关显示后仍预加载的合法用法被破坏。 */
+    private boolean danmakuEnabled() {
+        return DanmakuGate.enabled(DanmakuSetting.isLoad(), DanmakuSetting.isShow());
+    }
+
     private void setDanmakus(List<Danmaku> items) {
+        if (!danmakuEnabled()) {
+            if (SpiderDebug.isEnabled()) SpiderDebug.log("danmaku", "skip auto load: disabled");
+            return;
+        }
         setDanmaku(items == null || items.isEmpty() ? Danmaku.empty() : items.get(0));
     }
 

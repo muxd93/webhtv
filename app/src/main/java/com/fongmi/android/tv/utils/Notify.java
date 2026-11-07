@@ -15,12 +15,18 @@ import androidx.core.content.ContextCompat;
 
 import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.databinding.ViewProgressBinding;
+import com.fongmi.android.tv.player.danmaku.DanmakuGate;
+import com.fongmi.android.tv.setting.DanmakuSetting;
+import com.github.catvod.crawler.SpiderDebug;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
 public class Notify {
 
     public static final String DEFAULT = "default";
     public static final int ID = 9527;
+    /** 诊断时只扫描栈顶 8 帧：Toast 调用链通常 1~3 帧，8 帧可覆盖 App.post 之类的包装，且不遍历整条调用栈。 */
+    private static final int TRACE_FRAMES = 8;
+    private static final int TRACE_TEXT_LIMIT = 40;
     private AlertDialog mDialog;
     private Toast mToast;
 
@@ -52,7 +58,38 @@ public class Notify {
     }
 
     public static void show(String text) {
-        if (!TextUtils.isEmpty(text)) get().makeText(text);
+        if (TextUtils.isEmpty(text)) return;
+        boolean tracing = SpiderDebug.isEnabled();
+        boolean danmakuEnabled = DanmakuGate.enabled(DanmakuSetting.isLoad(), DanmakuSetting.isShow());
+        if (!danmakuEnabled || tracing) {
+            StackTraceElement caller = findCaller(Thread.currentThread().getStackTrace());
+            String callerName = caller == null ? null : caller.getClassName();
+            if (ThirdPartyToastPolicy.shouldSuppress(callerName, DanmakuSetting.isExplicitlyConfigured(), danmakuEnabled)) {
+                if (tracing) SpiderDebug.log("notify", "suppressed third-party toast caller=%s text=%s", describe(caller), summarize(text));
+                return;
+            }
+            if (tracing) SpiderDebug.log("notify", "show caller=%s text=%s", describe(caller), summarize(text));
+        }
+        get().makeText(text);
+    }
+
+    private static String describe(StackTraceElement caller) {
+        return caller == null ? "unknown reason=unknown-caller" : caller.toString();
+    }
+
+    private static StackTraceElement findCaller(StackTraceElement[] stack) {
+        int end = Math.min(stack.length, 1 + TRACE_FRAMES);
+        for (int i = 1; i < end; i++) {
+            String cls = stack[i].getClassName();
+            if (Notify.class.getName().equals(cls) || Thread.class.getName().equals(cls)) continue;
+            return stack[i];
+        }
+        return null;
+    }
+
+    private static String summarize(String text) {
+        String oneLine = text.replace('\n', ' ').replace('\r', ' ').trim();
+        return oneLine.length() <= TRACE_TEXT_LIMIT ? oneLine : oneLine.substring(0, TRACE_TEXT_LIMIT) + "…";
     }
 
     public static void progress(Context context) {

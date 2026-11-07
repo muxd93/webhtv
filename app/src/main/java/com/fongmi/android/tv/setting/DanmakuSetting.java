@@ -6,13 +6,16 @@ import android.text.TextUtils;
 import androidx.media3.ui.danmaku.DanmakuConfig;
 
 import com.fongmi.android.tv.api.config.VodConfig;
+import com.fongmi.android.tv.player.danmaku.DanmakuGate;
+import com.fongmi.android.tv.utils.FeatureGate;
 import com.fongmi.android.tv.utils.Util;
 import com.github.catvod.utils.Prefers;
 
 public class DanmakuSetting {
 
+    /** 编译期关闭弹幕时一律视为未开启，令所有既有短路自动生效。 */
     public static boolean isLoad() {
-        return Prefers.getBoolean("danmaku_load");
+        return DanmakuGate.allowed(FeatureGate.danmaku(), Prefers.getBoolean("danmaku_load"));
     }
 
     public static void putLoad(boolean danmakuLoad) {
@@ -43,8 +46,14 @@ public class DanmakuSetting {
         Prefers.put("danmaku_api_url", url == null ? "" : url.trim());
     }
 
+    /** 编译期关闭弹幕时一律视为未开启，令所有既有短路自动生效。 */
     public static boolean isShow() {
-        return Prefers.getBoolean("danmaku_show");
+        return DanmakuGate.allowed(FeatureGate.danmaku(), Prefers.getBoolean("danmaku_show"));
+    }
+
+    /** 默认值即关闭，用"键是否存在"区分"从未开启"与"用户显式关闭"。 */
+    public static boolean isExplicitlyConfigured() {
+        return Prefers.getPrefers().contains("danmaku_load") || Prefers.getPrefers().contains("danmaku_show");
     }
 
     public static void putShow(boolean danmakuShow) {

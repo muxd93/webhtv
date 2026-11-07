@@ -27,8 +27,6 @@ import com.fongmi.android.tv.player.mpv.PlaybackRecoveryMonitor;
 import com.fongmi.android.tv.remote.RemoteAgent;
 import com.fongmi.android.tv.setting.ProxySetting;
 import com.fongmi.android.tv.setting.Setting;
-import com.fongmi.android.tv.utils.DanmakuSearchListFocusFixer;
-import com.fongmi.android.tv.utils.FeatureGate;
 import com.fongmi.android.tv.utils.NsdDeviceDiscovery;
 import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.PreviousProcessExitLogger;
@@ -128,7 +126,6 @@ public class App extends Application implements Application.ActivityLifecycleCal
         safe(ProxySetting::apply, "proxy");
         safe(RulePool::apply, "rule_pool");
         safe(this::fixLeakedConfigNames, "config_name_fix");
-        if (FeatureGate.danmaku()) DanmakuSearchListFocusFixer.start();
         registerActivityLifecycleCallbacks(this);
         post(this::startBackgroundServices, 1200);
     }
