@@ -1898,12 +1898,13 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
 
     private void updateDownloadButton() {
         Episode episode = getEpisode();
-        String text = episode == null ? null : com.fongmi.android.tv.download.DownloadManager.buttonText(getKey(), getId(), episode.getUrl());
+        String text = episode == null ? null : com.fongmi.android.tv.download.DownloadManager.buttonTextCached(getKey(), getId(), episode.getUrl());
         mBinding.download.setText(text == null ? ResUtil.getString(R.string.download_action) : text);
     }
 
     @Subscribe(threadMode = ThreadMode.MAIN)
     public void onDownloadEvent(com.fongmi.android.tv.download.DownloadEvent event) {
+        if (event.isStateChange()) com.fongmi.android.tv.download.DownloadManager.invalidateButtonText();
         updateDownloadButton();
     }
 
@@ -1917,8 +1918,7 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
 
     private void onDownload() {
         if (!com.fongmi.android.tv.download.DownloadPath.writable()) {
-            Notify.show(R.string.download_permission);
-            com.fongmi.android.tv.download.DownloadPath.openPermissionSettings(this);
+            com.fongmi.android.tv.download.DownloadPath.requestPermission(this);
             return;
         }
         List<Flag> flags = mFlagAdapter == null ? new ArrayList<>() : mFlagAdapter.getItems();

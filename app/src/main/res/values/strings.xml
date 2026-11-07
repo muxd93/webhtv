@@ -687,8 +687,12 @@
     <string name="config_preset_filled">Preset source filled in; press OK again to save</string>
     <string name="config_section_depot">Depot sources</string>
     <string name="config_section_single">Single sources</string>
+    <string name="config_list_loading">Loading sources…</string>
     <string name="config_badge_depot">Depot %1$d</string>
     <string name="config_badge_current">Current</string>
+    <string name="config_badge_health">Failed %1$d× (%2$s), retry in %3$d min</string>
+    <string name="config_badge_health_plain">Failed %1$d×, retry in %2$d min</string>
+    <string name="config_badge_health_multi">%1$d children failed, retry in %2$d min</string>
     <string name="config_delete_title">Delete source</string>
     <string name="config_delete_single">Delete this source? Watch history and favorites are kept and marked as "source unavailable". Its site preferences are also removed.</string>
     <string name="config_delete_depot">Delete this depot and its %1$d sub-sources? Watch history and favorites are kept and marked as "source unavailable". Their site preferences are also removed.</string>
@@ -1611,6 +1615,9 @@
     <string name="download_start">Start caching</string>
     <string name="download_episode_hint">Select episodes to cache</string>
     <string name="download_permission">Grant \"All files access\" to cache into the public Movies directory</string>
+    <string name="download_permission_manual">No \"All files access\" page on this device. Open Settings > Apps > Special app access > All files access, allow it, then retry; without it, caching cannot write to the public Movies folder.</string>
+    <string name="home_source_empty_title">No sources added yet</string>
+    <string name="home_source_empty_message">Add a VOD source before using the home page. Once added, return here and the content will load.</string>
     <string name="download_drm">DRM-protected content cannot be cached</string>
     <string name="download_dash">DASH streams are not supported yet</string>
     <string name="download_unsupported">This address does not support offline caching</string>

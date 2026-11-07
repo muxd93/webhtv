@@ -22,6 +22,7 @@ import com.fongmi.android.tv.event.RefreshEvent;
 import com.fongmi.android.tv.utils.FileUtil;
 import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.ResUtil;
+import com.fongmi.android.tv.utils.Task;
 import com.github.catvod.crawler.SpiderDebug;
 
 import java.io.File;
@@ -31,6 +32,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 public class DownloadService extends Service {
 
@@ -52,6 +54,14 @@ public class DownloadService extends Service {
     private PowerManager.WakeLock wakeLock;
     private boolean destroyed;
     private int completedCount;
+
+    /** 单测注入点：替换解析阶段，让调度行为可在不起真实网络请求的前提下被观察（生产为 null） */
+    static volatile Resolver resolver;
+
+    interface Resolver {
+
+        void resolve(String siteKey, String flag, String episodeUrl, DownloadResolver.Callback callback);
+    }
 
     @Override
     public void onCreate() {
@@ -119,7 +129,7 @@ public class DownloadService extends Service {
         boolean unmetered = hasUnmeteredNetwork();
         if (DownloadManager.isWifiOnly() && !unmetered) {
             SpiderDebug.log("download", "schedule blocked reason=no-unmetered-network queued=%d", DownloadStore.queued().size());
-            pauseRunningForNetwork();
+            pauseForNetwork();
             return;
         }
         // 网络恢复：因断网自动暂停的任务自动续传（用户手动暂停的不动）
@@ -153,13 +163,28 @@ public class DownloadService extends Service {
             started++;
         }
         SpiderDebug.log("download", "schedule done slots=%d started=%d queuedLeft=%d", slots.size(), started, DownloadStore.queued().size());
-        if (slots.isEmpty()) {
+        // 有退避中的排队任务时不能退出：定时唤醒与网络回调都挂在服务实例上，服务一停任务就永远停在排队
+        boolean retryPending = hasPendingRetry(now);
+        if (slots.isEmpty() && !retryPending) {
             releaseWakeLock();
             DownloadNotifier.cancel(DownloadNotifier.ID);
             stopSelf();
+        } else if (slots.isEmpty()) {
+            releaseWakeLock();
+            DownloadNotifier.notify(DownloadNotifier.ID, DownloadNotifier.waiting(DownloadStore.queued().size()));
         } else {
             updateNotification();
         }
+    }
+
+    /** 是否有尚未到期的退避重试（对应任务仍在排队且未被删除） */
+    private boolean hasPendingRetry(long now) {
+        for (Map.Entry<String, Long> entry : retryAt.entrySet()) {
+            if (entry.getValue() <= now) continue;
+            DownloadTask task = DownloadStore.find(entry.getKey());
+            if (task != null && task.getState() == DownloadTask.STATE_QUEUED) return true;
+        }
+        return false;
     }
 
     /** 统一剪枝：任务被暂停/删除/完成后，取消仍在运行的槽位（状态由 DownloadManager 先行落库） */
@@ -192,7 +217,7 @@ public class DownloadService extends Service {
     private void runTask(Slot slot) {
         if (slot.canceled) return;
         DownloadTask task = slot.task;
-        DownloadResolver.resolve(task.getSiteKey(), task.getVodFlag(), task.getEpisodeUrl(), new DownloadResolver.Callback() {
+        DownloadResolver.Callback callback = new DownloadResolver.Callback() {
 
             @Override
             public void onSuccess(String url, Map<String, String> headers) {
@@ -204,7 +229,10 @@ public class DownloadService extends Service {
             public void onError(String msg) {
                 fail(slot, msg);
             }
-        });
+        };
+        Resolver custom = resolver;
+        if (custom != null) custom.resolve(task.getSiteKey(), task.getVodFlag(), task.getEpisodeUrl(), callback);
+        else DownloadResolver.resolve(task.getSiteKey(), task.getVodFlag(), task.getEpisodeUrl(), callback);
     }
 
     private void onResolved(Slot slot, String url, Map<String, String> headers) {
@@ -401,7 +429,7 @@ public class DownloadService extends Service {
         if (task == null) return;
         if (task.isCompleted()) return;
         SpiderDebug.log("download", "task failed id=%s msg=%s retryCount=%d", task.getId(), msg, task.getRetryCount());
-        finishSlot(slot);
+        // 先落定任务状态、再释放槽位：否则调度线程可能撞上「槽位已空、退避尚未记录」的窗口，判定无事可做并退出服务
         // 瞬时错误自动退避重试（最多 3 次）；DRM/格式不支持/直播等确定性错误直接失败
         if (isTransient(msg) && task.getRetryCount() < MAX_AUTO_RETRY) {
             int attempt = task.getRetryCount() + 1;
@@ -410,8 +438,12 @@ public class DownloadService extends Service {
             task.setStopReason(DownloadTask.STOP_NONE);
             task.setErrorMsg("");
             task.save();
-            retryAt.put(task.getId(), System.currentTimeMillis() + RETRY_BACKOFF_MS[Math.min(attempt, RETRY_BACKOFF_MS.length) - 1]);
+            long delay = RETRY_BACKOFF_MS[Math.min(attempt, RETRY_BACKOFF_MS.length) - 1];
+            retryAt.put(task.getId(), System.currentTimeMillis() + delay);
             DownloadEvent.state(task.getId());
+            // 退避期间可能没有槽位也没人再触发调度，必须由服务自己在到期时唤醒一次
+            scheduleWake(delay);
+            finishSlot(slot);
             schedule();
             return;
         }
@@ -419,6 +451,7 @@ public class DownloadService extends Service {
         task.setErrorMsg(errorText(msg));
         task.save();
         DownloadEvent.state(task.getId());
+        finishSlot(slot);
         schedule();
     }
 
@@ -457,24 +490,43 @@ public class DownloadService extends Service {
         updateNotification();
     }
 
-    private void pauseRunningForNetwork() {
+    /**
+     * 无可用（非计量）网络：运行中与排队中的任务统一转入「等待网络」可见态。
+     * 排队任务若留在 QUEUED，既不会显示为等待网络，也不会被 findAutoResumable 自动恢复，
+     * 用户看到的就是「一直排队中、一动不动」。两者都记 STOP_NETWORK，网络恢复后由调度自动继续。
+     */
+    private void pauseForNetwork() {
         for (Slot slot : slots.values()) slot.cancel();
         slots.clear();
-        for (DownloadTask task : DownloadStore.running()) {
+        int paused = pauseTasks(DownloadStore.running());
+        paused += pauseTasks(DownloadStore.queued());
+        releaseWakeLock();
+        // 有任务等网络时必须驻留：NetworkCallback 只在服务存活时有效，服务一停网络恢复也没人唤醒调度
+        if (paused == 0) {
+            DownloadNotifier.cancel(DownloadNotifier.ID);
+            stopSelf();
+            return;
+        }
+        DownloadNotifier.notify(DownloadNotifier.ID, DownloadNotifier.waiting(paused));
+    }
+
+    private int pauseTasks(List<DownloadTask> tasks) {
+        for (DownloadTask task : tasks) {
             task.setState(DownloadTask.STATE_PAUSED);
             task.setStopReason(DownloadTask.STOP_NETWORK);
             task.setErrorMsg("");
             task.save();
             DownloadEvent.state(task.getId());
         }
-        // 无排队任务时无需驻留等待网络；有排队任务则驻留（保活 NetworkCallback），并给出明确的等待通知
-        if (slots.isEmpty()) releaseWakeLock();
-        if (DownloadStore.queued().isEmpty()) {
-            DownloadNotifier.cancel(DownloadNotifier.ID);
-            stopSelf();
-            return;
-        }
-        DownloadNotifier.notify(DownloadNotifier.ID, DownloadNotifier.waiting(DownloadStore.queued().size()));
+        return tasks.size();
+    }
+
+    /** 退避到期自我唤醒：调度只在本服务存活时有效，所以到期后必须自己把它拉起来一次 */
+    private void scheduleWake(long delayMs) {
+        Task.schedule(() -> {
+            if (destroyed) return;
+            scheduler.execute(this::schedule);
+        }, delayMs, TimeUnit.MILLISECONDS);
     }
 
     private void updateNotification() {

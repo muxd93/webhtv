@@ -25,6 +25,17 @@ public class DownloadManager {
     private static final String KEY_CONCURRENT = "download_concurrent";
     private static final String KEY_CAPACITY = "download_capacity";
     private static final long DEFAULT_CAPACITY = 10L * 1024 * 1024 * 1024;
+    private static final long BUTTON_TEXT_TTL = 400L;
+
+    /** 服务启动时点：生产恒为真正启动前台服务；单测替换它来观察「调度启动时读到的持久化状态」 */
+    static volatile Runnable serviceStarter = () -> DownloadService.start(App.get());
+
+    // 详情页按钮文案：同一集在 TTL 内复用上次结果，避免进度事件风暴里每条事件都查库
+    private static final Object BUTTON_TEXT_LOCK = new Object();
+    private static String buttonTextKey;
+    private static String buttonTextValue;
+    private static long buttonTextTime;
+    private static int buttonTextQueries;
 
     private DownloadManager() {
     }
@@ -128,47 +139,96 @@ public class DownloadManager {
                 added++;
             }
         }
-        if (added > 0) {
-            RefreshEvent.download();
-            DownloadService.start(App.get());
-        }
+        if (added > 0) RefreshEvent.download();
+        // 没有新增但队列里仍有任务（例如上次服务退出时留下的排队任务）也要拉起调度，否则它们永远停在「排队中」
+        if (added > 0 || !DownloadStore.queued().isEmpty()) DownloadService.start(App.get());
         return added;
     }
 
-    public static void pause(String id) {
-        DownloadTask task = DownloadStore.find(id);
+    /**
+     * 暂停：先改内存态并通知 UI（列表行按同对象重绑，立刻显示「已暂停」），再后台落库，
+     * 落库完成后才启动调度——调度侧只读数据库决定是否取消槽位，顺序反了就会继续下载。
+     */
+    public static void pause(DownloadTask task) {
         if (task == null || task.isCompleted()) return;
+        applyPaused(task);
+        invalidateButtonText();
+        DownloadEvent.state(task.getId());
+        Task.execute(() -> {
+            persistPaused(task.getId());
+            serviceStarter.run();
+        });
+    }
+
+    /** 继续：同样是先内存态，落库完成后再启动调度 */
+    public static void resume(DownloadTask task) {
+        if (task == null || !task.canResume()) return;
+        applyQueued(task);
+        invalidateButtonText();
+        DownloadEvent.state(task.getId());
+        Task.execute(() -> {
+            persistQueued(task.getId());
+            serviceStarter.run();
+        });
+    }
+
+    public static void retry(DownloadTask task) {
+        resume(task);
+    }
+
+    /**
+     * 排队中/等待网络的任务：点击应重新触发一次调度。
+     * 等网络态不能走「继续」——继续只把状态改回 QUEUED，调度一进来又会被网络门控挡回，点了等于没点。
+     */
+    public static void retrySchedule() {
+        invalidateButtonText();
+        serviceStarter.run();
+    }
+
+    public static void delete(DownloadTask task) {
+        if (task == null) return;
+        invalidateButtonText();
+        String id = task.getId();
+        Task.execute(() -> {
+            DownloadTask fresh = DownloadStore.find(id);
+            if (fresh == null) return;
+            DownloadStore.delete(fresh);
+            DownloadService.start(App.get());
+            App.post(() -> {
+                DownloadEvent.state(id);
+                RefreshEvent.download();
+            });
+        });
+    }
+
+    private static void applyPaused(DownloadTask task) {
         task.setState(DownloadTask.STATE_PAUSED);
         task.setStopReason(DownloadTask.STOP_USER);
         task.setErrorMsg("");
-        task.save();
-        DownloadEvent.state(id);
-        DownloadService.start(App.get());
     }
 
-    public static void resume(String id) {
-        DownloadTask task = DownloadStore.find(id);
-        if (task == null || !task.canResume()) return;
+    private static void applyQueued(DownloadTask task) {
         task.setState(DownloadTask.STATE_QUEUED);
         task.setStopReason(DownloadTask.STOP_NONE);
         task.setRetryCount(0);
         task.setErrorMsg("");
-        task.save();
-        DownloadEvent.state(id);
-        DownloadService.start(App.get());
     }
 
-    public static void retry(String id) {
-        resume(id);
-    }
-
-    public static void delete(String id) {
+    /** 落库前重读，避免把下载线程刚写入的进度字段覆盖成旧值 */
+    private static void persistPaused(String id) {
         DownloadTask task = DownloadStore.find(id);
-        if (task == null) return;
-        DownloadStore.delete(task);
-        DownloadEvent.state(id);
-        RefreshEvent.download();
-        DownloadService.start(App.get());
+        if (task == null || task.isCompleted()) return;
+        applyPaused(task);
+        task.save();
+        App.post(() -> DownloadEvent.state(id));
+    }
+
+    private static void persistQueued(String id) {
+        DownloadTask task = DownloadStore.find(id);
+        if (task == null || !task.canResume()) return;
+        applyQueued(task);
+        task.save();
+        App.post(() -> DownloadEvent.state(id));
     }
 
     public static List<DownloadTask> tasks() {
@@ -211,8 +271,50 @@ public class DownloadManager {
         Notify.show(ResUtil.getString(R.string.download_added, count));
     }
 
+    /**
+     * 详情页缓存按钮文案（带短 TTL）。进度事件只关心百分比，容忍数百毫秒陈旧；
+     * 状态切换必须调用 {@link #invalidateButtonText()}，保证按钮不会停在旧文案上。
+     */
+    public static String buttonTextCached(String siteKey, String vodId, String episodeUrl) {
+        String key = siteKey + "|" + vodId + "|" + episodeUrl;
+        synchronized (BUTTON_TEXT_LOCK) {
+            if (key.equals(buttonTextKey) && System.currentTimeMillis() - buttonTextTime < BUTTON_TEXT_TTL) return buttonTextValue;
+        }
+        String text = buttonText(siteKey, vodId, episodeUrl);
+        synchronized (BUTTON_TEXT_LOCK) {
+            buttonTextKey = key;
+            buttonTextValue = text;
+            buttonTextTime = System.currentTimeMillis();
+        }
+        return text;
+    }
+
+    /** 暂停/继续/完成/失败/删除等状态切换后清掉按钮文案缓存 */
+    public static void invalidateButtonText() {
+        synchronized (BUTTON_TEXT_LOCK) {
+            buttonTextKey = null;
+        }
+    }
+
+    static int buttonTextQueries() {
+        synchronized (BUTTON_TEXT_LOCK) {
+            return buttonTextQueries;
+        }
+    }
+
+    static void resetButtonTextForTest() {
+        synchronized (BUTTON_TEXT_LOCK) {
+            buttonTextKey = null;
+            buttonTextValue = null;
+            buttonTextQueries = 0;
+        }
+    }
+
     /** 详情页缓存按钮文案：null=无相关任务保持默认“缓存”；否则给出该集当前缓存状态 */
     public static String buttonText(String siteKey, String vodId, String episodeUrl) {
+        synchronized (BUTTON_TEXT_LOCK) {
+            buttonTextQueries++;
+        }
         List<DownloadTask> tasks = DownloadStore.findByEpisodeUrl(siteKey, vodId, episodeUrl);
         if (tasks.isEmpty()) return null;
         DownloadTask task = null;

@@ -669,8 +669,12 @@
     <string name="config_preset_filled">已回填預設源，再次點擊確定儲存</string>
     <string name="config_section_depot">多倉源</string>
     <string name="config_section_single">單源</string>
+    <string name="config_list_loading">正在載入源…</string>
     <string name="config_badge_depot">多倉 %1$d</string>
     <string name="config_badge_current">目前</string>
+    <string name="config_badge_health">失敗 %1$d 次（%2$s），%3$d 分鐘後重試</string>
+    <string name="config_badge_health_plain">失敗 %1$d 次，%2$d 分鐘後重試</string>
+    <string name="config_badge_health_multi">%1$d 個子源失敗，最早 %2$d 分鐘後重試</string>
     <string name="config_delete_title">刪除源</string>
     <string name="config_delete_single">刪除該源？觀看歷史與收藏將保留，並標記為「來源已失效」；其站點偏好一併清理。</string>
     <string name="config_delete_depot">刪除該多倉及其 %1$d 個子源？觀看歷史與收藏將保留，並標記為「來源已失效」；其站點偏好一併清理。</string>
@@ -1577,6 +1581,9 @@
     <string name="download_start">开始缓存</string>
     <string name="download_episode_hint">选择要缓存的剧集</string>
     <string name="download_permission">需要授予「所有檔案存取權」才能快取到公開目錄</string>
+    <string name="download_permission_manual">未找到「所有檔案存取權」設定頁：請到 系統設定 → 應用程式 → 特殊應用程式存取權 → 所有檔案存取權 開啟後重試；若裝置沒有此項目，將無法快取到公開 Movies 目錄。</string>
+    <string name="home_source_empty_title">尚未新增來源</string>
+    <string name="home_source_empty_message">首次使用需要先新增一個點播來源。新增完成後返回首頁即可載入內容。</string>
     <string name="download_drm">加密内容(DRM)暂不支持离线缓存</string>
     <string name="download_dash">DASH 视频暂不支持离线缓存</string>
     <string name="download_unsupported">该地址暂不支持离线缓存</string>

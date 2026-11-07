@@ -56,16 +56,20 @@ public class DownloadActivity extends BaseActivity implements DownloadAdapter.On
 
     @Override
     public void onItemClick(DownloadTask task) {
-        // 已完成 → 进详情页（本地命中会直拨）；运行中 → 暂停；暂停/失败 → 恢复/重试
+        // 已完成 → 进详情页（本地命中会直拨）；排队中/等待网络 → 立即重试调度；运行中 → 暂停；已暂停/失败 → 恢复/重试
         if (task.isCompleted()) openVod(task);
-        else if (task.isRunning()) DownloadManager.pause(task.getId());
-        else if (task.canResume()) DownloadManager.resume(task.getId());
+        else if (task.canAutoResume() || task.getState() == DownloadTask.STATE_QUEUED) DownloadManager.retrySchedule();
+        else if (task.isRunning()) DownloadManager.pause(task);
+        else if (task.canResume()) DownloadManager.resume(task);
     }
 
     private void openVod(DownloadTask task) {
         Config config = Config.find(task.getCid());
         if (config == null) {
-            Notify.show(R.string.download_source_missing);
+            // 源已删除但本地缓存还在：用本地文件直接起播，不再因源缺失拒绝播放
+            String url = DownloadManager.localUrl(task);
+            if (url.isEmpty()) Notify.show(R.string.download_source_missing);
+            else VideoActivity.start(this, url);
             return;
         }
         if (task.getCid() != VodConfig.getCid()) {
@@ -88,7 +92,7 @@ public class DownloadActivity extends BaseActivity implements DownloadAdapter.On
 
     @Override
     public void onItemDelete(DownloadTask task) {
-        DownloadManager.delete(task.getId());
+        DownloadManager.delete(task);
     }
 
     @Subscribe(threadMode = ThreadMode.MAIN)

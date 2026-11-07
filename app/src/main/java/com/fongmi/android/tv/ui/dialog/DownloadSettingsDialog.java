@@ -73,7 +73,7 @@ public class DownloadSettingsDialog extends BaseAlertDialog {
             DownloadActivity.start(requireActivity());
         });
         binding.clear.setOnClickListener(view -> confirmClear());
-        binding.permission.setOnClickListener(view -> DownloadPath.openPermissionSettings(requireContext()));
+        binding.permission.setOnClickListener(view -> DownloadPath.requestPermission(requireContext()));
         binding.permission.setVisibility(DownloadPath.writable() ? View.GONE : View.VISIBLE);
     }
 

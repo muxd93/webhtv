@@ -14,6 +14,9 @@ import java.util.Locale;
 import androidx.core.content.ContextCompat;
 
 import com.fongmi.android.tv.App;
+import com.fongmi.android.tv.R;
+import com.fongmi.android.tv.utils.Notify;
+import com.github.catvod.crawler.SpiderDebug;
 
 import java.io.File;
 
@@ -138,14 +141,32 @@ public class DownloadPath {
         }
     }
 
-    public static void openPermissionSettings(Context context) {
+    /**
+     * 提示并尝试打开「所有文件访问」授权页。部分电视盒子没有该设置页，
+     * 此时给出手动路径与后果，避免用户误以为源失效。
+     */
+    public static void requestPermission(Context context) {
+        Notify.show(permissionHint(openPermissionSettings(context)));
+    }
+
+    /** 有授权页就提示缺什么；没有授权页时补充手动路径与打不开的后果 */
+    static int permissionHint(boolean settingsOpened) {
+        return settingsOpened ? R.string.download_permission : R.string.download_permission_manual;
+    }
+
+    /** @return 是否成功拉起授权页 */
+    public static boolean openPermissionSettings(Context context) {
         try {
             Intent intent = new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:" + context.getPackageName()));
             context.startActivity(intent);
+            return true;
         } catch (Exception e) {
             try {
                 context.startActivity(new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION));
+                return true;
             } catch (Exception ignored) {
+                SpiderDebug.log("download", "permission settings unavailable");
+                return false;
             }
         }
     }
