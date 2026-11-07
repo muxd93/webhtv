@@ -1,10 +1,14 @@
 package com.fongmi.android.tv.ui.dialog;
 
+import android.app.Dialog;
+import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+import androidx.fragment.app.DialogFragment;
 import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentActivity;
 import androidx.recyclerview.widget.RecyclerView;
@@ -18,12 +22,12 @@ import com.fongmi.android.tv.databinding.DialogDownloadEpisodeBinding;
 import com.fongmi.android.tv.download.DownloadManager;
 import com.fongmi.android.tv.download.DownloadStore;
 import com.fongmi.android.tv.utils.Notify;
-import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+import com.fongmi.android.tv.utils.ResUtil;
 
 import java.util.ArrayList;
 import java.util.List;
 
-public class DownloadDialog extends BaseAlertDialog {
+public class DownloadDialog extends DialogFragment {
 
     private DialogDownloadBinding binding;
     private EpisodeAdapter adapter;
@@ -73,30 +77,35 @@ public class DownloadDialog extends BaseAlertDialog {
         show(activity.getSupportFragmentManager(), null);
     }
 
+    @NonNull
     @Override
-    protected DialogDownloadBinding getBinding() {
-        return binding = DialogDownloadBinding.inflate(getLayoutInflater());
+    public Dialog onCreateDialog(@Nullable Bundle savedInstanceState) {
+        binding = DialogDownloadBinding.inflate(getLayoutInflater());
+        initView();
+        initEvent();
+        // 标题/正文/操作行放在同一张浅色卡片里：系统对话框底色来自深色电视主题，只给自定义视图加白底会形成
+        // 「深色外框 + 白卡 + 深色标题 + 深色按钮区」的夹层，且底部按钮在矮屏上会被推出屏幕
+        return LightDialog.create(requireActivity(), vodName, binding.getRoot(),
+                getString(R.string.download_start), view -> confirm(),
+                getString(R.string.dialog_negative), null);
     }
 
-    @Override
-    protected MaterialAlertDialogBuilder getBuilder() {
-        // 复用全局浅色对话框主题：白底圆角 + 深色文字，全选/反选按钮用对话框专用 OutlinedButton 配色
-        return new MaterialAlertDialogBuilder(requireActivity(), R.style.ThemeOverlay_WebHTV_LightDialog).setTitle(vodName).setView(getBinding().getRoot())
-                .setPositiveButton(R.string.download_start, (dialog, which) -> confirm())
-                .setNegativeButton(R.string.dialog_negative, null);
-    }
-
-    @Override
-    protected void initView() {
+    private void initView() {
         binding.recycler.setHasFixedSize(true);
         binding.recycler.setItemAnimator(null);
-        binding.recycler.setLayoutManager(new androidx.recyclerview.widget.LinearLayoutManager(getContext()));
+        binding.recycler.setLayoutManager(new androidx.recyclerview.widget.LinearLayoutManager(requireContext()));
+        binding.recycler.getLayoutParams().height = listHeight();
         binding.recycler.setAdapter(adapter = new EpisodeAdapter());
         binding.recycler.setVisibility(adapter.getItemCount() == 0 ? View.GONE : View.VISIBLE);
     }
 
-    @Override
-    protected void initEvent() {
+    /** 列表高度跟随可用高度：固定 300dp 在 480~540dp 高的电视上会把底部操作行挤出屏幕 */
+    private int listHeight() {
+        int screen = ResUtil.getScreenHeight(requireContext());
+        return Math.min(ResUtil.dp2px(300), Math.max(ResUtil.dp2px(120), screen * 2 / 5));
+    }
+
+    private void initEvent() {
         binding.selectAll.setOnClickListener(view -> {
             adapter.setAllChecked(true);
             updateCount();

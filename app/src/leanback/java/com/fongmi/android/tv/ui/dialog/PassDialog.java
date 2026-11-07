@@ -55,6 +55,8 @@ public class PassDialog extends BaseBottomSheetDialog {
     @Override
     public void onResume() {
         super.onResume();
-        getDialog().getWindow().setLayout(ResUtil.dp2px(250), -1);
+        // 底栏宽度随屏幕比例缩放，避免在高分辨率电视上写死 250dp 显得过窄
+        int width = Math.max(ResUtil.dp2px(250), Math.round(ResUtil.getScreenWidth(requireContext()) * 0.32f));
+        getDialog().getWindow().setLayout(width, -1);
     }
 }

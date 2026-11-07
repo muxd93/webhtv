@@ -146,7 +146,7 @@ public final class RemoteTrustDialog {
         binding.bindCodeRefresh = () -> refreshBindCodeIfNeeded(activity, binding);
         render(activity, binding);
         dialog.setOnShowListener(d -> {
-            configureWindow(activity, dialog);
+            configureWindow(activity, dialog, binding.root);
             binding.close.setOnClickListener(v -> dialog.dismiss());
             binding.bindCodeButton.setOnClickListener(v -> copyCode(activity, binding));
             binding.enableToggle.setOnClickListener(v -> toggleEnabled(activity, binding));
@@ -256,7 +256,7 @@ public final class RemoteTrustDialog {
         binding.content = new LinearLayoutCompat(context);
         binding.content.setOrientation(LinearLayoutCompat.VERTICAL);
         binding.scroll.addView(binding.content, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        binding.root.addView(binding.scroll, topMargin(matchWrap(), 10));
+        binding.root.addView(binding.scroll, scrollParams(context));
 
         binding.serverLayout = (TextInputLayout) LayoutInflater.from(context).inflate(R.layout.view_remote_trust_server_input, binding.content, false);
         binding.server = binding.serverLayout.findViewById(R.id.server);
@@ -268,17 +268,40 @@ public final class RemoteTrustDialog {
         return binding;
     }
 
-    private static void configureWindow(Context context, AlertDialog dialog) {
+    private static void configureWindow(Context context, AlertDialog dialog, View root) {
         Window window = dialog.getWindow();
         if (window == null) return;
+        boolean land = ResUtil.isLand(context);
         WindowManager.LayoutParams params = window.getAttributes();
-        params.width = (int) (ResUtil.getScreenWidth(context) * (ResUtil.isLand(context) ? 0.72f : 0.92f));
-        params.height = WindowManager.LayoutParams.WRAP_CONTENT;
+        params.width = (int) (ResUtil.getScreenWidth(context) * (land ? 0.72f : 0.92f));
+        params.height = land ? panelHeight(context) : WindowManager.LayoutParams.WRAP_CONTENT;
         params.gravity = Gravity.CENTER;
         window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
         window.clearFlags(WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM);
+        if (land) window.getDecorView().setPadding(0, 0, 0, 0);
         window.setAttributes(params);
-        window.setLayout(params.width, WindowManager.LayoutParams.WRAP_CONTENT);
+        window.setLayout(params.width, params.height);
+        if (!land || root == null) return;
+        // 与 ShellProxyDialog 一致：面板高度绑定窗口，滚动区吃掉剩余高度，内容再多也不溢出屏幕
+        ViewGroup.LayoutParams rootParams = root.getLayoutParams();
+        if (rootParams != null) {
+            rootParams.height = params.height;
+            root.setLayoutParams(rootParams);
+        }
+    }
+
+    // 主面板高度上限：绑定屏幕高度并留出边距，保证底部按钮始终可达
+    static int panelHeight(Context context) {
+        return (int) (ResUtil.getScreenHeight(context) * 0.98f);
+    }
+
+    // 横屏时滚动区吃满剩余高度；竖屏保持自适应，避免矮面板被拉伸
+    static LinearLayoutCompat.LayoutParams scrollParams(Context context) {
+        LinearLayoutCompat.LayoutParams params = ResUtil.isLand(context)
+                ? new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1)
+                : matchWrap();
+        params.topMargin = dp(context, 10);
+        return params;
     }
 
     private static void configureSmallModalWindow(Context context, AlertDialog dialog) {

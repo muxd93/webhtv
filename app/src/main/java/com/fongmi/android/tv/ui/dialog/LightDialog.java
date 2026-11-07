@@ -45,9 +45,10 @@ public final class LightDialog {
     private static Dialog createInternal(Context context, CharSequence title, View content, String positive, View.OnClickListener onPositive, String negative, View.OnClickListener onNegative, String neutral, View.OnClickListener onNeutral, float landFactor, float portFactor, int maxDp) {
         Dialog dialog = new Dialog(context);
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
-        dialog.setContentView(root(context, title, content, positive, listener(dialog, onPositive), negative, listener(dialog, onNegative), neutral, listener(dialog, onNeutral)));
+        LinearLayout root = root(context, title, content, positive, listener(dialog, onPositive), negative, listener(dialog, onNegative), neutral, listener(dialog, onNeutral));
+        dialog.setContentView(root);
         dialog.setCanceledOnTouchOutside(true);
-        dialog.setOnShowListener(d -> applyWindow(dialog, context, landFactor, portFactor, maxDp));
+        dialog.setOnShowListener(d -> applyWindow(dialog, context, root, content, landFactor, portFactor, maxDp));
         return dialog;
     }
 
@@ -58,7 +59,7 @@ public final class LightDialog {
         };
     }
 
-    private static View root(Context context, CharSequence title, View content, String positive, View.OnClickListener onPositive, String negative, View.OnClickListener onNegative, String neutral, View.OnClickListener onNeutral) {
+    private static LinearLayout root(Context context, CharSequence title, View content, String positive, View.OnClickListener onPositive, String negative, View.OnClickListener onNegative, String neutral, View.OnClickListener onNeutral) {
         LinearLayout root = new LinearLayout(context);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundResource(R.drawable.shape_shell_proxy_dialog);
@@ -136,7 +137,7 @@ public final class LightDialog {
         return button;
     }
 
-    private static void applyWindow(Dialog dialog, Context context, float landFactor, float portFactor, int maxDp) {
+    private static void applyWindow(Dialog dialog, Context context, View root, View content, float landFactor, float portFactor, int maxDp) {
         Window window = dialog.getWindow();
         if (window == null) return;
         WindowManager.LayoutParams params = window.getAttributes();
@@ -147,6 +148,26 @@ public final class LightDialog {
         window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
         window.getDecorView().setPadding(0, 0, 0, 0);
         window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+        window.setAttributes(params);
+        window.setLayout(params.width, params.height);
+        boundHeight(window, context, params, root, content);
+    }
+
+    /**
+     * 正文一旦比可用高度高，wrap_content 的窗口会被它（比如 ScrollView）吃满，排在后面的操作行只能量到 0 高度并整行消失，
+     * 这就是「部分电视上复制地址/取消/打开浏览器不显示」。先按目标宽度量出自然高度：超限才给窗口显式高度，
+     * 并把正文换成 0dp + weight 让它自己滚动；没超限仍走 wrap_content，避免短对话框被拉满屏。
+     */
+    private static void boundHeight(Window window, Context context, WindowManager.LayoutParams params, View root, View content) {
+        if (content == null || !(content.getLayoutParams() instanceof LinearLayout.LayoutParams)) return;
+        int available = ResUtil.getScreenHeight(context) * 9 / 10;
+        root.measure(View.MeasureSpec.makeMeasureSpec(params.width, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+        if (root.getMeasuredHeight() <= available) return;
+        LinearLayout.LayoutParams contentParams = (LinearLayout.LayoutParams) content.getLayoutParams();
+        contentParams.height = 0;
+        contentParams.weight = 1;
+        content.setLayoutParams(contentParams);
+        params.height = available;
         window.setAttributes(params);
         window.setLayout(params.width, params.height);
     }

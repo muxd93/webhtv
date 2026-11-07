@@ -2,6 +2,7 @@ package com.fongmi.android.tv.ui.dialog;
 
 import android.app.Activity;
 import android.app.Dialog;
+import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
@@ -9,8 +10,10 @@ import android.text.TextUtils;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowManager;
+import android.widget.FrameLayout;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
@@ -22,6 +25,7 @@ import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.databinding.DialogMpvConfigCreateBinding;
 import com.fongmi.android.tv.player.mpv.MpvConfigStore;
+import com.fongmi.android.tv.ui.custom.CustomNestedScrollView;
 import com.fongmi.android.tv.utils.FileChooser;
 import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.ResUtil;
@@ -89,7 +93,23 @@ public class MpvConfigCreateDialog extends BaseAlertDialog {
 
     @Override
     protected MaterialAlertDialogBuilder getBuilder() {
-        return new MaterialAlertDialogBuilder(requireActivity(), R.style.ThemeOverlay_WebHTV_LightDialog).setView(getBinding().getRoot());
+        return new MaterialAlertDialogBuilder(requireActivity(), R.style.ThemeOverlay_WebHTV_LightDialog)
+                .setView(wrapBody(requireContext(), getBinding().getRoot()));
+    }
+
+    // 表单内容超出屏幕时在弹窗内部滚动，避免脚本编辑面板把底部按钮顶出屏幕
+    static View wrapBody(Context context, View content) {
+        CustomNestedScrollView scroll = new CustomNestedScrollView(context);
+        scroll.setFillViewport(false);
+        scroll.setMaxHeight(bodyMaxHeight(context));
+        scroll.addView(content, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        return scroll;
+    }
+
+    // 横屏内容区封顶为屏幕高度的九成；竖屏保持原来的自适应高度
+    static int bodyMaxHeight(Context context) {
+        if (!ResUtil.isLand(context)) return 0;
+        return Math.max(ResUtil.dp2px(160), Math.round(ResUtil.getScreenHeight(context) * 0.9f));
     }
 
     @Override

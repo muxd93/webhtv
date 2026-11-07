@@ -67,6 +67,14 @@
     <style name="ThemeOverlay.WebHTV.LightDialog" parent="ThemeOverlay.Material3.MaterialAlertDialog">
         <item name="android:colorBackground">@color/white</item>
         <item name="colorSurface">@color/white</item>
+        <!-- M3 对话框容器背景读的是 colorSurfaceContainerHigh（material 的 m3_comp_dialog_container_color 宏），
+             只覆盖 colorSurface 会让窗口继续继承 Theme.Material3.Dark，形成"深色外框 + 白色内容卡"的夹层；
+             整条容器色梯统一为白，窗口与内容卡才是同一个口径。 -->
+        <item name="colorSurfaceContainerLowest">@color/white</item>
+        <item name="colorSurfaceContainerLow">@color/white</item>
+        <item name="colorSurfaceContainer">@color/white</item>
+        <item name="colorSurfaceContainerHigh">@color/white</item>
+        <item name="colorSurfaceContainerHighest">@color/white</item>
         <item name="colorOnSurface">#202124</item>
         <item name="colorOnSurfaceVariant">#5F6368</item>
         <item name="colorPrimary">#1A73E8</item>

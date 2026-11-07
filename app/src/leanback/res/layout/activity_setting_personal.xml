@@ -34,6 +34,8 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:gravity="end"
+                android:ellipsize="end"
+                android:singleLine="true"
                 android:textColor="@color/white"
                 android:textSize="18sp"
                 tools:text="Off" />
@@ -64,6 +66,8 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:gravity="end"
+                android:ellipsize="end"
+                android:singleLine="true"
                 android:textColor="@color/white"
                 android:textSize="18sp"
                 tools:text="On" />
@@ -94,6 +98,8 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:gravity="end"
+                android:ellipsize="end"
+                android:singleLine="true"
                 android:textColor="@color/white"
                 android:textSize="18sp"
                 tools:text="Off" />
@@ -124,6 +130,8 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:gravity="end"
+                android:ellipsize="end"
+                android:singleLine="true"
                 android:textColor="@color/white"
                 android:textSize="18sp"
                 tools:text="Off" />
@@ -183,6 +191,8 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:gravity="end"
+                android:ellipsize="end"
+                android:singleLine="true"
                 android:textColor="@color/white"
                 android:textSize="18sp"
                 tools:text="10" />
@@ -213,6 +223,8 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:gravity="end"
+                android:ellipsize="end"
+                android:singleLine="true"
                 android:textColor="@color/white"
                 android:textSize="18sp"
                 tools:text="10" />
@@ -243,6 +255,8 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:gravity="end"
+                android:ellipsize="end"
+                android:singleLine="true"
                 android:textColor="@color/white"
                 android:textSize="18sp"
                 tools:text="20" />
@@ -273,6 +287,8 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:gravity="end"
+                android:ellipsize="end"
+                android:singleLine="true"
                 android:textColor="@color/white"
                 android:textSize="18sp"
                 tools:text="首页" />
@@ -303,6 +319,8 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:gravity="end"
+                android:ellipsize="end"
+                android:singleLine="true"
                 android:textColor="@color/white"
                 android:textSize="18sp"
                 tools:text="2 个任务 · 1.2 GB" />

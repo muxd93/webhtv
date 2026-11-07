@@ -218,7 +218,9 @@ public class ConfigDialog extends BaseAlertDialog {
             binding.text.requestFocus();
             return;
         }
-        ((ConfigListener) requireActivity()).setConfig(config);
+        // 宿主必须实现 ConfigListener 才通知刷新：源已经落库，跳过只影响当前页面的列表刷新，不丢数据
+        FragmentActivity activity = requireActivity();
+        if (activity instanceof ConfigListener) ((ConfigListener) activity).setConfig(config);
         dismiss();
     }
 
@@ -273,7 +275,13 @@ public class ConfigDialog extends BaseAlertDialog {
         App.post(() -> {
             if (activity.isFinishing() || activity.isDestroyed()) return;
             dismissAllowingStateLoss();
-            App.post(() -> ((ConfigListener) activity).setConfig(saveConfig("file:/" + path.replace(Path.rootPath(), ""), binding.name.getText().toString().trim())), 100);
+            App.post(() -> {
+                // 内层再判一次：这 100ms 里宿主可能已经销毁；宿主也必须真的实现 ConfigListener，
+                // 否则强转会崩在 main looper 上（与 SiteDialog 同样先判接口再回调）
+                if (activity.isFinishing() || activity.isDestroyed()) return;
+                if (!(activity instanceof ConfigListener)) return;
+                ((ConfigListener) activity).setConfig(saveConfig("file:/" + path.replace(Path.rootPath(), ""), binding.name.getText().toString().trim()));
+            }, 100);
         }, 100);
     });
 }

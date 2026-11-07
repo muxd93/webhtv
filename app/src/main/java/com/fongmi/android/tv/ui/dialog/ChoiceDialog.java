@@ -249,23 +249,31 @@ public final class ChoiceDialog extends DialogFragment {
 
     private View createItem(int position) {
         MaterialButton button = new MaterialButton(requireContext());
-        button.setAllCaps(false);
-        button.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
-        button.setSingleLine(false);
-        button.setMinHeight(dp(44));
-        button.setInsetTop(0);
-        button.setInsetBottom(0);
-        button.setStrokeWidth(dp(1));
-        button.setCornerRadius(dp(6));
+        applyItemLayout(button);
         setItemEnabled(button, position);
         button.setText(itemText(position));
         styleItem(button, position);
         button.setOnFocusChangeListener((view, hasFocus) -> styleItem(button, position));
         button.setOnClickListener(view -> onItemClick(position));
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(46));
-        params.bottomMargin = dp(8);
-        button.setLayoutParams(params);
         return button;
+    }
+
+    // 条目尺寸策略集中在此：行高必须由内容决定，否则多行文本会被裁掉
+    static void applyItemLayout(MaterialButton button) {
+        float density = button.getResources().getDisplayMetrics().density;
+        button.setAllCaps(false);
+        button.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
+        button.setSingleLine(false);
+        button.setMaxLines(2);
+        button.setEllipsize(TextUtils.TruncateAt.END);
+        button.setMinHeight((int) (46 * density + 0.5f));
+        button.setInsetTop(0);
+        button.setInsetBottom(0);
+        button.setStrokeWidth((int) (1 * density + 0.5f));
+        button.setCornerRadius((int) (6 * density + 0.5f));
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        params.bottomMargin = (int) (8 * density + 0.5f);
+        button.setLayoutParams(params);
     }
 
     private CharSequence itemText(int position) {
